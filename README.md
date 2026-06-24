@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# prismarity
 
-## Getting Started
+A unified broadcast control room for streamers — Next.js (App Router) +
+TypeScript + Chakra UI. Dark "control room" design language with platform
+colors used as data (Twitch purple, YouTube red, Kick green).
 
-First, run the development server:
+## Requirements
+
+- Node.js 18+
+- npm 9+
+
+## Getting started
 
 ```bash
+# 1. Install dependencies
+npm install
+
+# 2. Copy the env template and fill in values
+cp .env.local.example .env.local
+
+# 3. Start the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) — it redirects to `/chat`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Path       | Description                                                        |
+|------------|--------------------------------------------------------------------|
+| `/`        | Redirects to `/chat`                                               |
+| `/chat`    | Unified chat. **Real** anonymous Twitch chat via WebSocket; YouTube/Kick are demo messages. Creator/Viewer modes (persisted). |
+| `/loyalty` | Cross-platform loyalty leaderboard (mock data)                     |
+| `/vods`    | VOD library with platform filters and expiry warnings (mock data)  |
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Command         | Description                  |
+|-----------------|------------------------------|
+| `npm run dev`   | Start dev server (port 3000) |
+| `npm run build` | Production build             |
+| `npm run start` | Start production server      |
+| `npm run lint`  | Run ESLint                   |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Design system
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Chakra UI is configured in `app/theme.ts` (`createSystem` + `defineConfig`)
+with the design tokens (`bg`, `panel`, `raised`, `line`, `text`, `muted`,
+`faint`, plus `twitch`/`youtube`/`kick`) and the three fonts (Space Grotesk
+headings, IBM Plex Sans body, IBM Plex Mono numbers/labels). `app/provider.tsx`
+wraps the app in `ChakraProvider`.
 
-## Deploy on Vercel
+## Project structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+app/
+  layout.tsx              # Root <html>, next/font wiring, ChakraProvider
+  theme.ts                # Chakra system: design tokens, fonts, global CSS
+  provider.tsx            # ChakraProvider client wrapper
+  page.tsx                # Redirects / -> /chat
+  (dashboard)/            # Route group sharing the TopBar + NavRail shell
+    layout.tsx            # Persistent shell (TopBar, NavRail)
+    components/           # Shell components (TopBar, NavRail, Logo, ui)
+    chat/                 # Chat screen + hooks (useTwitchChat, useMode)
+    loyalty/page.tsx      # Loyalty screen
+    vods/page.tsx         # VODs screen
+public/                   # Static assets
+.env.local.example        # Env var template (committed)
+next.config.ts            # Next.js config (optimizePackageImports)
+tsconfig.json             # TypeScript strict mode
+```
