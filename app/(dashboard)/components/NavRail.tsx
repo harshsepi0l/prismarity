@@ -6,7 +6,7 @@ import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { useLayout } from "../useLayout";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon } from "./PlatformIcon";
-import type { Platform } from "../chat/types";
+import type { Role } from "@/lib/auth/types";
 
 const CHAT_ICON = (
   <Box
@@ -50,16 +50,14 @@ const NAV = [
   { href: "/vods", label: "VODs", icon: VODS_ICON },
 ];
 
-const CONNECTED: { name: string; platform: Platform; color: string }[] = [
-  { name: "Twitch", platform: "twitch", color: "#A66CFF" },
-  { name: "YouTube", platform: "youtube", color: "#FF5C5C" },
-  { name: "Kick", platform: "kick", color: "#5BE37D" },
-];
-
 // Below this width the rail drops labels and shows icons only.
 const COLLAPSE_AT = 168;
 
-export function NavRail() {
+interface NavRailProps {
+  auth: { displayName: string; role: Role } | null;
+}
+
+export function NavRail({ auth }: NavRailProps) {
   const pathname = usePathname();
   const { navWidth, setNavWidth } = useLayout();
   const collapsed = navWidth < COLLAPSE_AT;
@@ -119,33 +117,6 @@ export function NavRail() {
         })}
       </Flex>
 
-      <chakra.button
-        type="button"
-        title="Connect a channel"
-        mt="18px"
-        display="flex"
-        alignItems="center"
-        justifyContent={collapsed ? "center" : "flex-start"}
-        gap="12px"
-        px={collapsed ? "0" : "12px"}
-        py="10px"
-        borderRadius="8px"
-        borderWidth="1px"
-        borderStyle="dashed"
-        borderColor="fieldLine"
-        color="muted"
-        fontSize="14px"
-        textAlign="left"
-        cursor="pointer"
-        transition="color .12s, border-color .12s"
-        _hover={{ color: "text", borderColor: "faint" }}
-      >
-        <Text fontFamily="mono" fontSize="15px" w="17px" textAlign="center" lineHeight="1">
-          +
-        </Text>
-        {!collapsed && <Box as="span" whiteSpace="nowrap">Connect a channel</Box>}
-      </chakra.button>
-
       <Box mt="auto" px={collapsed ? "0" : "12px"}>
         {!collapsed && (
           <Text
@@ -158,22 +129,70 @@ export function NavRail() {
             CONNECTED
           </Text>
         )}
-        <Flex direction="column" gap="11px" align={collapsed ? "center" : "stretch"}>
-          {CONNECTED.map((p) => (
+
+        {auth ? (
+          <Flex direction="column" gap="10px" align={collapsed ? "center" : "stretch"}>
             <Flex
-              key={p.name}
               align="center"
-              justify={collapsed ? "center" : "flex-start"}
               gap="10px"
-              fontSize="13px"
-              color="muted"
-              title={collapsed ? p.name : undefined}
+              justify={collapsed ? "center" : "flex-start"}
+              title={collapsed ? auth.displayName : undefined}
             >
-              <PlatformIcon platform={p.platform} color={p.color} size={15} />
-              {!collapsed && <Box as="span" whiteSpace="nowrap">{p.name}</Box>}
+              <PlatformIcon platform="twitch" size={18} />
+              {!collapsed && (
+                <Box minW="0">
+                  <Text fontSize="13px" fontWeight="500" color="text" truncate>
+                    {auth.displayName}
+                  </Text>
+                  <Text
+                    fontFamily="mono"
+                    fontSize="9px"
+                    textTransform="uppercase"
+                    letterSpacing="0.12em"
+                    color="faint"
+                  >
+                    {auth.role}
+                  </Text>
+                </Box>
+              )}
             </Flex>
-          ))}
-        </Flex>
+            {!collapsed && (
+              <chakra.form action="/api/auth/logout" method="post">
+                <chakra.button
+                  type="submit"
+                  fontSize="11px"
+                  color="faint"
+                  cursor="pointer"
+                  transition="color .12s"
+                  _hover={{ color: "muted" }}
+                >
+                  Log out
+                </chakra.button>
+              </chakra.form>
+            )}
+          </Flex>
+        ) : (
+          <chakra.a
+            href="/api/auth/twitch/login"
+            title="Log in with Twitch"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            gap="8px"
+            px={collapsed ? "0" : "12px"}
+            py="9px"
+            borderRadius="8px"
+            bg="twitch"
+            color="#0E1118"
+            fontSize="13px"
+            fontWeight="600"
+            transition="background .12s"
+            _hover={{ bg: "#b885ff" }}
+          >
+            <PlatformIcon platform="twitch" color="#0E1118" size={16} />
+            {!collapsed && <Box as="span" whiteSpace="nowrap">Log in with Twitch</Box>}
+          </chakra.a>
+        )}
       </Box>
 
       <ResizeHandle side="right" width={navWidth} onResize={setNavWidth} />
