@@ -5,15 +5,13 @@ import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import type { Mode } from "../../useSession";
 import type { Platform } from "../types";
 import { PlatformIcon } from "../../components/PlatformIcon";
-import { useChat } from "../../useChat";
 
 const MOD_STATE_KEY = "prismarity:mod-toggles";
 
-// YouTube and Kick are placeholders until those integrations exist.
-const CHANNELS: { name: string; platform: Platform; color: string }[] = [
-  { name: "Twitch", platform: "twitch", color: "#A66CFF" },
-  { name: "YouTube", platform: "youtube", color: "#FF5C5C" },
-  { name: "Kick", platform: "kick", color: "#5BE37D" },
+const CHANNELS: { name: string; platform: Platform; color: string; count: string }[] = [
+  { name: "Twitch", platform: "twitch", color: "#A66CFF", count: "6,210" },
+  { name: "YouTube", platform: "youtube", color: "#FF5C5C", count: "4,830" },
+  { name: "Kick", platform: "kick", color: "#5BE37D", count: "1,440" },
 ];
 
 const MOD_TOGGLES = [
@@ -70,24 +68,9 @@ interface SidePanelProps {
 }
 
 export default function SidePanel({ mode }: SidePanelProps) {
-  const { activeChannel, messagesPerMin } = useChat();
   const [mods, setMods] = useState<Record<string, boolean>>(
     Object.fromEntries(MOD_TOGGLES.map((t) => [t.id, t.initial]))
   );
-
-  const twitchViewers =
-    activeChannel && activeChannel.isLive
-      ? activeChannel.viewerCount.toLocaleString()
-      : "-";
-  // Only Twitch is wired up; YouTube and Kick are placeholders.
-  const counts: Record<Platform, string> = {
-    twitch: twitchViewers,
-    youtube: "-",
-    kick: "-",
-  };
-  // Combined = Twitch only for now (others are "-").
-  const combinedViewers = twitchViewers;
-  const perMin = activeChannel ? String(messagesPerMin) : "-";
 
   // Persist the moderation toggles across navigation and reloads.
   useEffect(() => {
@@ -120,7 +103,7 @@ export default function SidePanel({ mode }: SidePanelProps) {
               {ch.name}
             </Text>
             <Text ml="auto" fontFamily="mono" fontSize="13px" color="msg">
-              {counts[ch.platform]}
+              {ch.count}
             </Text>
           </Flex>
         ))}
@@ -132,7 +115,7 @@ export default function SidePanel({ mode }: SidePanelProps) {
       <Flex gap="28px">
         <Box>
           <Text fontFamily="mono" fontSize="26px" fontWeight="600" color="text">
-            {perMin}
+            142
           </Text>
           <Text fontSize="11px" color="muted" mt="4px">
             messages / min
@@ -140,7 +123,7 @@ export default function SidePanel({ mode }: SidePanelProps) {
         </Box>
         <Box>
           <Text fontFamily="mono" fontSize="26px" fontWeight="600" color="text">
-            {combinedViewers}
+            12,480
           </Text>
           <Text fontSize="11px" color="muted" mt="4px">
             combined viewers

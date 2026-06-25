@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { Flex, Box, Text, Input, chakra } from "@chakra-ui/react";
+import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { useLayout } from "../useLayout";
-import { useChat } from "../useChat";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon } from "./PlatformIcon";
-import type { FollowedChannel } from "@/lib/twitch/channels";
+import type { Platform } from "../chat/types";
 
 const CHAT_ICON = (
   <Box
@@ -52,66 +50,19 @@ const NAV = [
   { href: "/vods", label: "VODs", icon: VODS_ICON },
 ];
 
+const CONNECTED: { name: string; platform: Platform; color: string }[] = [
+  { name: "Twitch", platform: "twitch", color: "#A66CFF" },
+  { name: "YouTube", platform: "youtube", color: "#FF5C5C" },
+  { name: "Kick", platform: "kick", color: "#5BE37D" },
+];
+
 // Below this width the rail drops labels and shows icons only.
 const COLLAPSE_AT = 168;
 
-type SortKey = "live" | "viewers" | "name";
-const SORTS: { key: SortKey; label: string }[] = [
-  { key: "live", label: "Live" },
-  { key: "viewers", label: "Views" },
-  { key: "name", label: "A–Z" },
-];
-const SORT_STORAGE_KEY = "prismarity:followed-sort";
-
-function compareChannels(a: FollowedChannel, b: FollowedChannel, sort: SortKey): number {
-  if (sort === "name") return a.displayName.localeCompare(b.displayName);
-  if (sort === "viewers")
-    return b.viewerCount - a.viewerCount || a.displayName.localeCompare(b.displayName);
-  // "live": live first, then by viewers, then name.
-  return (
-    Number(b.isLive) - Number(a.isLive) ||
-    b.viewerCount - a.viewerCount ||
-    a.displayName.localeCompare(b.displayName)
-  );
-}
-
-interface NavRailProps {
-  auth: { displayName: string } | null;
-}
-
-export function NavRail({ auth }: NavRailProps) {
+export function NavRail() {
   const pathname = usePathname();
   const { navWidth, setNavWidth } = useLayout();
-  const { followedChannels, activeChannel, selectChannel } = useChat();
   const collapsed = navWidth < COLLAPSE_AT;
-
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortKey>("live");
-
-  // Persist the sort preference; the search query stays in-memory.
-  useEffect(() => {
-    const saved = localStorage.getItem(SORT_STORAGE_KEY);
-    if (saved === "live" || saved === "viewers" || saved === "name") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSort(saved);
-    }
-  }, []);
-
-  function changeSort(key: SortKey) {
-    setSort(key);
-    localStorage.setItem(SORT_STORAGE_KEY, key);
-  }
-
-  const visibleChannels = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const filtered = q
-      ? followedChannels.filter(
-          (c) =>
-            c.displayName.toLowerCase().includes(q) || c.login.toLowerCase().includes(q)
-        )
-      : followedChannels;
-    return [...filtered].sort((a, b) => compareChannels(a, b, sort));
-  }, [followedChannels, query, sort]);
 
   return (
     <Flex
@@ -168,121 +119,34 @@ export function NavRail({ auth }: NavRailProps) {
         })}
       </Flex>
 
-      {/* Followed channels — click one to view its chat. */}
-      <Flex direction="column" flex="1" minH="0" mt="18px">
-        {!collapsed && (
-          <Text
-            fontFamily="mono"
-            fontSize="10px"
-            letterSpacing="0.18em"
-            color="faint"
-            px="10px"
-            pb="12px"
-          >
-            FOLLOWED
-          </Text>
-        )}
+      <chakra.button
+        type="button"
+        title="Connect a channel"
+        mt="18px"
+        display="flex"
+        alignItems="center"
+        justifyContent={collapsed ? "center" : "flex-start"}
+        gap="12px"
+        px={collapsed ? "0" : "12px"}
+        py="10px"
+        borderRadius="8px"
+        borderWidth="1px"
+        borderStyle="dashed"
+        borderColor="fieldLine"
+        color="muted"
+        fontSize="14px"
+        textAlign="left"
+        cursor="pointer"
+        transition="color .12s, border-color .12s"
+        _hover={{ color: "text", borderColor: "faint" }}
+      >
+        <Text fontFamily="mono" fontSize="15px" w="17px" textAlign="center" lineHeight="1">
+          +
+        </Text>
+        {!collapsed && <Box as="span" whiteSpace="nowrap">Connect a channel</Box>}
+      </chakra.button>
 
-        {!collapsed && followedChannels.length > 0 && (
-          <Flex direction="column" gap="8px" px="12px" pb="10px">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter channels…"
-              h="30px"
-              fontSize="12px"
-              bg="field"
-              borderColor="fieldLine"
-              borderRadius="8px"
-              color="text"
-              _placeholder={{ color: "faint" }}
-              _focusVisible={{ borderColor: "muted", boxShadow: "none" }}
-            />
-            <Flex gap="4px">
-              {SORTS.map((sortOption) => (
-                <chakra.button
-                  key={sortOption.key}
-                  type="button"
-                  onClick={() => changeSort(sortOption.key)}
-                  flex="1"
-                  py="4px"
-                  borderRadius="6px"
-                  borderWidth="1px"
-                  fontFamily="mono"
-                  fontSize="11px"
-                  cursor="pointer"
-                  transition="background .12s, color .12s"
-                  bg={sort === sortOption.key ? "raised" : "transparent"}
-                  color={sort === sortOption.key ? "text" : "faint"}
-                  borderColor={sort === sortOption.key ? "line" : "transparent"}
-                  _hover={sort === sortOption.key ? undefined : { color: "muted" }}
-                >
-                  {sortOption.label}
-                </chakra.button>
-              ))}
-            </Flex>
-          </Flex>
-        )}
-
-        <Flex direction="column" gap="2px" overflowY="auto" minH="0">
-          {followedChannels.length === 0 && !collapsed && (
-            <Text fontSize="12px" color="faint" px="12px">
-              {auth ? "No followed channels" : "Log in to see your channels"}
-            </Text>
-          )}
-          {followedChannels.length > 0 && visibleChannels.length === 0 && !collapsed && (
-            <Text fontSize="12px" color="faint" px="12px">
-              No matches
-            </Text>
-          )}
-          {visibleChannels.map((ch) => {
-            const active = activeChannel?.id === ch.id;
-            return (
-              <chakra.button
-                key={ch.id}
-                type="button"
-                onClick={() => selectChannel(ch)}
-                title={collapsed ? ch.displayName : undefined}
-                display="flex"
-                alignItems="center"
-                justifyContent={collapsed ? "center" : "flex-start"}
-                gap="10px"
-                px={collapsed ? "0" : "12px"}
-                py="8px"
-                borderRadius="8px"
-                bg={active ? "raised" : "transparent"}
-                color={active ? "text" : "muted"}
-                cursor="pointer"
-                transition="background .12s, color .12s"
-                _hover={{ bg: "raised", color: "text" }}
-              >
-                <PlatformIcon platform="twitch" size={16} />
-                {!collapsed && (
-                  <>
-                    <Text flex="1" minW="0" fontSize="13px" textAlign="left" truncate>
-                      {ch.displayName}
-                    </Text>
-                    {ch.isLive ? (
-                      <Flex align="center" gap="5px" flex="none">
-                        <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
-                        <Text fontFamily="mono" fontSize="11px" color="muted">
-                          {ch.viewerCount.toLocaleString()}
-                        </Text>
-                      </Flex>
-                    ) : (
-                      <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">
-                        offline
-                      </Text>
-                    )}
-                  </>
-                )}
-              </chakra.button>
-            );
-          })}
-        </Flex>
-      </Flex>
-
-      <Box px={collapsed ? "0" : "12px"} pt="16px">
+      <Box mt="auto" px={collapsed ? "0" : "12px"}>
         {!collapsed && (
           <Text
             fontFamily="mono"
@@ -294,59 +158,22 @@ export function NavRail({ auth }: NavRailProps) {
             CONNECTED
           </Text>
         )}
-
-        {auth ? (
-          <Flex direction="column" gap="10px" align={collapsed ? "center" : "stretch"}>
+        <Flex direction="column" gap="11px" align={collapsed ? "center" : "stretch"}>
+          {CONNECTED.map((p) => (
             <Flex
+              key={p.name}
               align="center"
-              gap="10px"
               justify={collapsed ? "center" : "flex-start"}
-              title={collapsed ? auth.displayName : undefined}
+              gap="10px"
+              fontSize="13px"
+              color="muted"
+              title={collapsed ? p.name : undefined}
             >
-              <PlatformIcon platform="twitch" size={18} />
-              {!collapsed && (
-                <Text minW="0" fontSize="13px" fontWeight="500" color="text" truncate>
-                  {auth.displayName}
-                </Text>
-              )}
+              <PlatformIcon platform={p.platform} color={p.color} size={15} />
+              {!collapsed && <Box as="span" whiteSpace="nowrap">{p.name}</Box>}
             </Flex>
-            {!collapsed && (
-              <chakra.form action="/api/auth/logout" method="post">
-                <chakra.button
-                  type="submit"
-                  fontSize="11px"
-                  color="faint"
-                  cursor="pointer"
-                  transition="color .12s"
-                  _hover={{ color: "muted" }}
-                >
-                  Log out
-                </chakra.button>
-              </chakra.form>
-            )}
-          </Flex>
-        ) : (
-          <chakra.a
-            href="/api/auth/twitch/login"
-            title="Log in with Twitch"
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            gap="8px"
-            px={collapsed ? "0" : "12px"}
-            py="9px"
-            borderRadius="8px"
-            bg="twitch"
-            color="#0E1118"
-            fontSize="13px"
-            fontWeight="600"
-            transition="background .12s"
-            _hover={{ bg: "#b885ff" }}
-          >
-            <PlatformIcon platform="twitch" color="#0E1118" size={16} />
-            {!collapsed && <Box as="span" whiteSpace="nowrap">Log in with Twitch</Box>}
-          </chakra.a>
-        )}
+          ))}
+        </Flex>
       </Box>
 
       <ResizeHandle side="right" width={navWidth} onResize={setNavWidth} />

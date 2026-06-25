@@ -1,28 +1,6 @@
-import { Box, Flex, Text, chakra } from "@chakra-ui/react";
+import { Box, Flex, Text } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType } from "../types";
 import { PlatformIcon } from "../../components/PlatformIcon";
-import { useEmotes } from "../../useEmotes";
-
-// Split on whitespace (kept), replacing any token that matches an emote code
-// with its image. Unicode emoji render natively as text.
-function renderBody(text: string, emotes: Record<string, string>) {
-  return text.split(/(\s+)/).map((token, i) => {
-    const url = emotes[token];
-    if (!url) return <span key={i}>{token}</span>;
-    return (
-      <chakra.img
-        key={i}
-        src={url}
-        alt={token}
-        title={token}
-        display="inline-block"
-        h="22px"
-        verticalAlign="middle"
-        mx="1px"
-      />
-    );
-  });
-}
 
 const PLATFORM_COLOR: Record<string, string> = {
   twitch: "#A66CFF",
@@ -47,7 +25,6 @@ export default function ChatMessage({
   message,
   onHoverChange,
 }: ChatMessageProps) {
-  const emotes = useEmotes();
   const platformColor = PLATFORM_COLOR[message.platform] ?? "#8B93A7";
   const nameColor = message.color || platformColor;
   const tag = PLATFORM_TAG[message.platform] ?? "??";
@@ -122,10 +99,7 @@ export default function ChatMessage({
           </Box>
         )}
 
-        {renderBody(
-          message.text,
-          message.nativeEmotes ? { ...emotes, ...message.nativeEmotes } : emotes
-        )}
+        {message.text}
       </Text>
     </Box>
   );
