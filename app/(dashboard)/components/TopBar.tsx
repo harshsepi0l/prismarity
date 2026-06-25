@@ -4,12 +4,17 @@ import { Flex, Box, Text } from "@chakra-ui/react";
 import { Logo } from "./Logo";
 import FilterChips from "./FilterChips";
 import ModeToggle from "./ModeToggle";
-import { useSession } from "../useSession";
+import { useSession, allowedModes, clampMode } from "../useSession";
 import { useChat } from "../useChat";
 
 export function TopBar() {
-  const { mode, setMode, activeFilters, toggleFilter } = useSession();
+  const { mode, setMode, activeFilters, toggleFilter, connectedPlatforms } = useSession();
   const { status, activeChannel } = useChat();
+
+  // Your role for the active channel decides which modes are offered.
+  const role = activeChannel?.role ?? "viewer";
+  const modes = allowedModes(role);
+  const effectiveMode = clampMode(mode, role);
 
   // The indicator reflects whether the WATCHED channel is live. Chat IRC can be
   // connected to an offline channel, so "connected" alone is not "live".
@@ -46,10 +51,10 @@ export function TopBar() {
         </Text>
       </Flex>
 
-      <FilterChips active={activeFilters} onChange={toggleFilter} />
+      <FilterChips active={activeFilters} connected={connectedPlatforms} onChange={toggleFilter} />
 
       <Flex ml="auto" align="center" gap="20px">
-        <ModeToggle mode={mode} onChange={setMode} />
+        <ModeToggle mode={effectiveMode} modes={modes} onChange={setMode} />
         <Flex align="center" gap="8px">
           <Box
             w="8px"

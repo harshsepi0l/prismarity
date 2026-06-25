@@ -12,19 +12,23 @@ const PLATFORMS: { id: Platform; label: string; color: string }[] = [
 
 interface FilterChipsProps {
   active: Set<Platform>;
+  connected: Set<Platform>;
   onChange: (platform: Platform) => void;
 }
 
-export default function FilterChips({ active, onChange }: FilterChipsProps) {
+export default function FilterChips({ active, connected, onChange }: FilterChipsProps) {
   return (
     <Flex align="center" gap="8px">
       {PLATFORMS.map(({ id, label, color }) => {
-        const on = active.has(id);
+        const isConnected = connected.has(id);
+        const on = isConnected && active.has(id);
         return (
           <chakra.button
             key={id}
             type="button"
-            onClick={() => onChange(id)}
+            disabled={!isConnected}
+            onClick={() => isConnected && onChange(id)}
+            title={isConnected ? label : `${label} — not connected`}
             display="flex"
             alignItems="center"
             gap="8px"
@@ -33,15 +37,17 @@ export default function FilterChips({ active, onChange }: FilterChipsProps) {
             borderRadius="999px"
             fontFamily="mono"
             fontSize="12px"
-            cursor="pointer"
+            cursor={isConnected ? "pointer" : "not-allowed"}
             transition="background .12s, border-color .12s, color .12s"
             style={
-              on
-                ? { background: `${color}1F`, border: `1px solid ${color}99`, color }
-                : { background: "transparent", border: "1px solid #232a38", color: "#8B93A7" }
+              !isConnected
+                ? { background: "transparent", border: "1px solid #232a38", color: "#5C6479", opacity: 0.4 }
+                : on
+                  ? { background: `${color}1F`, border: `1px solid ${color}99`, color }
+                  : { background: "transparent", border: "1px solid #232a38", color: "#8B93A7" }
             }
           >
-            <Box as="span" display="inline-flex" opacity={on ? 1 : 0.4}>
+            <Box as="span" display="inline-flex" opacity={on ? 1 : 0.5}>
               <PlatformIcon platform={id} color={color} size={14} />
             </Box>
             {label}

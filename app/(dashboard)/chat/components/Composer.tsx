@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Box, Flex, Input, Button, Text, chakra } from "@chakra-ui/react";
 import { useChat } from "../../useChat";
 import { useEmotes } from "../../useEmotes";
-import { useSession } from "../../useSession";
+import { useSession, clampMode } from "../../useSession";
 import { PlatformIcon } from "../../components/PlatformIcon";
 import type { Platform } from "../types";
 
@@ -30,7 +30,8 @@ function friendly(error?: string): string {
 export default function Composer() {
   const { activeChannel } = useChat();
   const emotes = useEmotes();
-  const { mode, sendTargets, toggleSendTarget } = useSession();
+  const { mode, sendTargets, toggleSendTarget, connectedPlatforms } = useSession();
+  const effectiveMode = clampMode(mode, activeChannel?.role ?? "viewer");
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -81,7 +82,7 @@ export default function Composer() {
 
   // Delivery currently only reaches Twitch (the active channel). Creator can
   // deselect Twitch as a send target; other modes always target the channel.
-  const sendsToTwitch = mode !== "creator" || sendTargets.has("twitch");
+  const sendsToTwitch = effectiveMode !== "creator" || sendTargets.has("twitch");
   const canSend = !!activeChannel && sendsToTwitch && !!text.trim() && !sending;
 
   return (
@@ -225,23 +226,29 @@ export default function Composer() {
 
       <Flex mt="10px" align="center" gap="12px">
         <Flex align="center" gap="9px">
-          {mode === "creator" ? (
-            // Creator: independent send-target toggles (which platforms to post to).
+          {effectiveMode === "creator" ? (
+            // Creator: independent send-target toggles (only connected platforms).
             PLATFORMS.map(({ id, label, color }) => {
-              const on = sendTargets.has(id);
+              const isConnected = connectedPlatforms.has(id);
+              const on = isConnected && sendTargets.has(id);
               return (
                 <chakra.button
                   key={id}
                   type="button"
-                  onClick={() => toggleSendTarget(id)}
-                  title={`Send to ${label}${on ? "" : " (off)"}`}
+                  disabled={!isConnected}
+                  onClick={() => isConnected && toggleSendTarget(id)}
+                  title={
+                    isConnected
+                      ? `Send to ${label}${on ? "" : " (off)"}`
+                      : `${label} — not connected`
+                  }
                   aria-pressed={on}
                   display="inline-flex"
-                  cursor="pointer"
-                  opacity={on ? 1 : 0.3}
+                  cursor={isConnected ? "pointer" : "not-allowed"}
+                  opacity={!isConnected ? 0.25 : on ? 1 : 0.3}
                   transition="opacity .15s, filter .15s"
                   style={{ filter: on ? `drop-shadow(0 0 5px ${color})` : "none" }}
-                  _hover={{ opacity: 1 }}
+                  _hover={isConnected ? { opacity: 1 } : undefined}
                 >
                   <PlatformIcon platform={id} color={color} size={17} />
                 </chakra.button>

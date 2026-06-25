@@ -1,6 +1,7 @@
 import { Box, Flex, Text } from "@chakra-ui/react";
 import { SectionLabel, ScreenHeader, HATCH } from "../components/ui";
 import { ResizableSidePanel } from "../components/ResizableSidePanel";
+import { ManagementGuard } from "../components/ManagementGuard";
 import { PlatformIcon } from "../components/PlatformIcon";
 import type { Platform } from "../chat/types";
 
@@ -148,8 +149,9 @@ function AccrualPanel() {
 
 export default function LoyaltyPage() {
   return (
-    <Flex as="main" flex="1" minW="0">
-      <Box as="section" flex="1" minW="0" overflowY="auto" px="32px" pt="28px" pb="36px">
+    <ManagementGuard>
+      <Flex as="main" flex="1" minW="0">
+        <Box as="section" flex="1" minW="0" overflowY="auto" px="32px" pt="28px" pb="36px">
         <ScreenHeader
           title="Loyalty"
           subtitle="One points balance that follows each viewer across every platform."
@@ -157,9 +159,10 @@ export default function LoyaltyPage() {
         <TopSupporter />
         <Leaderboard />
       </Box>
-      <ResizableSidePanel>
-        <AccrualPanel />
-      </ResizableSidePanel>
-    </Flex>
+        <ResizableSidePanel>
+          <AccrualPanel />
+        </ResizableSidePanel>
+      </Flex>
+    </ManagementGuard>
   );
 }

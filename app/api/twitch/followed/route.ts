@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ channels: [] });
-  const channels = await getFollowedWithStatus(user);
-  return NextResponse.json({ channels });
+  if (!user) return NextResponse.json({ own: null, followed: [] });
+  const result = await getFollowedWithStatus(user);
+  return NextResponse.json(result);
 }
