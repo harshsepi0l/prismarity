@@ -1,4 +1,4 @@
-import type { Connection, User } from "@/lib/auth/types";
+import type { Connection, Role, User } from "@/lib/auth/types";
 import { decrypt, encrypt } from "@/lib/auth/crypto";
 import { refreshToken } from "@/lib/auth/twitch";
 import { upsertConnection } from "@/lib/auth/store";
@@ -11,6 +11,13 @@ export interface FollowedChannel {
   displayName: string;
   isLive: boolean;
   viewerCount: number;
+  // Your relationship to this channel, derived server-side.
+  role: Role;
+}
+
+export interface ChannelsResult {
+  own: FollowedChannel | null;
+  followed: FollowedChannel[];
 }
 
 interface HelixFollowed {
@@ -19,10 +26,16 @@ interface HelixFollowed {
   broadcaster_name: string;
 }
 
+interface HelixModerated {
+  broadcaster_id: string;
+}
+
 interface HelixStream {
   user_id: string;
   viewer_count: number;
 }
+
+type Headers = Record<string, string>;
 
 // Returns a non-expired access token, refreshing + persisting if needed.
 // Note: refreshing does NOT add scopes — granting a new scope requires re-login.
@@ -48,39 +61,21 @@ export async function getValidAccessToken(user: User): Promise<string | null> {
     await upsertConnection(updated);
     return refreshed.access_token;
   } catch {
-    // Fall back to the existing token; the caller treats a 401 as "no data".
     return decrypt(conn.accessTokenEnc);
   }
 }
 
-// Fetches all of the user's followed Twitch channels and merges in live status
-// + viewer counts. Returns [] on error (e.g. missing user:read:follows scope —
-// the user must re-login to grant it).
-export async function getFollowedWithStatus(user: User): Promise<FollowedChannel[]> {
-  const conn = user.connections.find((c) => c.platform === "twitch");
-  if (!conn) return [];
-
-  const token = await getValidAccessToken(user);
-  if (!token) return [];
-
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-  };
-
-  // Page through ALL followed channels — Helix returns up to 100 per page.
+// All channels the user follows (paginated).
+async function fetchFollowed(headers: Headers, userId: string): Promise<FollowedChannel[]> {
   const channels: FollowedChannel[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < 30; page++) {
     const url =
-      `${HELIX}/channels/followed?user_id=${conn.platformUserId}&first=100` +
+      `${HELIX}/channels/followed?user_id=${userId}&first=100` +
       (cursor ? `&after=${encodeURIComponent(cursor)}` : "");
     const res = await fetch(url, { headers, cache: "no-store" });
     if (!res.ok) {
-      // Most common cause: token lacks user:read:follows (granted only after a
-      // fresh login since the scope was added). The body explains it.
       console.error("[twitch] followed fetch failed:", res.status, await res.text());
-      if (page === 0) return [];
       break;
     }
     const json = (await res.json()) as {
@@ -94,15 +89,41 @@ export async function getFollowedWithStatus(user: User): Promise<FollowedChannel
         displayName: d.broadcaster_name,
         isLive: false,
         viewerCount: 0,
+        role: "viewer",
       });
     }
     cursor = json.pagination?.cursor;
     if (!cursor || (json.data?.length ?? 0) === 0) break;
   }
-  console.log(`[twitch] followed channels: ${channels.length}`);
-  if (channels.length === 0) return [];
+  return channels;
+}
 
-  // Live status + viewer counts, batched in chunks of 100 (Helix streams cap).
+// IDs of channels the user moderates (paginated). Requires user:read:moderated_channels.
+async function fetchModeratedIds(headers: Headers, userId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    const url =
+      `${HELIX}/moderation/channels?user_id=${userId}&first=100` +
+      (cursor ? `&after=${encodeURIComponent(cursor)}` : "");
+    const res = await fetch(url, { headers, cache: "no-store" });
+    if (!res.ok) {
+      console.error("[twitch] moderated fetch failed:", res.status);
+      break;
+    }
+    const json = (await res.json()) as {
+      data?: HelixModerated[];
+      pagination?: { cursor?: string };
+    };
+    for (const d of json.data ?? []) ids.add(d.broadcaster_id);
+    cursor = json.pagination?.cursor;
+    if (!cursor || (json.data?.length ?? 0) === 0) break;
+  }
+  return ids;
+}
+
+// Marks live status + viewer counts on the given channels (chunks of 100).
+async function applyLiveStatus(headers: Headers, channels: FollowedChannel[]): Promise<void> {
   for (let i = 0; i < channels.length; i += 100) {
     const chunk = channels.slice(i, i + 100);
     const params = new URLSearchParams();
@@ -126,12 +147,52 @@ export async function getFollowedWithStatus(user: User): Promise<FollowedChannel
       }
     }
   }
-  console.log(`[twitch] live now: ${channels.filter((c) => c.isLive).length}`);
+}
 
-  // Live channels first, then alphabetical.
-  channels.sort(
+// Returns the user's own channel (role: creator) plus their followed channels,
+// each tagged with the user's role (creator / moderator / viewer) and live state.
+export async function getFollowedWithStatus(user: User): Promise<ChannelsResult> {
+  const conn = user.connections.find((c) => c.platform === "twitch");
+  if (!conn) return { own: null, followed: [] };
+
+  const token = await getValidAccessToken(user);
+  if (!token) return { own: null, followed: [] };
+
+  const headers: Headers = {
+    Authorization: `Bearer ${token}`,
+    "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
+  };
+
+  const [followedRaw, moderatedIds] = await Promise.all([
+    fetchFollowed(headers, conn.platformUserId),
+    fetchModeratedIds(headers, conn.platformUserId),
+  ]);
+
+  // Drop your own channel from the followed list (it's surfaced separately).
+  const followed = followedRaw.filter((c) => c.id !== conn.platformUserId);
+  for (const c of followed) {
+    c.role = moderatedIds.has(c.id) ? "moderator" : "viewer";
+  }
+
+  const own: FollowedChannel = {
+    id: conn.platformUserId,
+    login: conn.login,
+    displayName: conn.displayName,
+    isLive: false,
+    viewerCount: 0,
+    role: "creator",
+  };
+
+  await applyLiveStatus(headers, [own, ...followed]);
+
+  console.log(
+    `[twitch] channels: own=1 followed=${followed.length} moderated=${moderatedIds.size}`
+  );
+
+  followed.sort(
     (a, b) =>
       Number(b.isLive) - Number(a.isLive) || a.displayName.localeCompare(b.displayName)
   );
-  return channels;
+
+  return { own, followed };
 }

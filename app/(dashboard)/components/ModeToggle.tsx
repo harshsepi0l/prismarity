@@ -5,21 +5,26 @@ import type { Mode } from "../useSession";
 
 const SPECTRUM = "linear-gradient(90deg,#A66CFF,#FF5C5C,#5BE37D)";
 
-const MODES: { id: Mode; label: string }[] = [
-  { id: "creator", label: "Creator" },
-  { id: "moderator", label: "Moderator" },
-  { id: "viewer", label: "Viewer" },
-];
+const LABELS: Record<Mode, string> = {
+  creator: "Creator",
+  moderator: "Moderator",
+  viewer: "Viewer",
+};
 
 interface ModeToggleProps {
   mode: Mode;
+  modes: Mode[]; // only the modes allowed for the active channel
   onChange: (mode: Mode) => void;
 }
 
-export default function ModeToggle({ mode, onChange }: ModeToggleProps) {
+export default function ModeToggle({ mode, modes, onChange }: ModeToggleProps) {
+  // Render in a stable order regardless of how `modes` is ordered.
+  const order: Mode[] = ["creator", "moderator", "viewer"];
+  const shown = order.filter((m) => modes.includes(m));
+
   return (
     <Flex align="center" borderWidth="1px" borderColor="line" bg="raised" borderRadius="8px" p="2px">
-      {MODES.map(({ id, label }) => {
+      {shown.map((id) => {
         const active = mode === id;
         return (
           <chakra.button
@@ -49,7 +54,7 @@ export default function ModeToggle({ mode, onChange }: ModeToggleProps) {
                 style={{ background: SPECTRUM }}
               />
             )}
-            {label}
+            {LABELS[id]}
           </chakra.button>
         );
       })}

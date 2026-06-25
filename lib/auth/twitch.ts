@@ -5,15 +5,21 @@ const AUTHORIZE_URL = "https://id.twitch.tv/oauth2/authorize";
 const TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 const USERS_URL = "https://api.twitch.tv/helix/users";
 
-// Minimal scopes:
+// Scopes:
 //  user:read:follows            -> list the channels the user follows
 //  user:write:chat              -> send chat messages (Helix Send Chat Message)
-//  user:read:moderated_channels -> later, check channels the user moderates
-// Identity is available with any user token. Keep this list as small as possible.
+//  user:read:moderated_channels -> channels the user moderates (role derivation)
+//  moderator:read:followers     -> follower count (mod/broadcaster of a channel)
+//  moderator:read:chatters      -> chatter count (mod/broadcaster of a channel)
+//  channel:read:subscriptions   -> subscriber count (own channel only)
+// Identity is available with any user token.
 export const SCOPES = [
   "user:read:follows",
   "user:write:chat",
   "user:read:moderated_channels",
+  "moderator:read:followers",
+  "moderator:read:chatters",
+  "channel:read:subscriptions",
 ];
 
 // Short-lived cookie holding the OAuth `state` for CSRF protection.

@@ -75,6 +75,59 @@ function compareChannels(a: FollowedChannel, b: FollowedChannel, sort: SortKey):
   );
 }
 
+function ChannelButton({
+  ch,
+  active,
+  collapsed,
+  onSelect,
+}: {
+  ch: FollowedChannel;
+  active: boolean;
+  collapsed: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <chakra.button
+      type="button"
+      onClick={onSelect}
+      title={collapsed ? ch.displayName : undefined}
+      display="flex"
+      alignItems="center"
+      justifyContent={collapsed ? "center" : "flex-start"}
+      gap="10px"
+      px={collapsed ? "0" : "12px"}
+      py="8px"
+      borderRadius="8px"
+      bg={active ? "raised" : "transparent"}
+      color={active ? "text" : "muted"}
+      cursor="pointer"
+      transition="background .12s, color .12s"
+      _hover={{ bg: "raised", color: "text" }}
+    >
+      <PlatformIcon platform="twitch" size={16} />
+      {!collapsed && (
+        <>
+          <Text flex="1" minW="0" fontSize="13px" textAlign="left" truncate>
+            {ch.displayName}
+          </Text>
+          {ch.isLive ? (
+            <Flex align="center" gap="5px" flex="none">
+              <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
+              <Text fontFamily="mono" fontSize="11px" color="muted">
+                {ch.viewerCount.toLocaleString()}
+              </Text>
+            </Flex>
+          ) : (
+            <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">
+              offline
+            </Text>
+          )}
+        </>
+      )}
+    </chakra.button>
+  );
+}
+
 interface NavRailProps {
   auth: { displayName: string } | null;
 }
@@ -82,8 +135,11 @@ interface NavRailProps {
 export function NavRail({ auth }: NavRailProps) {
   const pathname = usePathname();
   const { navWidth, setNavWidth } = useLayout();
-  const { followedChannels, activeChannel, selectChannel } = useChat();
+  const { ownChannel, followedChannels, activeChannel, selectChannel } = useChat();
   const collapsed = navWidth < COLLAPSE_AT;
+  // Workspace (Chat / Loyalty / VODs) is management — only on channels you
+  // own or moderate.
+  const showWorkspace = (activeChannel?.role ?? "viewer") !== "viewer";
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("live");
@@ -126,21 +182,23 @@ export function NavRail({ auth }: NavRailProps) {
       py="22px"
       overflow="hidden"
     >
-      {!collapsed && (
-        <Text
-          fontFamily="mono"
-          fontSize="10px"
-          letterSpacing="0.18em"
-          color="faint"
-          px="10px"
-          pb="12px"
-        >
-          WORKSPACE
-        </Text>
-      )}
+      {showWorkspace && (
+        <>
+          {!collapsed && (
+            <Text
+              fontFamily="mono"
+              fontSize="10px"
+              letterSpacing="0.18em"
+              color="faint"
+              px="10px"
+              pb="12px"
+            >
+              WORKSPACE
+            </Text>
+          )}
 
-      <Flex direction="column" gap="2px">
-        {NAV.map((item) => {
+          <Flex direction="column" gap="2px">
+            {NAV.map((item) => {
           const active = pathname === item.href;
           return (
             <Flex
@@ -166,7 +224,33 @@ export function NavRail({ auth }: NavRailProps) {
             </Flex>
           );
         })}
-      </Flex>
+          </Flex>
+        </>
+      )}
+
+      {/* Your own channel — selecting it unlocks Creator mode. */}
+      {ownChannel && (
+        <Box mt="18px">
+          {!collapsed && (
+            <Text
+              fontFamily="mono"
+              fontSize="10px"
+              letterSpacing="0.18em"
+              color="faint"
+              px="10px"
+              pb="12px"
+            >
+              YOUR CHANNEL
+            </Text>
+          )}
+          <ChannelButton
+            ch={ownChannel}
+            active={activeChannel?.id === ownChannel.id}
+            collapsed={collapsed}
+            onSelect={() => selectChannel(ownChannel)}
+          />
+        </Box>
+      )}
 
       {/* Followed channels — click one to view its chat. */}
       <Flex direction="column" flex="1" minH="0" mt="18px">
@@ -235,50 +319,15 @@ export function NavRail({ auth }: NavRailProps) {
               No matches
             </Text>
           )}
-          {visibleChannels.map((ch) => {
-            const active = activeChannel?.id === ch.id;
-            return (
-              <chakra.button
-                key={ch.id}
-                type="button"
-                onClick={() => selectChannel(ch)}
-                title={collapsed ? ch.displayName : undefined}
-                display="flex"
-                alignItems="center"
-                justifyContent={collapsed ? "center" : "flex-start"}
-                gap="10px"
-                px={collapsed ? "0" : "12px"}
-                py="8px"
-                borderRadius="8px"
-                bg={active ? "raised" : "transparent"}
-                color={active ? "text" : "muted"}
-                cursor="pointer"
-                transition="background .12s, color .12s"
-                _hover={{ bg: "raised", color: "text" }}
-              >
-                <PlatformIcon platform="twitch" size={16} />
-                {!collapsed && (
-                  <>
-                    <Text flex="1" minW="0" fontSize="13px" textAlign="left" truncate>
-                      {ch.displayName}
-                    </Text>
-                    {ch.isLive ? (
-                      <Flex align="center" gap="5px" flex="none">
-                        <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
-                        <Text fontFamily="mono" fontSize="11px" color="muted">
-                          {ch.viewerCount.toLocaleString()}
-                        </Text>
-                      </Flex>
-                    ) : (
-                      <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">
-                        offline
-                      </Text>
-                    )}
-                  </>
-                )}
-              </chakra.button>
-            );
-          })}
+          {visibleChannels.map((ch) => (
+            <ChannelButton
+              key={ch.id}
+              ch={ch}
+              active={activeChannel?.id === ch.id}
+              collapsed={collapsed}
+              onSelect={() => selectChannel(ch)}
+            />
+          ))}
         </Flex>
       </Flex>
 

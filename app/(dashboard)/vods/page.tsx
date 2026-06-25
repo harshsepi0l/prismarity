@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Box, Flex, Text, Button, SimpleGrid, Input } from "@chakra-ui/react";
 import { SectionLabel, Divider, ScreenHeader, HATCH } from "../components/ui";
 import { ResizableSidePanel } from "../components/ResizableSidePanel";
+import { ManagementGuard } from "../components/ManagementGuard";
 import { useSession } from "../useSession";
 
 const SEARCH_KEY = "prismarity:vods-search";
@@ -213,8 +214,9 @@ export default function VodsPage() {
   const expiringCount = visible.filter((v) => v.expiring).length;
 
   return (
-    <Flex as="main" flex="1" minW="0">
-      <Box as="section" flex="1" minW="0" overflowY="auto" px="32px" pt="28px" pb="36px">
+    <ManagementGuard>
+      <Flex as="main" flex="1" minW="0">
+        <Box as="section" flex="1" minW="0" overflowY="auto" px="32px" pt="28px" pb="36px">
         <ScreenHeader title="VOD library" subtitle="Your owned archive of saved broadcasts." />
 
         <Flex align="center" gap="10px" mb="18px">
@@ -279,9 +281,10 @@ export default function VodsPage() {
         </SimpleGrid>
       </Box>
 
-      <ResizableSidePanel>
-        <StoragePanel />
-      </ResizableSidePanel>
-    </Flex>
+        <ResizableSidePanel>
+          <StoragePanel />
+        </ResizableSidePanel>
+      </Flex>
+    </ManagementGuard>
   );
 }
