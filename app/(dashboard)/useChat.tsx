@@ -2,21 +2,23 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import type { ChatMessage, ConnectionStatus } from "./chat/types";
+import type { FollowedChannel } from "@/lib/twitch/channels";
 import { useTwitchChat } from "./chat/useTwitchChat";
 import { useSession } from "./useSession";
 
 // Chat session state lives in the dashboard layout, ABOVE the routes, so the
-// live Twitch WebSocket and history survive navigating to Loyalty/VODs and back.
+// live Twitch WebSocket, the followed-channel list, and the active selection
+// survive navigating to Loyalty/VODs and back.
 //
-// Channels come from the Twitch connection — there is no manual channel entry:
-//   creator   -> your own channel (the logged-in Twitch login)
-//   moderator -> TODO: channels you moderate, from Helix moderated-channels
-//   viewer    -> TODO: channels you follow / browse, from Twitch
+// Channels come from the Twitch connection — no manual entry. Click a followed
+// channel to view its chat. TODO: moderated/viewer channel sources later.
 
 const DEMO_POOL: Record<"youtube" | "kick", Array<{ user: string; text: string }>> = {
   youtube: [
@@ -50,27 +52,60 @@ function makeDemoMessage(platform: "youtube" | "kick"): ChatMessage {
 interface ChatStore {
   status: ConnectionStatus;
   allMessages: ChatMessage[];
+  followedChannels: FollowedChannel[];
+  activeChannel: FollowedChannel | null;
+  selectChannel: (channel: FollowedChannel) => void;
+  messagesPerMin: number;
 }
 
 const ChatContext = createContext<ChatStore | null>(null);
 
-export function ChatProvider({
-  creatorLogin,
-  children,
-}: {
-  creatorLogin: string | null;
-  children: React.ReactNode;
-}) {
+export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { messages: liveMessages, status, connect } = useTwitchChat();
-  const { mode, activeFilters } = useSession();
+  const { activeFilters } = useSession();
+
+  const [followedChannels, setFollowedChannels] = useState<FollowedChannel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<FollowedChannel | null>(null);
   const [demoMessages, setDemoMessages] = useState<ChatMessage[]>([]);
+  const [messagesPerMin, setMessagesPerMin] = useState(0);
 
-  // Only the creator's own channel is wired to the live feed for now.
-  const targetChannel = mode === "creator" ? creatorLogin : null;
-
+  // Load followed channels from the user's Twitch connection (server-side),
+  // then refresh periodically to keep live status / viewer counts current.
   useEffect(() => {
-    if (targetChannel) connect(targetChannel);
-  }, [targetChannel, connect]);
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/twitch/followed");
+        if (!res.ok) return;
+        const json = (await res.json()) as { channels?: FollowedChannel[] };
+        const channels = json.channels ?? [];
+        if (cancelled) return;
+        setFollowedChannels(channels);
+        // Keep the active channel's live status / viewers in sync.
+        setActiveChannel((prev) =>
+          prev ? channels.find((c) => c.id === prev.id) ?? prev : prev
+        );
+      } catch {
+        /* ignore network errors */
+      }
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  const selectChannel = useCallback((channel: FollowedChannel) => {
+    setActiveChannel(channel);
+  }, []);
+
+  // Connect the live feed to the selected channel.
+  const targetLogin = activeChannel?.login ?? null;
+  useEffect(() => {
+    if (targetLogin) connect(targetLogin);
+  }, [targetLogin, connect]);
 
   // Demo YouTube + Kick messages, only when those filters are on.
   useEffect(() => {
@@ -89,13 +124,42 @@ export function ChatProvider({
     return () => clearInterval(id);
   }, [activeFilters]);
 
-  const baseMessages = mode === "creator" ? liveMessages : [];
+  // Rolling messages/min, computed off the render path (Date.now is impure).
+  // Refs hold the latest values so the interval reads them without resetting.
+  const liveRef = useRef(liveMessages);
+  const activeRef = useRef(false);
+  useEffect(() => {
+    liveRef.current = liveMessages;
+    activeRef.current = activeChannel !== null;
+  });
+  useEffect(() => {
+    const id = setInterval(() => {
+      const cutoff = Date.now() - 60_000;
+      setMessagesPerMin(
+        activeRef.current
+          ? liveRef.current.filter((m) => m.timestamp > cutoff).length
+          : 0
+      );
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  const baseMessages = activeChannel ? liveMessages : [];
   const allMessages = [...baseMessages, ...demoMessages].sort(
     (a, b) => a.timestamp - b.timestamp
   );
 
   return (
-    <ChatContext.Provider value={{ status, allMessages }}>
+    <ChatContext.Provider
+      value={{
+        status,
+        allMessages,
+        followedChannels,
+        activeChannel,
+        selectChannel,
+        messagesPerMin,
+      }}
+    >
       {children}
     </ChatContext.Provider>
   );
