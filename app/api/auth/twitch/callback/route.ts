@@ -5,11 +5,12 @@ import {
   toConnection,
   STATE_COOKIE,
 } from "@/lib/auth/twitch";
-import { upsertConnection } from "@/lib/auth/store";
+import { attachConnection } from "@/lib/auth/store";
 import {
   SESSION_COOKIE,
   sessionCookieValue,
   sessionCookieOptions,
+  getCurrentUser,
 } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -44,9 +45,12 @@ export async function GET(req: NextRequest) {
   if (!code) return fail("no_code");
 
   try {
+    // Link to the current session user when one exists (e.g. Kick already
+    // connected), so both platforms share one Prismarity account.
+    const current = await getCurrentUser();
     const token = await exchangeCode(code);
     const identity = await fetchIdentity(token.access_token);
-    const user = await upsertConnection(toConnection(token, identity));
+    const user = await attachConnection(toConnection(token, identity), current?.id);
 
     const res = NextResponse.redirect(new URL("/chat", url.origin));
     res.cookies.delete(STATE_COOKIE);

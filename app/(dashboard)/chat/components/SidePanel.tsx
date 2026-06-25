@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Box, Flex, Text, SimpleGrid, chakra } from "@chakra-ui/react";
 import type { Mode } from "../../useSession";
-import { useStats, formatUptime, type LiveStats } from "../../useStats";
+import { useStats, formatUptime, type PlatformLive } from "../../useStats";
+import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 
 const MOD_STATE_KEY = "prismarity:mod-toggles";
 
@@ -73,52 +74,50 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
 
 const fmt = (n: number | null) => (n == null ? "—" : n.toLocaleString());
 
-function TopChatters({ stats }: { stats: LiveStats }) {
-  if (stats.topChatters.length === 0) {
-    return (
-      <Text fontSize="12px" color="faint">
-        Quiet so far.
-      </Text>
-    );
-  }
-  return (
-    <Flex direction="column" gap="8px">
-      {stats.topChatters.map((c, i) => (
-        <Flex key={c.user} align="center" gap="10px" fontSize="13px">
-          <Text fontFamily="mono" fontSize="11px" color="faint" w="14px">
-            {i + 1}
-          </Text>
-          <Text flex="1" color="text" truncate>
-            {c.user}
-          </Text>
-          <Text fontFamily="mono" fontSize="12px" color="muted">
-            {c.count}
-          </Text>
-        </Flex>
-      ))}
-    </Flex>
-  );
-}
+// One connected platform's row. Dims when toggled out of the combined roll-up.
+function PlatformRow({ p, showSubs }: { p: PlatformLive; showSubs: boolean }) {
+  const color = PLATFORM_COLOR[p.platform];
+  const meta: string[] = [];
+  if (showSubs && p.subs != null) meta.push(`${p.subs.toLocaleString()} subs`);
+  if (p.followers != null) meta.push(`${p.followers.toLocaleString()} followers`);
+  if (p.peakViewers > 0) meta.push(`peak ${p.peakViewers.toLocaleString()}`);
+  if (p.isLive && p.uptimeMs != null) meta.push(formatUptime(p.uptimeMs));
 
-function TopEmotes({ stats }: { stats: LiveStats }) {
-  if (stats.topEmotes.length === 0) {
-    return (
-      <Text fontSize="12px" color="faint">
-        No emotes yet.
-      </Text>
-    );
-  }
   return (
-    <Flex wrap="wrap" gap="10px">
-      {stats.topEmotes.map((e) => (
-        <Flex key={e.code} align="center" gap="6px" title={e.code}>
-          <chakra.img src={e.url} alt={e.code} h="24px" />
-          <Text fontFamily="mono" fontSize="12px" color="muted">
-            {e.count}
+    <Box
+      borderWidth="1px"
+      borderColor="line"
+      bg="raised"
+      borderRadius="8px"
+      px="12px"
+      py="11px"
+      opacity={p.included ? 1 : 0.4}
+      transition="opacity .15s"
+    >
+      <Flex align="center" gap="9px">
+        <PlatformIcon platform={p.platform} color={color} size={15} />
+        <Text flex="1" minW="0" fontSize="13px" fontWeight="500" color="text" truncate>
+          {p.channelName}
+        </Text>
+        {p.isLive ? (
+          <Flex align="center" gap="6px" flex="none">
+            <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
+            <Text fontFamily="mono" fontSize="13px" fontWeight="600" color="text">
+              {p.viewers.toLocaleString()}
+            </Text>
+          </Flex>
+        ) : (
+          <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">
+            offline
           </Text>
-        </Flex>
-      ))}
-    </Flex>
+        )}
+      </Flex>
+      {meta.length > 0 && (
+        <Text fontFamily="mono" fontSize="10px" color="muted" mt="6px">
+          {meta.join("  ·  ")}
+        </Text>
+      )}
+    </Box>
   );
 }
 
@@ -128,6 +127,10 @@ interface SidePanelProps {
 
 export default function SidePanel({ mode }: SidePanelProps) {
   const stats = useStats();
+  const showMod = mode === "creator" || mode === "moderator";
+  // Show subscriber numbers for management roles (the only ones that care).
+  const showSubs = showMod;
+
   const [mods, setMods] = useState<Record<string, boolean>>(
     Object.fromEntries(MOD_TOGGLES.map((t) => [t.id, false]))
   );
@@ -151,88 +154,53 @@ export default function SidePanel({ mode }: SidePanelProps) {
     });
   }
 
-  const viewers = stats.isLive ? stats.viewers.toLocaleString() : "—";
-  const uptime = stats.isLive ? formatUptime(stats.uptimeMs) : "—";
-
-  // ── Viewer: compact strip ────────────────────────────────
-  if (mode === "viewer") {
-    return (
-      <>
-        <SectionLabel>STREAM</SectionLabel>
-        <SimpleGrid columns={2} gap="8px">
-          <StatCard label="viewers" value={viewers} />
-          <StatCard label="uptime" value={uptime} />
-          <StatCard label="messages / min" value={stats.messagesPerMin} />
-          <StatCard label="active chatters" value={stats.activeChatters} />
-        </SimpleGrid>
-      </>
-    );
-  }
-
-  // ── Creator / Moderator: tailored stacks ─────────────────
-  const isCreator = mode === "creator";
+  const viewers = stats.anyLive ? stats.combinedViewers.toLocaleString() : "—";
 
   return (
     <>
-      <SectionLabel>STREAM</SectionLabel>
+      <SectionLabel>COMBINED</SectionLabel>
       <SimpleGrid columns={2} gap="8px">
-        <StatCard label="viewers" value={viewers} accent={stats.isLive ? "#FF5C5C" : undefined} />
-        <StatCard label="uptime" value={uptime} />
-        {isCreator && <StatCard label="peak viewers" value={stats.peakViewers || "—"} />}
+        <StatCard label="viewers" value={viewers} accent={stats.anyLive ? "#FF5C5C" : undefined} />
         <StatCard label="messages / min" value={stats.messagesPerMin} />
+        <StatCard label="active (5m)" value={stats.activeChatters} />
+        {showSubs ? (
+          <StatCard label="subscribers" value={fmt(stats.combinedSubs)} accent="#A66CFF" />
+        ) : (
+          <StatCard label="unique chatters" value={stats.uniqueChatters} />
+        )}
       </SimpleGrid>
 
       <Divider />
 
-      {isCreator ? (
-        <>
-          <SectionLabel>GROWTH</SectionLabel>
-          <SimpleGrid columns={2} gap="8px">
-            <StatCard label="subscribers" value={fmt(stats.subs)} accent="#A66CFF" />
-            <StatCard label="followers" value={fmt(stats.followers)} />
-          </SimpleGrid>
-        </>
+      <SectionLabel>PER PLATFORM</SectionLabel>
+      {stats.platforms.length === 0 ? (
+        <Text fontSize="12px" color="faint">
+          Select a channel to see live stats.
+        </Text>
       ) : (
-        <>
-          <SectionLabel>AUDIENCE</SectionLabel>
-          <SimpleGrid columns={2} gap="8px">
-            <StatCard label="chatters" value={fmt(stats.chatters)} />
-            <StatCard label="followers" value={fmt(stats.followers)} />
-          </SimpleGrid>
-        </>
+        <Flex direction="column" gap="8px">
+          {stats.platforms.map((p) => (
+            <PlatformRow key={p.platform} p={p} showSubs={showSubs} />
+          ))}
+        </Flex>
       )}
 
-      <Divider />
-
-      <SectionLabel>CHAT</SectionLabel>
-      <SimpleGrid columns={2} gap="8px" mb="16px">
-        <StatCard label="unique chatters" value={stats.uniqueChatters} />
-        <StatCard label="active (5m)" value={stats.activeChatters} />
-      </SimpleGrid>
-      <Text fontFamily="mono" fontSize="9px" letterSpacing="0.16em" color="faint" mb="10px">
-        TOP CHATTERS
-      </Text>
-      <TopChatters stats={stats} />
-      <Box mt="16px">
-        <Text fontFamily="mono" fontSize="9px" letterSpacing="0.16em" color="faint" mb="10px">
-          TOP EMOTES
-        </Text>
-        <TopEmotes stats={stats} />
-      </Box>
-
-      <Divider />
-
-      <SectionLabel>MODERATION</SectionLabel>
-      <Flex direction="column" gap="16px">
-        {MOD_TOGGLES.map(({ id, label }) => (
-          <Flex key={id} align="center" gap="12px">
-            <Text flex="1" fontSize="14px" color="text">
-              {label}
-            </Text>
-            <Toggle on={mods[id]} onClick={() => toggle(id)} label={label} />
+      {showMod && (
+        <>
+          <Divider />
+          <SectionLabel>MODERATION</SectionLabel>
+          <Flex direction="column" gap="16px">
+            {MOD_TOGGLES.map(({ id, label }) => (
+              <Flex key={id} align="center" gap="12px">
+                <Text flex="1" fontSize="14px" color="text">
+                  {label}
+                </Text>
+                <Toggle on={mods[id]} onClick={() => toggle(id)} label={label} />
+              </Flex>
+            ))}
           </Flex>
-        ))}
-      </Flex>
+        </>
+      )}
     </>
   );
 }
