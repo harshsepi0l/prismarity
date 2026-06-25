@@ -7,14 +7,26 @@ const USERS_URL = "https://api.twitch.tv/helix/users";
 
 // Scopes:
 //  user:read:follows            -> list the channels the user follows
+//  user:read:chat               -> read chat via EventSub (any public channel,
+//                                   same "chat is public" basis the old
+//                                   anonymous IRC read relied on)
 //  user:write:chat              -> send chat messages (Helix Send Chat Message)
 //  user:read:moderated_channels -> channels the user moderates (role derivation)
 //  moderator:read:followers     -> follower count (mod/broadcaster of a channel)
 //  moderator:read:chatters      -> chatter count (mod/broadcaster of a channel)
-//  channel:read:subscriptions   -> subscriber count (own channel only)
-// Identity is available with any user token.
+//  channel:read:subscriptions   -> subscriber count (own channel only) and the
+//                                   channel.chat.notification subscription
+//                                   (gift-sub tallying, any channel)
+// Identity is available with any user token. Bits/cheer data comes from the
+// channel.chat.message EventSub event itself (the `cheer` field), not a
+// separate bits:read-gated endpoint — so no bits scope is needed.
+//
+// NOTE: adding a scope here does NOT retroactively apply to already-connected
+// users — refreshing a token never grants new scopes, only re-login does. Any
+// account connected before user:read:chat was added must reconnect.
 export const SCOPES = [
   "user:read:follows",
+  "user:read:chat",
   "user:write:chat",
   "user:read:moderated_channels",
   "moderator:read:followers",

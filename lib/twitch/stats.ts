@@ -123,3 +123,59 @@ export async function getChannelStats(
 
   return stats;
 }
+
+export interface TwitchClip {
+  id: string;
+  url: string;
+  title: string;
+  viewCount: number;
+  creatorName: string;
+  thumbnailUrl: string;
+}
+
+// Top clips from the trailing week, for any channel — Clips are public data,
+// no special scope, works the same whether it's your own channel or one
+// you're just viewing. Helix already returns clips sorted by view count.
+export async function getTopClips(user: User, channelId: string): Promise<TwitchClip[]> {
+  const token = await getValidAccessToken(user);
+  if (!token) return [];
+
+  const startedAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const res = await fetch(
+      `${HELIX}/clips?broadcaster_id=${channelId}&first=10&started_at=${startedAt}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
+        },
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) {
+      console.error("[twitch] clips failed:", res.status, await res.text());
+      return [];
+    }
+    const json = (await res.json()) as {
+      data?: {
+        id: string;
+        url: string;
+        title: string;
+        view_count: number;
+        creator_name: string;
+        thumbnail_url: string;
+      }[];
+    };
+    return (json.data ?? []).map((c) => ({
+      id: c.id,
+      url: c.url,
+      title: c.title,
+      viewCount: c.view_count,
+      creatorName: c.creator_name,
+      thumbnailUrl: c.thumbnail_url,
+    }));
+  } catch (e) {
+    console.error("[twitch] clips error:", e instanceof Error ? e.message : e);
+    return [];
+  }
+}
