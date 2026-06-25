@@ -30,13 +30,19 @@ function parseKickEmotes(content: string): {
   return { text, nativeEmotes: Object.keys(map).length ? map : undefined };
 }
 
+interface KickBadge {
+  type?: string;
+  count?: number;
+}
+
 interface KickChatEvent {
   id?: string;
   content?: string;
   created_at?: string;
   sender?: {
+    id?: number;
     username?: string;
-    identity?: { color?: string };
+    identity?: { color?: string; badges?: KickBadge[] };
   };
 }
 
@@ -97,10 +103,16 @@ export function useKickChat(): UseKickChatReturn {
           id: payload.id || `kick-${Date.now()}-${Math.random()}`,
           platform: "kick",
           user: payload.sender?.username ?? "anon",
+          userId: payload.sender?.id != null ? String(payload.sender.id) : undefined,
           text,
           color: payload.sender?.identity?.color || null,
           timestamp: payload.created_at ? Date.parse(payload.created_at) || Date.now() : Date.now(),
           nativeEmotes,
+          badges:
+            payload.sender?.identity?.badges?.map((b) => ({
+              setId: b.type ?? "unknown",
+              id: b.count != null ? String(b.count) : "1",
+            })) ?? [],
         };
         setMessages((prev) => [...prev.slice(-199), msg]);
       }

@@ -2,15 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Flex, Box, Text } from "@chakra-ui/react";
-import type { ChatMessage as ChatMessageType, Platform } from "../types";
+import type { ChatMessage as ChatMessageType, Platform, UserSelection } from "../types";
 import ChatMessage from "./ChatMessage";
 
 interface ChatFeedProps {
   messages: ChatMessageType[];
   activeFilters: Set<Platform>;
+  onSelectUser?: (selection: UserSelection) => void;
 }
 
-export default function ChatFeed({ messages, activeFilters }: ChatFeedProps) {
+export default function ChatFeed({ messages, activeFilters, onSelectUser }: ChatFeedProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
 
@@ -62,6 +63,7 @@ export default function ChatFeed({ messages, activeFilters }: ChatFeedProps) {
         <ChatMessage
           key={msg.id}
           message={msg}
+          onSelectUser={onSelectUser}
         />
       ))}
 

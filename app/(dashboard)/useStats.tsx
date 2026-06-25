@@ -1,9 +1,11 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import type { ChannelStats } from "@/lib/twitch/stats";
+import type { ChannelStats, TwitchClip } from "@/lib/twitch/stats";
 import type { KickStats } from "@/lib/kick/stats";
+import type { KickLeader } from "@/lib/kick/public";
 import type { Platform } from "./chat/types";
+import type { CheerLeader, GiftLeader } from "./chat/useTwitchChat";
 import { useChat } from "./useChat";
 import { useSession } from "./useSession";
 
@@ -39,6 +41,16 @@ export interface LiveStats {
   messagesPerMin: number;
   uniqueChatters: number;
   activeChatters: number;
+  // Live, session-scoped Twitch tallies (any channel) — see useTwitchChat for
+  // why these aren't Twitch's actual weekly numbers (that data isn't exposed
+  // for channels that aren't yours).
+  cheerLeaders: CheerLeader[];
+  giftLeaders: GiftLeader[];
+  // Top clips from the trailing week — public for any Twitch channel, real
+  // Helix data (unlike the two above).
+  clips: TwitchClip[];
+  // Weekly Kick gift leaderboard — public for any channel.
+  kickLeaders: KickLeader[];
 }
 
 interface Derived {
@@ -57,10 +69,16 @@ const EMPTY_DERIVED: Derived = {
   uptimeKickMs: null,
 };
 
+export const PLATFORM_LABEL: Record<Platform, string> = {
+  twitch: "Twitch",
+  youtube: "YouTube",
+  kick: "Kick",
+};
+
 const StatsContext = createContext<LiveStats | null>(null);
 
 export function StatsProvider({ children }: { children: React.ReactNode }) {
-  const { activeChannel, messages, activeKick } = useChat();
+  const { activeChannel, messages, activeKick, cheerLeaders, giftLeaders } = useChat();
   const { connectedPlatforms, activeFilters } = useSession();
 
   const channelId = activeChannel?.id ?? null;
@@ -72,6 +90,62 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   const [peakKick, setPeakKick] = useState(0);
   const [loading, setLoading] = useState(false);
   const [derived, setDerived] = useState<Derived>(EMPTY_DERIVED);
+  const [kickLeaders, setKickLeaders] = useState<KickLeader[]>([]);
+  const [clips, setClips] = useState<TwitchClip[]>([]);
+
+  // Weekly Kick gift leaderboard — public for any channel.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!kickSlug) {
+      setKickLeaders([]);
+      return;
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/kick/leaderboard?slug=${encodeURIComponent(kickSlug!)}`);
+        if (!res.ok) return;
+        const json = (await res.json()) as { leaders?: KickLeader[] };
+        if (!cancelled) setKickLeaders(json.leaders ?? []);
+      } catch {
+        /* ignore */
+      }
+    }
+    load();
+    const id = setInterval(load, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [kickSlug]);
+
+  // Weekly top clips — public for any Twitch channel, not just your own.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!channelId) {
+      setClips([]);
+      return;
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/twitch/clips?channelId=${channelId}`);
+        if (!res.ok) return;
+        const json = (await res.json()) as { clips?: TwitchClip[] };
+        if (!cancelled) setClips(json.clips ?? []);
+      } catch {
+        /* ignore */
+      }
+    }
+    load();
+    const id = setInterval(load, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [channelId]);
 
   // Twitch stats for the active channel (peak resets when the channel changes).
   useEffect(() => {
@@ -234,6 +308,10 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     messagesPerMin: derived.messagesPerMin,
     uniqueChatters: derived.uniqueChatters,
     activeChatters: derived.activeChatters,
+    cheerLeaders,
+    giftLeaders,
+    clips,
+    kickLeaders,
   };
 
   return <StatsContext.Provider value={stats}>{children}</StatsContext.Provider>;

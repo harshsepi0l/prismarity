@@ -1,95 +1,46 @@
 "use client";
 
-import { useState } from "react";
-import { Flex, Box, Text, chakra } from "@chakra-ui/react";
+import { Flex, Box, Text } from "@chakra-ui/react";
 import { useChat } from "../useChat";
-import { useStats, formatUptime, type PlatformLive } from "../useStats";
+import { useStats, PLATFORM_LABEL } from "../useStats";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
-import type { Platform } from "../chat/types";
-
-function HeaderStat({ label, value }: { label: string; value: string }) {
-  return (
-    <Box textAlign="right" flex="none">
-      <Text fontFamily="mono" fontSize="15px" fontWeight="600" color="text">
-        {value}
-      </Text>
-      <Text fontSize="10px" color="muted">
-        {label}
-      </Text>
-    </Box>
-  );
-}
 
 export function StreamHeader() {
   const { activeChannel, activeKickOnly } = useChat();
   const { platforms } = useStats();
-  // Which platform's context the header is reading, when more than one is shown.
-  const [primaryChoice, setPrimaryChoice] = useState<Platform | null>(null);
 
-  // Only the platforms toggled on via the lens are shown here.
+  // Only the platforms toggled on via the lens are shown.
   const shown = platforms.filter((p) => p.included);
   const hasSelection = !!activeChannel || !!activeKickOnly;
   if (!hasSelection || shown.length === 0) return null;
 
-  const primary: PlatformLive =
-    shown.find((p) => p.platform === primaryChoice) ?? shown[0];
-  const color = PLATFORM_COLOR[primary.platform];
+  const live = shown.filter((p) => p.isLive);
+  const isLive = live.length > 0;
+  // Streamer name — Twitch display name, else the Kick slug.
+  const name = activeChannel?.displayName ?? shown[0].channelName;
+
+  // Description lines: each live platform's own title/category (so both Twitch
+  // and Kick context show, side by side). Falls back to any shown context when
+  // nothing is live.
+  const descRows = (isLive ? live : shown).filter((p) => p.title || p.category);
 
   return (
     <Flex
       flex="none"
-      align="center"
-      gap="14px"
+      align="flex-start"
+      gap="13px"
       px="24px"
-      py="12px"
+      py="13px"
       borderBottomWidth="1px"
       borderColor="line"
     >
-      {/* Platform switch — pick which platform's stream context you're reading.
-          A single shown platform renders as just its logo. */}
-      {shown.length > 1 ? (
-        <Flex
-          align="center"
-          gap="2px"
-          flex="none"
-          bg="raised"
-          borderRadius="8px"
-          p="3px"
-        >
-          {shown.map((p) => {
-            const on = p.platform === primary.platform;
-            return (
-              <chakra.button
-                key={p.platform}
-                type="button"
-                onClick={() => setPrimaryChoice(p.platform)}
-                title={`Show ${p.platform} context`}
-                aria-pressed={on}
-                display="inline-flex"
-                alignItems="center"
-                p="5px"
-                borderRadius="6px"
-                bg={on ? "bg" : "transparent"}
-                opacity={on ? 1 : 0.45}
-                cursor="pointer"
-                transition="opacity .12s, background .12s"
-                _hover={{ opacity: 1 }}
-              >
-                <PlatformIcon platform={p.platform} size={15} />
-              </chakra.button>
-            );
-          })}
-        </Flex>
-      ) : (
-        <PlatformIcon platform={primary.platform} size={18} />
-      )}
-
       <Box minW="0" flex="1">
-        <Flex align="center" gap="8px">
-          <Text fontWeight="600" fontSize="15px" color="text" truncate>
-            {primary.channelName}
+        <Flex align="center" gap="9px" mb="3px">
+          <Text fontWeight="600" fontSize="16px" color="text" truncate flex="none">
+            {name}
           </Text>
-          {primary.isLive ? (
+
+          {isLive ? (
             <Flex align="center" gap="5px" flex="none">
               <Box
                 w="7px"
@@ -103,29 +54,52 @@ export function StreamHeader() {
               </Text>
             </Flex>
           ) : (
-            <Text fontFamily="mono" fontSize="11px" color="faint">
+            <Text fontFamily="mono" fontSize="11px" color="faint" flex="none">
               OFFLINE
             </Text>
           )}
-          {/* When both platforms are shown, label which one this context is. */}
-          {shown.length > 1 && (
-            <Text fontFamily="mono" fontSize="10px" color={color} letterSpacing="0.06em">
-              {primary.platform.toUpperCase()}
-            </Text>
+
+          {/* Platform logos — the platforms this streamer is live on. */}
+          {isLive && (
+            <Flex align="center" gap="6px" flex="none">
+              {live.map((p) => (
+                <PlatformIcon key={p.platform} platform={p.platform} size={15} />
+              ))}
+            </Flex>
           )}
         </Flex>
-        <Text fontSize="12px" color="muted" truncate mt="1px">
-          {primary.title || "—"}
-          {primary.category ? ` · ${primary.category}` : ""}
-        </Text>
-      </Box>
 
-      {primary.isLive && (
-        <Flex align="center" gap="18px" flex="none">
-          <HeaderStat label="viewers" value={primary.viewers.toLocaleString()} />
-          <HeaderStat label="uptime" value={formatUptime(primary.uptimeMs)} />
-        </Flex>
-      )}
+        {/* Descriptions — each live platform's own title + category. */}
+        {descRows.length > 0 ? (
+          <Flex direction="column" gap="2px">
+            {descRows.map((p) => (
+              <Flex key={p.platform} align="baseline" gap="7px" minW="0">
+                {descRows.length > 1 && (
+                  <Text
+                    fontFamily="mono"
+                    fontSize="9px"
+                    fontWeight="600"
+                    letterSpacing="0.06em"
+                    color={PLATFORM_COLOR[p.platform]}
+                    flex="none"
+                    title={PLATFORM_LABEL[p.platform]}
+                  >
+                    {p.platform.toUpperCase()}
+                  </Text>
+                )}
+                <Text fontSize="12.5px" color="muted" lineHeight="1.4">
+                  {p.title || "—"}
+                  {p.category ? ` · ${p.category}` : ""}
+                </Text>
+              </Flex>
+            ))}
+          </Flex>
+        ) : (
+          <Text fontSize="12.5px" color="faint">
+            {isLive ? "No title" : "Offline"}
+          </Text>
+        )}
+      </Box>
     </Flex>
   );
 }
