@@ -18,6 +18,8 @@ const PANEL_DEFAULT_WIDTH = 300;
 
 const NAV_WIDTH_KEY = "prismarity:nav-width";
 const PANEL_WIDTH_KEY = "prismarity:panel-width";
+const NAV_HIDDEN_KEY = "prismarity:nav-hidden";
+const PANEL_HIDDEN_KEY = "prismarity:panel-hidden";
 
 function clamp(w: number, min: number, max: number) {
   return Math.min(max, Math.max(min, w));
@@ -28,6 +30,12 @@ interface LayoutState {
   setNavWidth: (w: number) => void;
   panelWidth: number;
   setPanelWidth: (w: number) => void;
+  // Fully hide the left rail (separate from width-based icon collapse).
+  navHidden: boolean;
+  toggleNav: () => void;
+  // Collapse the right stats panel to a slim live-glance strip.
+  panelHidden: boolean;
+  togglePanel: () => void;
 }
 
 const LayoutContext = createContext<LayoutState | null>(null);
@@ -35,6 +43,8 @@ const LayoutContext = createContext<LayoutState | null>(null);
 export function LayoutProvider({ children }: { children: React.ReactNode }) {
   const [navWidth, setNavWidthState] = useState(NAV_DEFAULT_WIDTH);
   const [panelWidth, setPanelWidthState] = useState(PANEL_DEFAULT_WIDTH);
+  const [navHidden, setNavHidden] = useState(false);
+  const [panelHidden, setPanelHidden] = useState(false);
 
   // Hydrate from localStorage after mount (not available during SSR).
   useEffect(() => {
@@ -47,7 +57,25 @@ export function LayoutProvider({ children }: { children: React.ReactNode }) {
     if (!Number.isNaN(panel) && panel > 0) {
       setPanelWidthState(clamp(panel, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH));
     }
+    if (localStorage.getItem(NAV_HIDDEN_KEY) === "1") setNavHidden(true);
+    if (localStorage.getItem(PANEL_HIDDEN_KEY) === "1") setPanelHidden(true);
     /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  const toggleNav = useCallback(() => {
+    setNavHidden((prev) => {
+      const next = !prev;
+      localStorage.setItem(NAV_HIDDEN_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
+
+  const togglePanel = useCallback(() => {
+    setPanelHidden((prev) => {
+      const next = !prev;
+      localStorage.setItem(PANEL_HIDDEN_KEY, next ? "1" : "0");
+      return next;
+    });
   }, []);
 
   const setNavWidth = useCallback((w: number) => {
@@ -64,7 +92,16 @@ export function LayoutProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <LayoutContext.Provider
-      value={{ navWidth, setNavWidth, panelWidth, setPanelWidth }}
+      value={{
+        navWidth,
+        setNavWidth,
+        panelWidth,
+        setPanelWidth,
+        navHidden,
+        toggleNav,
+        panelHidden,
+        togglePanel,
+      }}
     >
       {children}
     </LayoutContext.Provider>
