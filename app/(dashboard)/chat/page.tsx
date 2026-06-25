@@ -11,10 +11,10 @@ import { StreamHeader } from "../components/StreamHeader";
 
 export default function ChatPage() {
   const { mode, activeFilters } = useSession();
-  const { messages, activeChannel } = useChat();
+  const { messages, activeRole } = useChat();
 
-  // The side panel's mod tools follow the role-clamped mode for this channel.
-  const effectiveMode = clampMode(mode, activeChannel?.role ?? "viewer");
+  // The side panel's mod tools follow the role-clamped mode for this selection.
+  const effectiveMode = clampMode(mode, activeRole);
 
   return (
     <Flex as="main" flex="1" minW="0">
