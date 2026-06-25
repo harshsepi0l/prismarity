@@ -40,7 +40,7 @@ export default function ChatFeed({ messages, activeFilters }: ChatFeedProps) {
           No messages yet
         </Text>
         <Text fontSize="12px" color="faint">
-          Enter a channel name above and click Watch
+          Connect your Twitch account to load your stream
         </Text>
       </Flex>
     );
