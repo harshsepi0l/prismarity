@@ -56,3 +56,39 @@ export async function upsertConnection(conn: Connection): Promise<User> {
   await write(db);
   return user;
 }
+
+// Attach a connection, preferring (in order): the user who already owns this
+// exact connection, then the current session user (so a second platform links
+// to the same Prismarity account), then a brand-new user.
+// TODO: if the connection is owned by user A but the session is user B, this
+// keeps it on A — fine for single-user local dev; revisit when merging accounts.
+export async function attachConnection(
+  conn: Connection,
+  currentUserId?: string | null
+): Promise<User> {
+  const db = await read();
+
+  let owner = Object.values(db.users).find((u) =>
+    u.connections.some(
+      (c) => c.platform === conn.platform && c.platformUserId === conn.platformUserId
+    )
+  );
+
+  if (!owner && currentUserId && db.users[currentUserId]) {
+    owner = db.users[currentUserId];
+  }
+
+  if (!owner) {
+    owner = { id: randomUUID(), createdAt: Date.now(), connections: [] };
+    db.users[owner.id] = owner;
+  }
+
+  const idx = owner.connections.findIndex(
+    (c) => c.platform === conn.platform && c.platformUserId === conn.platformUserId
+  );
+  if (idx >= 0) owner.connections[idx] = conn;
+  else owner.connections.push(conn);
+
+  await write(db);
+  return owner;
+}

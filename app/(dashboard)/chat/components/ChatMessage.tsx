@@ -68,20 +68,31 @@ export default function ChatMessage({
       py="7px"
       borderRadius="2px 6px 6px 2px"
       transition="background .12s"
-      bg="#2e344d"
-      _hover={{ bg: "raised" }}
+      bg={message.platform === "kick" ? "#2e4d3bff" : "#2e344d"}
+      _hover={{
+        bg: message.platform === "kick" ? "#2E4A35" : "raised",
+      }}
     >
       <Flex align="baseline" gap="9px" mb="2px">
         {message.platform === "self" ? (
-          <Text
-            fontFamily="mono"
-            fontSize="10px"
-            letterSpacing="0.08em"
-            color={platformColor}
-            opacity={0.85}
-          >
-            {tag}
-          </Text>
+          // Your sent message — show every platform it went to as one entry.
+          message.platforms && message.platforms.length > 0 ? (
+            <Flex align="center" gap="4px" alignSelf="center" opacity={0.95}>
+              {message.platforms.map((p) => (
+                <PlatformIcon key={p} platform={p} size={13} />
+              ))}
+            </Flex>
+          ) : (
+            <Text
+              fontFamily="mono"
+              fontSize="10px"
+              letterSpacing="0.08em"
+              color={platformColor}
+              opacity={0.85}
+            >
+              {tag}
+            </Text>
+          )
         ) : (
           <Box as="span" display="inline-flex" alignSelf="center" opacity={0.9}>
             <PlatformIcon platform={message.platform} color={platformColor} size={13} />
@@ -97,31 +108,12 @@ export default function ChatMessage({
         </Text>
       </Flex>
 
-      <Text fontSize="14px" color="msg" lineHeight="1.5">
-        {message.demo && (
-          <Box
-            as="span"
-            fontFamily="mono"
-            fontSize="9px"
-            fontWeight="500"
-            textTransform="uppercase"
-            color="faint"
-            borderWidth="1px"
-            borderColor="line"
-            borderRadius="4px"
-            px="4px"
-            py="1px"
-            mr="6px"
-          >
-            demo
-          </Box>
-        )}
+      
 
         {renderBody(
           message.text,
           message.nativeEmotes ? { ...emotes, ...message.nativeEmotes } : emotes
         )}
-      </Text>
     </Box>
   );
 }

@@ -6,24 +6,29 @@ import FilterChips from "./FilterChips";
 import ModeToggle from "./ModeToggle";
 import { useSession, allowedModes, clampMode } from "../useSession";
 import { useChat } from "../useChat";
+import { useStats } from "../useStats";
 
 export function TopBar() {
   const { mode, setMode, activeFilters, toggleFilter, connectedPlatforms } = useSession();
-  const { status, activeChannel } = useChat();
+  const { status, activeChannel, activeKickOnly, activeRole } = useChat();
+  const { anyLive } = useStats();
 
-  // Your role for the active channel decides which modes are offered.
-  const role = activeChannel?.role ?? "viewer";
+  // Your role for the active selection (Twitch or Kick) decides offered modes.
+  const role = activeRole;
   const modes = allowedModes(role);
   const effectiveMode = clampMode(mode, role);
 
-  // The indicator reflects whether the WATCHED channel is live. Chat IRC can be
-  // connected to an offline channel, so "connected" alone is not "live".
-  const s =
-    status === "connecting"
+  // The indicator reflects the ACTIVE SELECTION across platforms: live (red) when
+  // any shown platform is live, else offline. The Twitch socket's connecting /
+  // error states show transiently while reading a Twitch channel.
+  const hasSelection = !!activeChannel || !!activeKickOnly;
+  const s = !hasSelection
+    ? { color: "#5C6479", label: "OFFLINE", pulse: false }
+    : activeChannel && status === "connecting"
       ? { color: "#F5A623", label: "CONNECTING", pulse: false }
-      : status === "error"
+      : activeChannel && status === "error"
         ? { color: "#FF5C5C", label: "ERROR", pulse: false }
-        : status === "connected" && activeChannel?.isLive
+        : anyLive
           ? { color: "#FF5C5C", label: "LIVE", pulse: true }
           : { color: "#5C6479", label: "OFFLINE", pulse: false };
 

@@ -7,10 +7,9 @@ import { useChat } from "../useChat";
 // Management surfaces (Loyalty, VODs) are only for the active channel's
 // creator/moderator. Viewers (or no channel selected) get redirected to chat.
 export function ManagementGuard({ children }: { children: React.ReactNode }) {
-  const { activeChannel } = useChat();
+  const { activeRole } = useChat();
   const router = useRouter();
-  const role = activeChannel?.role ?? "viewer";
-  const allowed = role === "creator" || role === "moderator";
+  const allowed = activeRole === "creator" || activeRole === "moderator";
 
   useEffect(() => {
     if (!allowed) router.replace("/chat");
