@@ -5,10 +5,11 @@ const AUTHORIZE_URL = "https://id.twitch.tv/oauth2/authorize";
 const TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 const USERS_URL = "https://api.twitch.tv/helix/users";
 
-// Minimal scopes: identity is available with any user token, and
-// user:read:moderated_channels lets us later check if the user moderates a
-// channel. Keep this list as small as possible.
-export const SCOPES = ["user:read:moderated_channels"];
+// Minimal scopes:
+//  user:read:follows           -> list the channels the user follows
+//  user:read:moderated_channels -> later, check channels the user moderates
+// Identity is available with any user token. Keep this list as small as possible.
+export const SCOPES = ["user:read:follows", "user:read:moderated_channels"];
 
 // Short-lived cookie holding the OAuth `state` for CSRF protection.
 export const STATE_COOKIE = "prismarity_oauth_state";

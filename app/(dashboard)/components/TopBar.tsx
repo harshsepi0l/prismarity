@@ -5,9 +5,22 @@ import { Logo } from "./Logo";
 import FilterChips from "./FilterChips";
 import ModeToggle from "./ModeToggle";
 import { useSession } from "../useSession";
+import { useChat } from "../useChat";
 
 export function TopBar() {
   const { mode, setMode, activeFilters, toggleFilter } = useSession();
+  const { status, activeChannel } = useChat();
+
+  // The indicator reflects whether the WATCHED channel is live. Chat IRC can be
+  // connected to an offline channel, so "connected" alone is not "live".
+  const s =
+    status === "connecting"
+      ? { color: "#F5A623", label: "CONNECTING", pulse: false }
+      : status === "error"
+        ? { color: "#FF5C5C", label: "ERROR", pulse: false }
+        : status === "connected" && activeChannel?.isLive
+          ? { color: "#FF5C5C", label: "LIVE", pulse: true }
+          : { color: "#5C6479", label: "OFFLINE", pulse: false };
 
   return (
     <Flex
@@ -42,25 +55,17 @@ export function TopBar() {
             w="8px"
             h="8px"
             borderRadius="full"
-            bg="#FF5C5C"
-            animation="pris-pulse 1.4s ease-in-out infinite"
+            bg={s.color}
+            animation={s.pulse ? "pris-pulse 1.4s ease-in-out infinite" : undefined}
           />
           <Text
             fontFamily="mono"
             fontSize="11px"
             fontWeight="600"
             letterSpacing="0.14em"
-            color="#FF5C5C"
+            color={s.color}
           >
-            LIVE
-          </Text>
-        </Flex>
-        <Flex align="baseline" gap="7px">
-          <Text fontFamily="mono" fontSize="17px" fontWeight="600" color="text">
-            12,480
-          </Text>
-          <Text fontSize="12px" color="muted">
-            viewers
+            {s.label}
           </Text>
         </Flex>
       </Flex>

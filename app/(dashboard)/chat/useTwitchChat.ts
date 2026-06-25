@@ -19,6 +19,31 @@ function parseTags(tagStr: string): Record<string, string> {
   return tags;
 }
 
+// Parse the IRC `emotes` tag into a code -> Twitch CDN URL map. The tag looks
+// like "25:0-4,12-16/1902:6-10": emoteId:range,range/emoteId:range. Ranges are
+// code-point indices into the message text, so we read the code from there.
+function parseNativeEmotes(
+  emotesTag: string,
+  text: string
+): Record<string, string> | undefined {
+  if (!emotesTag) return undefined;
+  const chars = [...text]; // code points (handles surrogate pairs)
+  const map: Record<string, string> = {};
+  for (const group of emotesTag.split("/")) {
+    const [id, ranges] = group.split(":");
+    if (!id || !ranges) continue;
+    const [startStr, endStr] = ranges.split(",")[0].split("-");
+    const start = Number(startStr);
+    const end = Number(endStr);
+    if (Number.isNaN(start) || Number.isNaN(end)) continue;
+    const code = chars.slice(start, end + 1).join("");
+    if (code) {
+      map[code] = `https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/2.0`;
+    }
+  }
+  return Object.keys(map).length ? map : undefined;
+}
+
 function parsePrivmsg(line: string): ChatMessage | null {
   let tagStr = "";
   let rest = line;
@@ -44,6 +69,7 @@ function parsePrivmsg(line: string): ChatMessage | null {
     text,
     color,
     timestamp: Date.now(),
+    nativeEmotes: parseNativeEmotes(tags["emotes"] ?? "", text),
   };
 }
 

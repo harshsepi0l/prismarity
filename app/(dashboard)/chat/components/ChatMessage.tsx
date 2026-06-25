@@ -1,6 +1,7 @@
-import { Box, Flex, Text } from "@chakra-ui/react";
+import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType } from "../types";
 import { PlatformIcon } from "../../components/PlatformIcon";
+import { useEmotes } from "../../useEmotes";
 
 const PLATFORM_COLOR: Record<string, string> = {
   twitch: "#A66CFF",
@@ -16,6 +17,27 @@ const PLATFORM_TAG: Record<string, string> = {
   self: "ME",
 };
 
+// Split on whitespace (kept), replacing any token that matches an emote code
+// with its image. Unicode emoji render natively as text.
+function renderBody(text: string, emotes: Record<string, string>) {
+  return text.split(/(\s+)/).map((token, i) => {
+    const url = emotes[token];
+    if (!url) return <span key={i}>{token}</span>;
+    return (
+      <chakra.img
+        key={i}
+        src={url}
+        alt={token}
+        title={token}
+        display="inline-block"
+        h="22px"
+        verticalAlign="middle"
+        mx="1px"
+      />
+    );
+  });
+}
+
 interface ChatMessageProps {
   message: ChatMessageType;
   onHoverChange?: (hovered: boolean) => void;
@@ -25,6 +47,7 @@ export default function ChatMessage({
   message,
   onHoverChange,
 }: ChatMessageProps) {
+  const emotes = useEmotes();
   const platformColor = PLATFORM_COLOR[message.platform] ?? "#8B93A7";
   const nameColor = message.color || platformColor;
   const tag = PLATFORM_TAG[message.platform] ?? "??";
@@ -69,12 +92,7 @@ export default function ChatMessage({
           {message.user}
         </Text>
 
-        <Text
-          ml="auto"
-          fontFamily="mono"
-          fontSize="11px"
-          color="faint"
-        >
+        <Text ml="auto" fontFamily="mono" fontSize="11px" color="faint">
           {time}
         </Text>
       </Flex>
@@ -99,7 +117,10 @@ export default function ChatMessage({
           </Box>
         )}
 
-        {message.text}
+        {renderBody(
+          message.text,
+          message.nativeEmotes ? { ...emotes, ...message.nativeEmotes } : emotes
+        )}
       </Text>
     </Box>
   );

@@ -1,12 +1,14 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { Flex, Box, Text, chakra } from "@chakra-ui/react";
+import { Flex, Box, Text, Input, chakra } from "@chakra-ui/react";
 import { useLayout } from "../useLayout";
+import { useChat } from "../useChat";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon } from "./PlatformIcon";
-import type { Role } from "@/lib/auth/types";
+import type { FollowedChannel } from "@/lib/twitch/channels";
 
 const CHAT_ICON = (
   <Box
@@ -53,14 +55,63 @@ const NAV = [
 // Below this width the rail drops labels and shows icons only.
 const COLLAPSE_AT = 168;
 
+type SortKey = "live" | "viewers" | "name";
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: "live", label: "Live" },
+  { key: "viewers", label: "Views" },
+  { key: "name", label: "A–Z" },
+];
+const SORT_STORAGE_KEY = "prismarity:followed-sort";
+
+function compareChannels(a: FollowedChannel, b: FollowedChannel, sort: SortKey): number {
+  if (sort === "name") return a.displayName.localeCompare(b.displayName);
+  if (sort === "viewers")
+    return b.viewerCount - a.viewerCount || a.displayName.localeCompare(b.displayName);
+  // "live": live first, then by viewers, then name.
+  return (
+    Number(b.isLive) - Number(a.isLive) ||
+    b.viewerCount - a.viewerCount ||
+    a.displayName.localeCompare(b.displayName)
+  );
+}
+
 interface NavRailProps {
-  auth: { displayName: string; role: Role } | null;
+  auth: { displayName: string } | null;
 }
 
 export function NavRail({ auth }: NavRailProps) {
   const pathname = usePathname();
   const { navWidth, setNavWidth } = useLayout();
+  const { followedChannels, activeChannel, selectChannel } = useChat();
   const collapsed = navWidth < COLLAPSE_AT;
+
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("live");
+
+  // Persist the sort preference; the search query stays in-memory.
+  useEffect(() => {
+    const saved = localStorage.getItem(SORT_STORAGE_KEY);
+    if (saved === "live" || saved === "viewers" || saved === "name") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSort(saved);
+    }
+  }, []);
+
+  function changeSort(key: SortKey) {
+    setSort(key);
+    localStorage.setItem(SORT_STORAGE_KEY, key);
+  }
+
+  const visibleChannels = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? followedChannels.filter(
+          (c) =>
+            c.displayName.toLowerCase().includes(q) || c.login.toLowerCase().includes(q)
+        )
+      : followedChannels;
+    return [...filtered].sort((a, b) => compareChannels(a, b, sort));
+  }, [followedChannels, query, sort]);
 
   return (
     <Flex
@@ -117,7 +168,121 @@ export function NavRail({ auth }: NavRailProps) {
         })}
       </Flex>
 
-      <Box mt="auto" px={collapsed ? "0" : "12px"}>
+      {/* Followed channels — click one to view its chat. */}
+      <Flex direction="column" flex="1" minH="0" mt="18px">
+        {!collapsed && (
+          <Text
+            fontFamily="mono"
+            fontSize="10px"
+            letterSpacing="0.18em"
+            color="faint"
+            px="10px"
+            pb="12px"
+          >
+            FOLLOWED
+          </Text>
+        )}
+
+        {!collapsed && followedChannels.length > 0 && (
+          <Flex direction="column" gap="8px" px="12px" pb="10px">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter channels…"
+              h="30px"
+              fontSize="12px"
+              bg="field"
+              borderColor="fieldLine"
+              borderRadius="8px"
+              color="text"
+              _placeholder={{ color: "faint" }}
+              _focusVisible={{ borderColor: "muted", boxShadow: "none" }}
+            />
+            <Flex gap="4px">
+              {SORTS.map((sortOption) => (
+                <chakra.button
+                  key={sortOption.key}
+                  type="button"
+                  onClick={() => changeSort(sortOption.key)}
+                  flex="1"
+                  py="4px"
+                  borderRadius="6px"
+                  borderWidth="1px"
+                  fontFamily="mono"
+                  fontSize="11px"
+                  cursor="pointer"
+                  transition="background .12s, color .12s"
+                  bg={sort === sortOption.key ? "raised" : "transparent"}
+                  color={sort === sortOption.key ? "text" : "faint"}
+                  borderColor={sort === sortOption.key ? "line" : "transparent"}
+                  _hover={sort === sortOption.key ? undefined : { color: "muted" }}
+                >
+                  {sortOption.label}
+                </chakra.button>
+              ))}
+            </Flex>
+          </Flex>
+        )}
+
+        <Flex direction="column" gap="2px" overflowY="auto" minH="0">
+          {followedChannels.length === 0 && !collapsed && (
+            <Text fontSize="12px" color="faint" px="12px">
+              {auth ? "No followed channels" : "Log in to see your channels"}
+            </Text>
+          )}
+          {followedChannels.length > 0 && visibleChannels.length === 0 && !collapsed && (
+            <Text fontSize="12px" color="faint" px="12px">
+              No matches
+            </Text>
+          )}
+          {visibleChannels.map((ch) => {
+            const active = activeChannel?.id === ch.id;
+            return (
+              <chakra.button
+                key={ch.id}
+                type="button"
+                onClick={() => selectChannel(ch)}
+                title={collapsed ? ch.displayName : undefined}
+                display="flex"
+                alignItems="center"
+                justifyContent={collapsed ? "center" : "flex-start"}
+                gap="10px"
+                px={collapsed ? "0" : "12px"}
+                py="8px"
+                borderRadius="8px"
+                bg={active ? "raised" : "transparent"}
+                color={active ? "text" : "muted"}
+                cursor="pointer"
+                transition="background .12s, color .12s"
+                _hover={{ bg: "raised", color: "text" }}
+              >
+                <PlatformIcon platform="twitch" size={16} />
+                {!collapsed && (
+                  <>
+                    <Text flex="1" minW="0" fontSize="13px" textAlign="left" truncate>
+                      {ch.displayName}
+                    </Text>
+                    {ch.isLive ? (
+                      <Flex align="center" gap="5px" flex="none">
+                        <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
+                        <Text fontFamily="mono" fontSize="11px" color="muted">
+                          {ch.viewerCount.toLocaleString()}
+                        </Text>
+                      </Flex>
+                    ) : (
+                      <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">
+                        offline
+                      </Text>
+                    )}
+                  </>
+                )}
+              </chakra.button>
+            );
+          })}
+        </Flex>
+      </Flex>
+
+      <Box px={collapsed ? "0" : "12px"} pt="16px">
         {!collapsed && (
           <Text
             fontFamily="mono"
@@ -140,20 +305,9 @@ export function NavRail({ auth }: NavRailProps) {
             >
               <PlatformIcon platform="twitch" size={18} />
               {!collapsed && (
-                <Box minW="0">
-                  <Text fontSize="13px" fontWeight="500" color="text" truncate>
-                    {auth.displayName}
-                  </Text>
-                  <Text
-                    fontFamily="mono"
-                    fontSize="9px"
-                    textTransform="uppercase"
-                    letterSpacing="0.12em"
-                    color="faint"
-                  >
-                    {auth.role}
-                  </Text>
-                </Box>
+                <Text minW="0" fontSize="13px" fontWeight="500" color="text" truncate>
+                  {auth.displayName}
+                </Text>
               )}
             </Flex>
             {!collapsed && (
