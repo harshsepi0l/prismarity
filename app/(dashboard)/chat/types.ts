@@ -10,4 +10,7 @@ export interface ChatMessage {
   color?: string | null;
   timestamp: number;
   demo?: boolean;
+  // Twitch native emotes for this message (code -> image URL), parsed from the
+  // IRC `emotes` tag. Merged with third-party emotes when rendering.
+  nativeEmotes?: Record<string, string>;
 }

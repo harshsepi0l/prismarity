@@ -5,20 +5,20 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import type { ChatMessage, ConnectionStatus } from "./chat/types";
+import type { FollowedChannel } from "@/lib/twitch/channels";
 import { useTwitchChat } from "./chat/useTwitchChat";
 import { useSession } from "./useSession";
 
-// This store lives in the dashboard layout, ABOVE the routes. A Next.js layout
-// does not remount when navigating between sibling routes, so the chat session —
-// including the live Twitch WebSocket and message history — survives moving to
-// Loyalty/VODs and back.
-
-// TODO: in creator mode the channel will come from the authenticated streamer
-// account once OAuth exists. Until then it's stored in localStorage.
-const CREATOR_CHANNEL_KEY = "prismarity:creator-channel";
+// Chat session state lives in the dashboard layout, ABOVE the routes, so the
+// live Twitch WebSocket, the followed-channel list, and the active selection
+// survive navigating to Loyalty/VODs and back.
+//
+// Channels come from the Twitch connection — no manual entry. Click a followed
+// channel to view its chat. TODO: moderated/viewer channel sources later.
 
 const DEMO_POOL: Record<"youtube" | "kick", Array<{ user: string; text: string }>> = {
   youtube: [
@@ -52,79 +52,60 @@ function makeDemoMessage(platform: "youtube" | "kick"): ChatMessage {
 interface ChatStore {
   status: ConnectionStatus;
   allMessages: ChatMessage[];
-  creatorChannel: string;
-  saveCreatorChannel: (channel: string) => void;
-  viewerChannels: string[];
-  activeChannel: string | null;
-  setActiveChannel: (channel: string | null) => void;
-  addViewerChannel: (channel: string) => void;
-  closeChannel: (channel: string) => void;
+  followedChannels: FollowedChannel[];
+  activeChannel: FollowedChannel | null;
+  selectChannel: (channel: FollowedChannel) => void;
+  messagesPerMin: number;
 }
 
 const ChatContext = createContext<ChatStore | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { messages: liveMessages, status, connect } = useTwitchChat();
-  const { mode, activeFilters } = useSession();
+  const { activeFilters } = useSession();
 
-  const [creatorChannel, setCreatorChannel] = useState("");
-  const [viewerChannels, setViewerChannels] = useState<string[]>([]);
-  const [activeChannel, setActiveChannel] = useState<string | null>(null);
-  const [channelHistory, setChannelHistory] = useState<Record<string, ChatMessage[]>>({});
+  const [followedChannels, setFollowedChannels] = useState<FollowedChannel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<FollowedChannel | null>(null);
   const [demoMessages, setDemoMessages] = useState<ChatMessage[]>([]);
+  const [messagesPerMin, setMessagesPerMin] = useState(0);
 
-  // Load the saved creator channel once on mount.
+  // Load followed channels from the user's Twitch connection (server-side),
+  // then refresh periodically to keep live status / viewer counts current.
   useEffect(() => {
-    const saved = localStorage.getItem(CREATOR_CHANNEL_KEY);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (saved) setCreatorChannel(saved);
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/twitch/followed");
+        if (!res.ok) return;
+        const json = (await res.json()) as { channels?: FollowedChannel[] };
+        const channels = json.channels ?? [];
+        if (cancelled) return;
+        setFollowedChannels(channels);
+        // Keep the active channel's live status / viewers in sync.
+        setActiveChannel((prev) =>
+          prev ? channels.find((c) => c.id === prev.id) ?? prev : prev
+        );
+      } catch {
+        /* ignore network errors */
+      }
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
-  // The channel the hook should be connected to depends on the current mode.
-  const targetChannel = mode === "creator" ? creatorChannel : activeChannel;
-
-  useEffect(() => {
-    if (targetChannel) connect(targetChannel);
-  }, [targetChannel, connect]);
-
-  // In viewer/moderator mode, merge live messages into the active channel's
-  // history so switching tabs (which reconnects the hook) never loses scrollback.
-  useEffect(() => {
-    if (mode === "creator" || !activeChannel) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setChannelHistory((prev) => {
-      const existing = prev[activeChannel] ?? [];
-      const seen = new Set(existing.map((m) => m.id));
-      const additions = liveMessages.filter((m) => !seen.has(m.id));
-      if (additions.length === 0) return prev;
-      return { ...prev, [activeChannel]: [...existing, ...additions].slice(-200) };
-    });
-  }, [liveMessages, activeChannel, mode]);
-
-  const saveCreatorChannel = useCallback((channel: string) => {
-    setCreatorChannel(channel);
-    localStorage.setItem(CREATOR_CHANNEL_KEY, channel);
-  }, []);
-
-  const addViewerChannel = useCallback((channel: string) => {
-    setViewerChannels((prev) => (prev.includes(channel) ? prev : [...prev, channel]));
+  const selectChannel = useCallback((channel: FollowedChannel) => {
     setActiveChannel(channel);
   }, []);
 
-  const closeChannel = useCallback((channel: string) => {
-    setViewerChannels((prev) => {
-      const remaining = prev.filter((c) => c !== channel);
-      setActiveChannel((cur) =>
-        cur === channel ? (remaining.length ? remaining[remaining.length - 1] : null) : cur
-      );
-      return remaining;
-    });
-    setChannelHistory((prev) => {
-      const next = { ...prev };
-      delete next[channel];
-      return next;
-    });
-  }, []);
+  // Connect the live feed to the selected channel.
+  const targetLogin = activeChannel?.login ?? null;
+  useEffect(() => {
+    if (targetLogin) connect(targetLogin);
+  }, [targetLogin, connect]);
 
   // Demo YouTube + Kick messages, only when those filters are on.
   useEffect(() => {
@@ -143,13 +124,27 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, [activeFilters]);
 
-  const baseMessages =
-    mode === "creator"
-      ? liveMessages
-      : activeChannel
-        ? channelHistory[activeChannel] ?? []
-        : [];
+  // Rolling messages/min, computed off the render path (Date.now is impure).
+  // Refs hold the latest values so the interval reads them without resetting.
+  const liveRef = useRef(liveMessages);
+  const activeRef = useRef(false);
+  useEffect(() => {
+    liveRef.current = liveMessages;
+    activeRef.current = activeChannel !== null;
+  });
+  useEffect(() => {
+    const id = setInterval(() => {
+      const cutoff = Date.now() - 60_000;
+      setMessagesPerMin(
+        activeRef.current
+          ? liveRef.current.filter((m) => m.timestamp > cutoff).length
+          : 0
+      );
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
 
+  const baseMessages = activeChannel ? liveMessages : [];
   const allMessages = [...baseMessages, ...demoMessages].sort(
     (a, b) => a.timestamp - b.timestamp
   );
@@ -159,13 +154,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       value={{
         status,
         allMessages,
-        creatorChannel,
-        saveCreatorChannel,
-        viewerChannels,
+        followedChannels,
         activeChannel,
-        setActiveChannel,
-        addViewerChannel,
-        closeChannel,
+        selectChannel,
+        messagesPerMin,
       }}
     >
       {children}
