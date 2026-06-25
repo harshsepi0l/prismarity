@@ -6,8 +6,8 @@ import { PlatformIcon } from "./PlatformIcon";
 
 const PLATFORMS: { id: Platform; label: string; color: string }[] = [
   { id: "twitch", label: "Twitch", color: "#A66CFF" },
-  { id: "youtube", label: "YouTube", color: "#FF5C5C" },
   { id: "kick", label: "Kick", color: "#5BE37D" },
+  { id: "youtube", label: "YouTube", color: "#FF5C5C" },
 ];
 
 interface FilterChipsProps {

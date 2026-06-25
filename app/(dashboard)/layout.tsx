@@ -16,13 +16,17 @@ export default async function DashboardLayout({
   // Only safe data crosses to the client — never tokens.
   const user = await getCurrentUser();
   const twitch = user?.connections.find((c) => c.platform === "twitch");
-  const auth = twitch ? { displayName: twitch.displayName } : null;
+  const kick = user?.connections.find((c) => c.platform === "kick");
+  const auth = {
+    twitch: twitch ? { displayName: twitch.displayName } : null,
+    kick: kick ? { displayName: kick.displayName } : null,
+  };
   const connectedPlatforms = user?.connections.map((c) => c.platform) ?? [];
 
   return (
     <LayoutProvider>
       <SessionProvider connectedPlatforms={connectedPlatforms}>
-        <ChatProvider>
+        <ChatProvider kickSlug={kick?.login ?? null}>
           <EmoteProvider>
             <StatsProvider>
               <Flex direction="column" h="100vh" overflow="hidden" bg="#0e1320">
