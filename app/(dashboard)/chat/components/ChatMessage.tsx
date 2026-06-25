@@ -1,7 +1,8 @@
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import type { ChatMessage as ChatMessageType } from "../types";
+import type { ChatMessage as ChatMessageType, UserSelection } from "../types";
 import { PlatformIcon } from "../../components/PlatformIcon";
 import { useEmotes } from "../../useEmotes";
+import { useBadges, resolveBadgeImage } from "../../useBadges";
 
 const PLATFORM_COLOR: Record<string, string> = {
   twitch: "#A66CFF",
@@ -16,6 +17,69 @@ const PLATFORM_TAG: Record<string, string> = {
   kick: "KK",
   self: "ME",
 };
+
+// Short fallback label for badge types with no resolvable art (most Kick
+// badges besides subscriber — mod/vip/og/founder have no public image source).
+const BADGE_LABEL: Record<string, string> = {
+  subscriber: "SUB",
+  moderator: "MOD",
+  vip: "VIP",
+  founder: "FOUNDER",
+  og: "OG",
+  broadcaster: "HOST",
+  staff: "STAFF",
+  admin: "ADMIN",
+  partner: "PARTNER",
+  premium: "PRIME",
+  turbo: "TURBO",
+  sub_gifter: "GIFTER",
+};
+
+export function BadgeChip({
+  platform,
+  badge,
+  accent,
+}: {
+  platform: ChatMessageType["platform"];
+  badge: { setId: string; id: string };
+  accent: string;
+}) {
+  const badgeStore = useBadges();
+  if (platform !== "twitch" && platform !== "kick") return null;
+
+  const imageUrl = resolveBadgeImage(badgeStore, platform, badge);
+  if (imageUrl) {
+    return (
+      <chakra.img
+        src={imageUrl}
+        alt={badge.setId}
+        title={badge.setId}
+        w="16px"
+        h="16px"
+        display="inline-block"
+        flex="none"
+      />
+    );
+  }
+
+  return (
+    <Text
+      fontFamily="mono"
+      fontSize="9px"
+      fontWeight="600"
+      letterSpacing="0.04em"
+      color={accent}
+      borderWidth="1px"
+      borderColor={accent}
+      borderRadius="4px"
+      px="4px"
+      py="1px"
+      flex="none"
+    >
+      {BADGE_LABEL[badge.setId] ?? badge.setId.slice(0, 4).toUpperCase()}
+    </Text>
+  );
+}
 
 // Split on whitespace (kept), replacing any token that matches an emote code
 // with its image. Unicode emoji render natively as text.
@@ -41,16 +105,23 @@ function renderBody(text: string, emotes: Record<string, string>) {
 interface ChatMessageProps {
   message: ChatMessageType;
   onHoverChange?: (hovered: boolean) => void;
+  onSelectUser?: (selection: UserSelection) => void;
 }
 
 export default function ChatMessage({
   message,
   onHoverChange,
+  onSelectUser,
 }: ChatMessageProps) {
   const emotes = useEmotes();
   const platformColor = PLATFORM_COLOR[message.platform] ?? "#8B93A7";
   const nameColor = message.color || platformColor;
   const tag = PLATFORM_TAG[message.platform] ?? "??";
+  // "self" / "youtube" have no real chatter identity to look up — only
+  // twitch/kick messages get a clickable username. A local const (not a
+  // property access) so the narrowed type survives into the onClick closure.
+  const clickablePlatform: "twitch" | "kick" | null =
+    message.platform === "twitch" || message.platform === "kick" ? message.platform : null;
 
   const time = new Date(message.timestamp).toLocaleTimeString([], {
     hour: "2-digit",
@@ -99,9 +170,42 @@ export default function ChatMessage({
           </Box>
         )}
 
-        <Text fontWeight="600" fontSize="14px" color={nameColor}>
-          {message.user}
-        </Text>
+        {message.badges && message.badges.length > 0 && (
+          <Flex align="center" gap="3px" flex="none">
+            {message.badges.slice(0, 4).map((b) => (
+              <BadgeChip
+                key={`${b.setId}:${b.id}`}
+                platform={message.platform}
+                badge={b}
+                accent={platformColor}
+              />
+            ))}
+          </Flex>
+        )}
+
+        {clickablePlatform === null ? (
+          <Text fontWeight="600" fontSize="14px" color={nameColor}>
+            {message.user}
+          </Text>
+        ) : (
+          <chakra.button
+            type="button"
+            onClick={() =>
+              onSelectUser?.({
+                platform: clickablePlatform,
+                user: message.user,
+                userId: message.userId,
+              })
+            }
+            fontWeight="600"
+            fontSize="14px"
+            color={nameColor}
+            cursor="pointer"
+            _hover={{ textDecoration: "underline" }}
+          >
+            {message.user}
+          </chakra.button>
+        )}
 
         <Text ml="auto" fontFamily="mono" fontSize="11px" color="faint">
           {time}
