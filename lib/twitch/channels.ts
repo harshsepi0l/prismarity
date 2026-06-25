@@ -26,7 +26,7 @@ interface HelixStream {
 
 // Returns a non-expired access token, refreshing + persisting if needed.
 // Note: refreshing does NOT add scopes — granting a new scope requires re-login.
-async function getValidAccessToken(user: User): Promise<string | null> {
+export async function getValidAccessToken(user: User): Promise<string | null> {
   const conn = user.connections.find((c) => c.platform === "twitch");
   if (!conn) return null;
 

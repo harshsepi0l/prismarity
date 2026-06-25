@@ -19,7 +19,7 @@ export default function ChatPage() {
 
         {/* Everyone can chat; Creator/Moderator additionally get the mod tools
             in the side panel. */}
-        <Composer litPlatforms={activeFilters} />
+        <Composer />
       </Flex>
 
       <ResizableSidePanel>
