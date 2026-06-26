@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
-import type { Connection, User } from "./types";
+import type { Connection, Platform, User } from "./types";
 
 // Simple server-side persistence for now: a JSON file under .data/ (gitignored).
 // TODO: replace with a real database. This naive read-modify-write is fine for
@@ -53,6 +53,21 @@ export async function upsertConnection(conn: Connection): Promise<User> {
   if (idx >= 0) user.connections[idx] = conn;
   else user.connections.push(conn);
 
+  await write(db);
+  return user;
+}
+
+// Remove a single platform connection from a user. Returns the updated user,
+// or null if the user doesn't exist. Does NOT delete the user record even if
+// all connections are removed — the caller decides whether to clear the session.
+export async function removeConnection(
+  userId: string,
+  platform: Platform
+): Promise<User | null> {
+  const db = await read();
+  const user = db.users[userId];
+  if (!user) return null;
+  user.connections = user.connections.filter((c) => c.platform !== platform);
   await write(db);
   return user;
 }

@@ -1,11 +1,22 @@
 "use client";
 
-import { useRef } from "react";
-import { Box } from "@chakra-ui/react";
+import { useRef, useState } from "react";
+import { Box, Flex } from "@chakra-ui/react";
 
-// A draggable edge for resizing a panel. `side` is the edge the handle sits on:
-// "right" for a left-docked panel (NavRail), "left" for a right-docked panel
-// (SidePanel). Dragging the edge outward widens the panel either way.
+// Drag below this width → snap fully closed. Expanding from 0 tracks freely.
+const SNAP_THRESHOLD = 48;
+
+const GRIP_SVG = (
+  <svg width="6" height="16" viewBox="0 0 6 16" fill="rgba(166,108,255,0.75)" aria-hidden>
+    <circle cx="1.5" cy="2"  r="1.2" />
+    <circle cx="4.5" cy="2"  r="1.2" />
+    <circle cx="1.5" cy="8"  r="1.2" />
+    <circle cx="4.5" cy="8"  r="1.2" />
+    <circle cx="1.5" cy="14" r="1.2" />
+    <circle cx="4.5" cy="14" r="1.2" />
+  </svg>
+);
+
 interface ResizeHandleProps {
   side: "left" | "right";
   width: number;
@@ -14,31 +25,92 @@ interface ResizeHandleProps {
 
 export function ResizeHandle({ side, width, onResize }: ResizeHandleProps) {
   const start = useRef({ x: 0, w: 0 });
+  const [active, setActive] = useState(false);
+  const collapsed = width === 0;
 
   function onPointerDown(e: React.PointerEvent) {
     start.current = { x: e.clientX, w: width };
     e.currentTarget.setPointerCapture(e.pointerId);
+    e.stopPropagation();
+    setActive(true);
   }
 
   function onPointerMove(e: React.PointerEvent) {
     if (e.buttons !== 1) return;
     const dx = e.clientX - start.current.x;
     const delta = side === "right" ? dx : -dx;
-    onResize(start.current.w + delta);
+    const raw = start.current.w + delta;
+    const next = start.current.w === 0 ? Math.max(0, raw) : raw < SNAP_THRESHOLD ? 0 : raw;
+    onResize(next);
   }
+
+  function onPointerUp() {
+    setActive(false);
+  }
+
+  // Wider zone when collapsed so the edge is easier to grab.
+  const zoneW = collapsed ? 20 : 8;
+  const zoneEdge = collapsed ? "-10px" : "-4px";
 
   return (
     <Box
       position="absolute"
       top="0"
       bottom="0"
-      {...(side === "right" ? { right: "0", mr: "-3px" } : { left: "0", ml: "-3px" })}
-      w="7px"
-      zIndex={2}
+      {...(side === "right" ? { right: zoneEdge } : { left: zoneEdge })}
+      w={`${zoneW}px`}
+      zIndex={20}
       cursor="col-resize"
+      style={{ pointerEvents: "auto" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      _hover={{ bg: "fieldLine" }}
-    />
+      onPointerUp={onPointerUp}
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
+    >
+      {/* Full-height line */}
+      <Box
+        position="absolute"
+        top="0"
+        bottom="0"
+        w="2px"
+        borderRadius="2px"
+        style={{
+          left: "50%",
+          transform: "translateX(-50%)",
+          pointerEvents: "none",
+          background: active ? "rgba(166,108,255,0.5)" : "transparent",
+          transition: "background .15s",
+        }}
+      />
+
+      {/* Centered grip pill — the [|] the user asked for */}
+      <Flex
+        position="absolute"
+        top="50%"
+        align="center"
+        justify="center"
+        w="20px"
+        h="52px"
+        borderRadius="6px"
+        style={{
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          pointerEvents: "none",
+          background: active ? "#1F2532" : "transparent",
+          border: active ? "1px solid rgba(166,108,255,0.35)" : "1px solid transparent",
+          transition: "background .15s, border-color .15s",
+        }}
+      >
+        <Box
+          style={{
+            opacity: active ? 1 : 0,
+            transition: "opacity .15s",
+          }}
+        >
+          {GRIP_SVG}
+        </Box>
+      </Flex>
+    </Box>
   );
 }

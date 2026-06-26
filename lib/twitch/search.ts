@@ -1,5 +1,5 @@
 import type { Role, User } from "@/lib/auth/types";
-import { getValidAccessToken, fetchModeratedIds } from "./channels";
+import { helixHeaders, fetchModeratedIds } from "./channels";
 
 const HELIX = "https://api.twitch.tv/helix";
 
@@ -29,13 +29,8 @@ export async function searchTwitchChannels(
 ): Promise<TwitchSearchHit[]> {
   const conn = user.connections.find((c) => c.platform === "twitch");
   if (!conn) return [];
-  const token = await getValidAccessToken(user);
-  if (!token) return [];
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-  };
+  const headers = await helixHeaders(user);
+  if (!headers) return [];
 
   try {
     const res = await fetch(

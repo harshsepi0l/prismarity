@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getValidAccessToken } from "@/lib/twitch/channels";
+import { helixHeaders } from "@/lib/twitch/channels";
 
 export const runtime = "nodejs";
 
@@ -25,20 +25,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
   }
 
-  const token = await getValidAccessToken(user);
-  if (!token) {
+  const headers = await helixHeaders(user);
+  if (!headers) {
     return NextResponse.json({ ok: false, error: "no_token" }, { status: 401 });
   }
 
   const res = await fetch(
     `https://api.twitch.tv/helix/chat/settings?broadcaster_id=${channelId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-      },
-      cache: "no-store",
-    }
+    { headers, cache: "no-store" }
   );
 
   if (!res.ok) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { searchTwitchChannels } from "@/lib/twitch/search";
+import { getUsersByLogin } from "@/lib/twitch/users";
 import { fetchKickPublic } from "@/lib/kick/public";
 import type { SearchResult } from "@/app/(dashboard)/chat/types";
 
@@ -51,10 +52,24 @@ export async function GET(req: NextRequest) {
   }
 
   // A Kick channel matching the raw query with no Twitch counterpart.
+  // Do a direct login lookup so cross-platform streamers whose Twitch login
+  // matches their Kick slug are merged even when the fuzzy search missed them.
   const qh = q.toLowerCase();
   const kq = kickByHandle.get(qh);
   if (kq && !seen.has(qh)) {
-    results.push({ handle: qh, displayName: kq.slug, profileImageUrl: kq.profileImageUrl, twitch: null, kick: kq });
+    let twitch: SearchResult["twitch"] = null;
+    if (user) {
+      const twitchHit = (await getUsersByLogin(user, [qh]))[0] ?? null;
+      if (twitchHit) {
+        const conn = user.connections.find((c) => c.platform === "twitch");
+        const { fetchModeratedIds, helixHeaders } = await import("@/lib/twitch/channels");
+        const headers = await helixHeaders(user);
+        const moderated = headers && conn ? await fetchModeratedIds(headers, conn.platformUserId) : new Set<string>();
+        const role = conn && twitchHit.id === conn.platformUserId ? "creator" : moderated.has(twitchHit.id) ? "moderator" : "viewer";
+        twitch = { id: twitchHit.id, login: twitchHit.login, displayName: twitchHit.displayName, profileImageUrl: twitchHit.profileImageUrl, isLive: false, role };
+      }
+    }
+    results.push({ handle: qh, displayName: twitch?.displayName ?? kq.slug, profileImageUrl: twitch?.profileImageUrl ?? kq.profileImageUrl, twitch, kick: kq });
   }
 
   return NextResponse.json({ results });

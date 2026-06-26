@@ -16,6 +16,8 @@ import {
 
 export const runtime = "nodejs";
 
+const POPUP_COOKIE = "prismarity_auth_popup";
+
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const params = url.searchParams;
@@ -24,14 +26,21 @@ export async function GET(req: NextRequest) {
   const oauthError = params.get("error");
   const cookieState = req.cookies.get(STATE_COOKIE)?.value;
   const verifier = req.cookies.get(VERIFIER_COOKIE)?.value;
+  const isPopup = !!req.cookies.get(POPUP_COOKIE)?.value;
+
+  const clearAuthCookies = (res: NextResponse) => {
+    res.cookies.delete(STATE_COOKIE);
+    res.cookies.delete(VERIFIER_COOKIE);
+    res.cookies.delete(POPUP_COOKIE);
+  };
 
   const fail = (reason: string) => {
     console.error(`[auth] kick callback failed: ${reason}`);
-    const res = NextResponse.redirect(
-      new URL(`/chat?auth=error&reason=${encodeURIComponent(reason)}`, url.origin)
-    );
-    res.cookies.delete(STATE_COOKIE);
-    res.cookies.delete(VERIFIER_COOKIE);
+    const dest = isPopup
+      ? new URL(`/auth/success?error=${encodeURIComponent(reason)}`, url.origin)
+      : new URL(`/chat?auth=error&reason=${encodeURIComponent(reason)}`, url.origin);
+    const res = NextResponse.redirect(dest);
+    clearAuthCookies(res);
     return res;
   };
 
@@ -45,16 +54,16 @@ export async function GET(req: NextRequest) {
   if (!code) return fail("no_code");
 
   try {
-    // Link the Kick connection to the current session user when one exists, so
-    // it joins the same Prismarity account as an existing Twitch login.
     const current = await getCurrentUser();
     const token = await exchangeCode(code, verifier);
     const identity = await fetchIdentity(token.access_token);
     const user = await attachConnection(toConnection(token, identity), current?.id);
 
-    const res = NextResponse.redirect(new URL("/chat", url.origin));
-    res.cookies.delete(STATE_COOKIE);
-    res.cookies.delete(VERIFIER_COOKIE);
+    const dest = isPopup
+      ? new URL("/auth/success", url.origin)
+      : new URL("/chat", url.origin);
+    const res = NextResponse.redirect(dest);
+    clearAuthCookies(res);
     res.cookies.set(SESSION_COOKIE, sessionCookieValue(user.id), sessionCookieOptions);
     return res;
   } catch (e) {

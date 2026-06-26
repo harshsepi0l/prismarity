@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import type { Connection } from "./types";
-import { encrypt } from "./crypto";
+import { encrypt, decrypt } from "./crypto";
+import { getSettings } from "@/lib/settings/store";
 
 const AUTHORIZE_URL = "https://id.kick.com/oauth/authorize";
 const TOKEN_URL = "https://id.kick.com/oauth/token";
@@ -30,10 +31,36 @@ export function makePkce(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-export function getAuthorizeUrl(state: string, challenge: string): string {
+// Default client ID for the shared Prismarity Kick app registration.
+// Users can override via KICK_CLIENT_ID in .env.local or the settings UI.
+const DEFAULT_CLIENT_ID = "01KVYDXDJ645Y6JAJ8ACC6YVN3";
+
+// Resolves Kick OAuth credentials from the settings store, falling back to env vars.
+export async function getCredentials(): Promise<{
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}> {
+  const s = await getSettings();
+  const clientId = s.kickClientId || process.env.KICK_CLIENT_ID || DEFAULT_CLIENT_ID;
+  let clientSecret = process.env.KICK_CLIENT_SECRET || "";
+  if (s.kickClientSecretEnc) {
+    try {
+      clientSecret = decrypt(s.kickClientSecretEnc);
+    } catch {
+      // Decryption failed (e.g. rotated TOKEN_ENCRYPTION_KEY) — fall back to env.
+    }
+  }
+  const base =
+    s.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  return { clientId, clientSecret, redirectUri: `${base}/api/auth/kick/callback` };
+}
+
+export async function getAuthorizeUrl(state: string, challenge: string): Promise<string> {
+  const { clientId, redirectUri } = await getCredentials();
   const params = new URLSearchParams({
-    client_id: process.env.KICK_CLIENT_ID ?? "",
-    redirect_uri: process.env.KICK_REDIRECT_URI ?? "",
+    client_id: clientId,
+    redirect_uri: redirectUri,
     response_type: "code",
     scope: SCOPES.join(" "),
     state,
@@ -61,14 +88,15 @@ export async function exchangeCode(
   code: string,
   verifier: string
 ): Promise<TokenResponse> {
+  const { clientId, clientSecret, redirectUri } = await getCredentials();
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
-      client_id: process.env.KICK_CLIENT_ID ?? "",
-      client_secret: process.env.KICK_CLIENT_SECRET ?? "",
-      redirect_uri: process.env.KICK_REDIRECT_URI ?? "",
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
       code,
       code_verifier: verifier,
     }),
@@ -78,13 +106,14 @@ export async function exchangeCode(
 }
 
 export async function refreshToken(refresh: string): Promise<TokenResponse> {
+  const { clientId, clientSecret } = await getCredentials();
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: process.env.KICK_CLIENT_ID ?? "",
-      client_secret: process.env.KICK_CLIENT_SECRET ?? "",
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: refresh,
     }),
   });

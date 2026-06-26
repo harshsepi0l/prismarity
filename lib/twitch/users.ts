@@ -1,5 +1,5 @@
 import type { User } from "@/lib/auth/types";
-import { getValidAccessToken } from "./channels";
+import { helixHeaders } from "./channels";
 
 const HELIX = "https://api.twitch.tv/helix";
 
@@ -12,18 +12,42 @@ export interface TwitchUserInfo {
   broadcasterType: string; // "partner" | "affiliate" | ""
 }
 
+// Look up one or more Twitch users by login name. No special scope required.
+export async function getUsersByLogin(
+  user: User,
+  logins: string[]
+): Promise<TwitchUserInfo[]> {
+  if (logins.length === 0) return [];
+  const headers = await helixHeaders(user);
+  if (!headers) return [];
+  try {
+    const params = logins.map((l) => `login=${encodeURIComponent(l)}`).join("&");
+    const res = await fetch(`${HELIX}/users?${params}`, { headers, cache: "no-store" });
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      data?: {
+        id: string; login: string; display_name: string;
+        profile_image_url: string; created_at: string; broadcaster_type: string;
+      }[];
+    };
+    return (json.data ?? []).map((u) => ({
+      id: u.id, login: u.login, displayName: u.display_name,
+      profileImageUrl: u.profile_image_url, createdAt: u.created_at, broadcasterType: u.broadcaster_type,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // Public profile info for the click-to-view user card — no special scope,
 // works for any user id.
 export async function getUserInfo(user: User, twitchUserId: string): Promise<TwitchUserInfo | null> {
-  const token = await getValidAccessToken(user);
-  if (!token) return null;
+  const headers = await helixHeaders(user);
+  if (!headers) return null;
 
   try {
     const res = await fetch(`${HELIX}/users?id=${twitchUserId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-      },
+      headers,
       cache: "no-store",
     });
     if (!res.ok) return null;

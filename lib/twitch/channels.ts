@@ -1,6 +1,6 @@
 import type { Connection, Role, User } from "@/lib/auth/types";
 import { decrypt, encrypt } from "@/lib/auth/crypto";
-import { refreshToken } from "@/lib/auth/twitch";
+import { refreshToken, getCredentials } from "@/lib/auth/twitch";
 import { upsertConnection } from "@/lib/auth/store";
 
 const HELIX = "https://api.twitch.tv/helix";
@@ -52,6 +52,17 @@ export async function getValidAccessToken(user: User): Promise<string | null> {
   } catch {
     return decrypt(conn.accessTokenEnc);
   }
+}
+
+// Returns Authorization + Client-Id headers for Helix calls, or null if the
+// user has no valid Twitch token.
+export async function helixHeaders(user: User): Promise<Record<string, string> | null> {
+  const [token, { clientId }] = await Promise.all([
+    getValidAccessToken(user),
+    getCredentials(),
+  ]);
+  if (!token) return null;
+  return { Authorization: `Bearer ${token}`, "Client-Id": clientId };
 }
 
 // IDs of channels the user moderates (paginated). Requires user:read:moderated_channels.
@@ -110,13 +121,9 @@ async function applyLiveStatus(headers: Headers, channels: FollowedChannel[]): P
 export async function getOwnChannel(user: User): Promise<FollowedChannel | null> {
   const conn = user.connections.find((c) => c.platform === "twitch");
   if (!conn) return null;
-  const token = await getValidAccessToken(user);
-  if (!token) return null;
+  const headers = await helixHeaders(user);
+  if (!headers) return null;
 
-  const headers: Headers = {
-    Authorization: `Bearer ${token}`,
-    "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-  };
   const own: FollowedChannel = {
     id: conn.platformUserId,
     login: conn.login,
