@@ -57,6 +57,17 @@ export default function Composer() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorPlatform, setErrorPlatform] = useState<"twitch" | "kick" | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Clear input whenever the active channel changes or is removed.
+  const selectionKey = activeChannel?.id ?? activeKick?.slug ?? activeKickOnly ?? null;
+  useEffect(() => {
+    setText("");
+    setError(null);
+    setErrorPlatform(null);
+    setPickerOpen(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionKey]);
 
   // Both platforms are reactive-only: a failed send is the only reliable signal
   // that the user isn't following. No proactive API checks, no proactive banners.
@@ -95,7 +106,6 @@ export default function Composer() {
         ? `https://kick.com/${activeKick?.slug ?? ""}`
         : null
     : null;
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [emoteQuery, setEmoteQuery] = useState("");
   const [activeTab, setActiveTab] = useState<EmoteTab>("all");
   const [dismissedShortcode, setDismissedShortcode] = useState<string | null>(null);
@@ -208,12 +218,11 @@ export default function Composer() {
     setSending(true);
     setError(null);
     setErrorPlatform(null);
+    addSelfMessage(message, deliverable);
     try {
       const results = await Promise.all(
         deliverable.map(async (t) => ({ platform: t, ...(await sendOne(t, message)) }))
       );
-      const succeeded = results.filter((r) => r.ok).map((r) => r.platform);
-      if (succeeded.length > 0) addSelfMessage(message, succeeded);
 
       const failed = results.find((r) => !r.ok);
       if (failed) {

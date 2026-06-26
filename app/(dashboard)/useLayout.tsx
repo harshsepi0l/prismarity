@@ -8,21 +8,20 @@ import {
   useState,
 } from "react";
 
-export const NAV_MIN_WIDTH = 64;
 export const NAV_MAX_WIDTH = 360;
 const NAV_DEFAULT_WIDTH = 216;
 
-export const PANEL_MIN_WIDTH = 240;
 export const PANEL_MAX_WIDTH = 480;
 const PANEL_DEFAULT_WIDTH = 300;
 
 const NAV_WIDTH_KEY = "prismarity:nav-width";
 const PANEL_WIDTH_KEY = "prismarity:panel-width";
-const NAV_HIDDEN_KEY = "prismarity:nav-hidden";
-const PANEL_HIDDEN_KEY = "prismarity:panel-hidden";
 
-function clamp(w: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, w));
+// Width at which the NavRail switches from label+icon to icon-only.
+export const NAV_COLLAPSE_AT = 168;
+
+function clamp(w: number, max: number) {
+  return Math.min(max, Math.max(0, w));
 }
 
 interface LayoutState {
@@ -30,12 +29,6 @@ interface LayoutState {
   setNavWidth: (w: number) => void;
   panelWidth: number;
   setPanelWidth: (w: number) => void;
-  // Fully hide the left rail (separate from width-based icon collapse).
-  navHidden: boolean;
-  toggleNav: () => void;
-  // Collapse the right stats panel to a slim live-glance strip.
-  panelHidden: boolean;
-  togglePanel: () => void;
 }
 
 const LayoutContext = createContext<LayoutState | null>(null);
@@ -43,66 +36,32 @@ const LayoutContext = createContext<LayoutState | null>(null);
 export function LayoutProvider({ children }: { children: React.ReactNode }) {
   const [navWidth, setNavWidthState] = useState(NAV_DEFAULT_WIDTH);
   const [panelWidth, setPanelWidthState] = useState(PANEL_DEFAULT_WIDTH);
-  const [navHidden, setNavHidden] = useState(false);
-  const [panelHidden, setPanelHidden] = useState(false);
 
   // Hydrate from localStorage after mount (not available during SSR).
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     const nav = Number(localStorage.getItem(NAV_WIDTH_KEY));
-    if (!Number.isNaN(nav) && nav > 0) {
-      setNavWidthState(clamp(nav, NAV_MIN_WIDTH, NAV_MAX_WIDTH));
-    }
+    if (!Number.isNaN(nav) && nav >= 0) setNavWidthState(clamp(nav, NAV_MAX_WIDTH));
+
     const panel = Number(localStorage.getItem(PANEL_WIDTH_KEY));
-    if (!Number.isNaN(panel) && panel > 0) {
-      setPanelWidthState(clamp(panel, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH));
-    }
-    if (localStorage.getItem(NAV_HIDDEN_KEY) === "1") setNavHidden(true);
-    if (localStorage.getItem(PANEL_HIDDEN_KEY) === "1") setPanelHidden(true);
+    if (!Number.isNaN(panel) && panel >= 0) setPanelWidthState(clamp(panel, PANEL_MAX_WIDTH));
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
-  const toggleNav = useCallback(() => {
-    setNavHidden((prev) => {
-      const next = !prev;
-      localStorage.setItem(NAV_HIDDEN_KEY, next ? "1" : "0");
-      return next;
-    });
-  }, []);
-
-  const togglePanel = useCallback(() => {
-    setPanelHidden((prev) => {
-      const next = !prev;
-      localStorage.setItem(PANEL_HIDDEN_KEY, next ? "1" : "0");
-      return next;
-    });
-  }, []);
-
   const setNavWidth = useCallback((w: number) => {
-    const clamped = clamp(w, NAV_MIN_WIDTH, NAV_MAX_WIDTH);
-    setNavWidthState(clamped);
-    localStorage.setItem(NAV_WIDTH_KEY, String(clamped));
+    const next = clamp(w, NAV_MAX_WIDTH);
+    setNavWidthState(next);
+    localStorage.setItem(NAV_WIDTH_KEY, String(next));
   }, []);
 
   const setPanelWidth = useCallback((w: number) => {
-    const clamped = clamp(w, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH);
-    setPanelWidthState(clamped);
-    localStorage.setItem(PANEL_WIDTH_KEY, String(clamped));
+    const next = clamp(w, PANEL_MAX_WIDTH);
+    setPanelWidthState(next);
+    localStorage.setItem(PANEL_WIDTH_KEY, String(next));
   }, []);
 
   return (
-    <LayoutContext.Provider
-      value={{
-        navWidth,
-        setNavWidth,
-        panelWidth,
-        setPanelWidth,
-        navHidden,
-        toggleNav,
-        panelHidden,
-        togglePanel,
-      }}
-    >
+    <LayoutContext.Provider value={{ navWidth, setNavWidth, panelWidth, setPanelWidth }}>
       {children}
     </LayoutContext.Provider>
   );
