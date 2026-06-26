@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getUserInfo } from "@/lib/twitch/users";
 
 export const runtime = "nodejs";
+export const revalidate = 86400; // profile info (avatar, display name) changes rarely
 
 export async function GET(req: NextRequest) {
   const id = new URL(req.url).searchParams.get("id");

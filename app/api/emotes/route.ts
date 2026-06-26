@@ -3,6 +3,8 @@ import { getBttvEmotes } from "@/lib/emotes/bttv";
 import { getFfzEmotes } from "@/lib/emotes/ffz";
 import { getSevenTvEmotes } from "@/lib/emotes/seventv";
 
+export const revalidate = 3600; // third-party emote sets don't change mid-stream
+
 export const runtime = "nodejs";
 
 export type EmoteSource = "7tv" | "bttv" | "ffz";

@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getChannelBadges } from "@/lib/twitch/badges";
 
 export const runtime = "nodejs";
+export const revalidate = 86400; // badge art sets rarely change
 
 export async function GET(req: NextRequest) {
   const channelId = new URL(req.url).searchParams.get("channelId");

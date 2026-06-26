@@ -99,14 +99,6 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-function SubLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text fontFamily="mono" fontSize="9px" letterSpacing="0.1em" color="faint" mb="6px">
-      {children}
-    </Text>
-  );
-}
-
 function EmptyNote({ children }: { children: React.ReactNode }) {
   return (
     <Text fontSize="11px" color="faint" mb="2px">
@@ -172,9 +164,56 @@ function ClipRow({ rank, clip }: { rank: number; clip: TwitchClip }) {
   );
 }
 
-// One connected platform's row. Dims when toggled out of the combined roll-up.
-// Bits/clips (Twitch) and gift leaderboard (Kick) live in a collapsible
-// section nested under their platform, rather than a standalone block.
+// Standalone collapsible highlight card — floats below the platform header,
+// indented and connected visually by a colored left accent border.
+function HighlightCard({
+  title,
+  accentColor,
+  children,
+}: {
+  title: string;
+  accentColor: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Box
+      borderWidth="1px"
+      borderColor="fieldLine"
+      borderLeftWidth="2px"
+      borderLeftColor={accentColor}
+      borderRadius="6px"
+      bg="panel"
+      overflow="hidden"
+    >
+      <chakra.button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        display="flex"
+        alignItems="center"
+        justifyContent="space-between"
+        w="100%"
+        px="12px"
+        py="9px"
+        cursor="pointer"
+        _hover={{ bg: "raised" }}
+      >
+        <Text fontFamily="mono" fontSize="10px" letterSpacing="0.12em" color="muted">
+          {title}
+        </Text>
+        <Chevron open={open} />
+      </chakra.button>
+      {open && (
+        <Box px="12px" pb="10px" pt="2px" borderTopWidth="1px" borderColor="fieldLine">
+          {children}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// One connected platform's row — platform header card, then highlight cards
+// floating below it (outside the header bubble), indented with a left accent.
 function PlatformRow({
   p,
   showSubs,
@@ -197,20 +236,12 @@ function PlatformRow({
   if (p.peakViewers > 0) meta.push(`peak ${p.peakViewers.toLocaleString()}`);
   if (p.isLive && p.uptimeMs != null) meta.push(formatUptime(p.uptimeMs));
 
-  const [open, setOpen] = useState(false);
   const showExtra = p.platform === "twitch" || p.platform === "kick";
 
   return (
-    <Box
-      borderWidth="1px"
-      borderColor="line"
-      bg="raised"
-      borderRadius="8px"
-      overflow="hidden"
-      opacity={p.included ? 1 : 0.4}
-      transition="opacity .15s"
-    >
-      <Box px="12px" py="11px">
+    <Flex direction="column" gap="4px" opacity={p.included ? 1 : 0.4} transition="opacity .15s">
+      {/* Platform header — its own card */}
+      <Box borderWidth="1px" borderColor="line" bg="raised" borderRadius="8px" px="12px" py="11px">
         <Flex align="center" gap="9px">
           <PlatformIcon platform={p.platform} color={color} size={15} />
           <Text flex="1" minW="0" fontSize="13px" fontWeight="500" color="text" truncate>
@@ -236,101 +267,52 @@ function PlatformRow({
         )}
       </Box>
 
+      {/* Highlight cards — separate, indented, outside the header bubble */}
       {showExtra && (
-        <>
-          <chakra.button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-            w="100%"
-            px="12px"
-            py="8px"
-            borderTopWidth="1px"
-            borderColor="line"
-            cursor="pointer"
-            transition="background .12s"
-            _hover={{ bg: "fieldLine" }}
-          >
-            <Text fontFamily="mono" fontSize="10px" letterSpacing="0.1em" color="muted">
-              HIGHLIGHTS
-            </Text>
-            <Chevron open={open} />
-          </chakra.button>
-
-          {open && (
-            <Box px="12px" pb="12px" pt="2px">
-              {p.platform === "twitch" && (
-                <>
-                  <Box mb="12px">
-                    <SubLabel>TOP CHEERERS (THIS SESSION)</SubLabel>
-                    {cheerLeaders.length === 0 ? (
-                      <EmptyNote>No bits cheered since you tuned in.</EmptyNote>
-                    ) : (
-                      cheerLeaders.map((l, i) => (
-                        <DonorRow
-                          key={l.user}
-                          rank={i + 1}
-                          platform="twitch"
-                          name={l.user}
-                          amount={l.bits}
-                          unit="bits"
-                        />
-                      ))
-                    )}
-                  </Box>
-                  <Box mb="12px">
-                    <SubLabel>TOP GIFTERS (THIS SESSION)</SubLabel>
-                    {giftLeaders.length === 0 ? (
-                      <EmptyNote>No sub gifts since you tuned in.</EmptyNote>
-                    ) : (
-                      giftLeaders.map((l, i) => (
-                        <DonorRow
-                          key={l.user}
-                          rank={i + 1}
-                          platform="twitch"
-                          name={l.user}
-                          amount={l.gifts}
-                          unit="gifts"
-                        />
-                      ))
-                    )}
-                  </Box>
-                  <Box>
-                    <SubLabel>TOP CLIPS (PAST WEEK)</SubLabel>
-                    {clips.length === 0 ? (
-                      <EmptyNote>No clips from the last week.</EmptyNote>
-                    ) : (
-                      clips.map((c, i) => <ClipRow key={c.id} rank={i + 1} clip={c} />)
-                    )}
-                  </Box>
-                </>
-              )}
-              {p.platform === "kick" && (
-                <Box>
-                  <SubLabel>TOP GIFTERS (THIS WEEK)</SubLabel>
-                  {kickLeaders.length === 0 ? (
-                    <EmptyNote>No gifts this week (or Kick blocked the request).</EmptyNote>
-                  ) : (
-                    kickLeaders.map((l, i) => (
-                      <DonorRow
-                        key={l.username}
-                        rank={i + 1}
-                        platform="kick"
-                        name={l.username}
-                        amount={l.amount}
-                        unit="kicks"
-                      />
-                    ))
-                  )}
-                </Box>
-              )}
-            </Box>
+        <Flex direction="column" gap="3px" pl="10px">
+          {p.platform === "twitch" && (
+            <>
+              <HighlightCard title="TOP CHEERERS (THIS SESSION)" accentColor={color}>
+                {cheerLeaders.length === 0 ? (
+                  <EmptyNote>No bits cheered since you tuned in.</EmptyNote>
+                ) : (
+                  cheerLeaders.map((l, i) => (
+                    <DonorRow key={l.user} rank={i + 1} platform="twitch" name={l.user} amount={l.bits} unit="bits" />
+                  ))
+                )}
+              </HighlightCard>
+              <HighlightCard title="TOP GIFTERS (THIS SESSION)" accentColor={color}>
+                {giftLeaders.length === 0 ? (
+                  <EmptyNote>No sub gifts since you tuned in.</EmptyNote>
+                ) : (
+                  giftLeaders.map((l, i) => (
+                    <DonorRow key={l.user} rank={i + 1} platform="twitch" name={l.user} amount={l.gifts} unit="gifts" />
+                  ))
+                )}
+              </HighlightCard>
+              <HighlightCard title="TOP CLIPS (PAST WEEK)" accentColor={color}>
+                {clips.length === 0 ? (
+                  <EmptyNote>No clips from the last week.</EmptyNote>
+                ) : (
+                  clips.map((c, i) => <ClipRow key={c.id} rank={i + 1} clip={c} />)
+                )}
+              </HighlightCard>
+            </>
           )}
-        </>
+          {p.platform === "kick" && (
+            <HighlightCard title="TOP GIFTERS (THIS WEEK)" accentColor={color}>
+              {kickLeaders.length === 0 ? (
+                <EmptyNote>No gifts this week (or Kick blocked the request).</EmptyNote>
+              ) : (
+                kickLeaders.map((l, i) => (
+                  <DonorRow key={l.username} rank={i + 1} platform="kick" name={l.username} amount={l.amount} unit="kicks" />
+                ))
+              )}
+            </HighlightCard>
+          )}
+        </Flex>
       )}
-    </Box>
+    </Flex>
   );
 }
 

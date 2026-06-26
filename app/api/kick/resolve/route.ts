@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchKickPublic } from "@/lib/kick/public";
 
 export const runtime = "nodejs";
+export const revalidate = 86400; // slug → chatroom ID mapping is stable
 
 // Resolves a Kick slug to the data the client needs to read chat (chatroom id)
 // and identify the channel. Public data — no auth required.

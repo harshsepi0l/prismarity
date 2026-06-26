@@ -47,6 +47,8 @@ interface ChatStore {
   activeRole: Role;
   activeKick: ActiveKick | null;
   kickConnected: boolean;
+  // Channels added from search — persisted to localStorage.
+  watchedChannels: SearchResult[];
   // Live, session-scoped tallies for the active Twitch channel (see
   // useTwitchChat for why these aren't Twitch's actual weekly numbers).
   cheerLeaders: CheerLeader[];
@@ -54,6 +56,9 @@ interface ChatStore {
   selectChannel: (channel: FollowedChannel) => void;
   selectKickOnly: (slug: string) => void;
   selectSearchResult: (result: SearchResult) => void;
+  clearSelection: () => void;
+  addWatchedChannel: (result: SearchResult) => void;
+  removeWatchedChannel: (handle: string) => void;
   addSelfMessage: (text: string, platforms: Platform[]) => void;
 }
 
@@ -76,6 +81,32 @@ export function ChatProvider({
   const { messages: kickMessages, connect: connectKick } = useKickChat();
 
   const kickConnected = !!kickSlug;
+
+  const [watchedChannels, setWatchedChannels] = useState<SearchResult[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("prismarity:watched-channels") ?? "[]") as SearchResult[];
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setWatchedChannels(stored);
+    } catch { /* ignore */ }
+  }, []);
+
+  const addWatchedChannel = useCallback((result: SearchResult) => {
+    setWatchedChannels((prev) => {
+      const next = [...prev.filter((c) => c.handle !== result.handle), result];
+      localStorage.setItem("prismarity:watched-channels", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const removeWatchedChannel = useCallback((handle: string) => {
+    setWatchedChannels((prev) => {
+      const next = prev.filter((c) => c.handle !== handle);
+      localStorage.setItem("prismarity:watched-channels", JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const [ownChannel, setOwnChannel] = useState<FollowedChannel | null>(null);
   const [ownKickStat, setOwnKickStat] = useState<{ isLive: boolean; viewers: number } | null>(null);
@@ -159,6 +190,13 @@ export function ChatProvider({
     setActiveChannel(null);
     setActiveKickOnly(s);
     setPendingKick({ slug: s, chatroomId: null });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setActiveChannel(null);
+    setActiveKickOnly(null);
+    setPendingKick(null);
+    setActiveKick(null);
   }, []);
 
   // Select a unified search result — wires up whichever platforms it spans.
@@ -286,11 +324,15 @@ export function ChatProvider({
         activeRole,
         activeKick,
         kickConnected,
+        watchedChannels,
         cheerLeaders,
         giftLeaders,
         selectChannel,
         selectKickOnly,
         selectSearchResult,
+        clearSelection,
+        addWatchedChannel,
+        removeWatchedChannel,
         addSelfMessage,
       }}
     >
