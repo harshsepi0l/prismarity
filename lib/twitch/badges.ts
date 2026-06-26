@@ -1,5 +1,5 @@
 import type { User } from "@/lib/auth/types";
-import { getValidAccessToken } from "./channels";
+import { helixHeaders } from "./channels";
 
 const HELIX = "https://api.twitch.tv/helix";
 
@@ -34,13 +34,8 @@ export async function getChannelBadges(
   user: User,
   channelId: string
 ): Promise<Record<string, BadgeInfo>> {
-  const token = await getValidAccessToken(user);
-  if (!token) return {};
-
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-  };
+  const headers = await helixHeaders(user);
+  if (!headers) return {};
   const map = new Map<string, BadgeInfo>();
 
   try {

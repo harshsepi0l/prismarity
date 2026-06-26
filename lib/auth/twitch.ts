@@ -1,5 +1,7 @@
+import { createHash, randomBytes } from "crypto";
 import type { Connection } from "./types";
 import { encrypt } from "./crypto";
+import { getSettings } from "@/lib/settings/store";
 
 const AUTHORIZE_URL = "https://id.twitch.tv/oauth2/authorize";
 const TOKEN_URL = "https://id.twitch.tv/oauth2/token";
@@ -34,16 +36,46 @@ export const SCOPES = [
   "channel:read:subscriptions",
 ];
 
-// Short-lived cookie holding the OAuth `state` for CSRF protection.
+// Cookies bridging /login → /callback: CSRF state + PKCE verifier.
 export const STATE_COOKIE = "prismarity_oauth_state";
+export const VERIFIER_COOKIE = "prismarity_twitch_verifier";
 
-export function getAuthorizeUrl(state: string): string {
+// PKCE pair: high-entropy verifier and its S256 challenge.
+export function makePkce(): { verifier: string; challenge: string } {
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge };
+}
+
+// Default client ID for the shared Prismarity app registration.
+// Users can override this via TWITCH_CLIENT_ID in .env.local or the settings UI.
+const DEFAULT_CLIENT_ID = "8g3vtt850aeo1mvich6xou1db5x19a";
+
+export async function getCredentials(): Promise<{
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}> {
+  const s = await getSettings();
+  const clientId = s.twitchClientId || process.env.TWITCH_CLIENT_ID || DEFAULT_CLIENT_ID;
+  // Confidential clients (registered with a secret) must include it in token
+  // exchange even when using PKCE. Public clients can omit it.
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET || "";
+  const base =
+    s.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  return { clientId, clientSecret, redirectUri: `${base}/api/auth/twitch/callback` };
+}
+
+export async function getAuthorizeUrl(state: string, challenge: string): Promise<string> {
+  const { clientId, redirectUri } = await getCredentials();
   const params = new URLSearchParams({
-    client_id: process.env.TWITCH_CLIENT_ID ?? "",
-    redirect_uri: process.env.TWITCH_REDIRECT_URI ?? "",
+    client_id: clientId,
+    redirect_uri: redirectUri,
     response_type: "code",
     scope: SCOPES.join(" "),
     state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
   });
   return `${AUTHORIZE_URL}?${params.toString()}`;
 }
@@ -56,35 +88,39 @@ interface TokenResponse {
   token_type: string;
 }
 
-export async function exchangeCode(code: string): Promise<TokenResponse> {
+// PKCE exchange: verifier proves possession of the code_challenge sent at authorization.
+// No client_secret needed.
+export async function exchangeCode(code: string, verifier: string): Promise<TokenResponse> {
+  const { clientId, clientSecret, redirectUri } = await getCredentials();
+  const body = new URLSearchParams({
+    client_id: clientId,
+    code_verifier: verifier,
+    code,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+  });
+  if (clientSecret) body.set("client_secret", clientSecret);
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: process.env.TWITCH_CLIENT_ID ?? "",
-      client_secret: process.env.TWITCH_CLIENT_SECRET ?? "",
-      code,
-      grant_type: "authorization_code",
-      redirect_uri: process.env.TWITCH_REDIRECT_URI ?? "",
-    }),
+    body,
   });
   if (!res.ok) throw new Error(`twitch token exchange failed: ${res.status}`);
   return (await res.json()) as TokenResponse;
 }
 
-// TODO: call this on access-token expiry and rotate the stored refresh token
-// (Twitch may return a new one). Wire into a request-time guard once features
-// start making authenticated Helix calls.
 export async function refreshToken(refresh: string): Promise<TokenResponse> {
+  const { clientId, clientSecret } = await getCredentials();
+  const body = new URLSearchParams({
+    client_id: clientId,
+    grant_type: "refresh_token",
+    refresh_token: refresh,
+  });
+  if (clientSecret) body.set("client_secret", clientSecret);
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: process.env.TWITCH_CLIENT_ID ?? "",
-      client_secret: process.env.TWITCH_CLIENT_SECRET ?? "",
-      grant_type: "refresh_token",
-      refresh_token: refresh,
-    }),
+    body,
   });
   if (!res.ok) throw new Error(`twitch token refresh failed: ${res.status}`);
   return (await res.json()) as TokenResponse;
@@ -97,10 +133,11 @@ interface TwitchIdentity {
 }
 
 export async function fetchIdentity(accessToken: string): Promise<TwitchIdentity> {
+  const { clientId } = await getCredentials();
   const res = await fetch(USERS_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
+      "Client-Id": clientId,
     },
   });
   if (!res.ok) throw new Error(`twitch identity fetch failed: ${res.status}`);
