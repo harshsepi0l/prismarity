@@ -1,5 +1,5 @@
 import type { User } from "@/lib/auth/types";
-import { getValidAccessToken } from "./channels";
+import { helixHeaders } from "./channels";
 
 export interface SendResult {
   ok: boolean;
@@ -16,16 +16,12 @@ export async function sendChatMessage(
   const conn = user.connections.find((c) => c.platform === "twitch");
   if (!conn) return { ok: false, error: "not_connected" };
 
-  const token = await getValidAccessToken(user);
-  if (!token) return { ok: false, error: "no_token" };
+  const headers = await helixHeaders(user);
+  if (!headers) return { ok: false, error: "no_token" };
 
   const res = await fetch("https://api.twitch.tv/helix/chat/messages", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-      "Content-Type": "application/json",
-    },
+    headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify({
       broadcaster_id: channelId,
       sender_id: conn.platformUserId,
@@ -72,16 +68,12 @@ async function createChatSubscription(
   const conn = user.connections.find((c) => c.platform === "twitch");
   if (!conn) return { ok: false, error: "not_connected" };
 
-  const token = await getValidAccessToken(user);
-  if (!token) return { ok: false, error: "no_token" };
+  const headers = await helixHeaders(user);
+  if (!headers) return { ok: false, error: "no_token" };
 
   const res = await fetch("https://api.twitch.tv/helix/eventsub/subscriptions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-      "Content-Type": "application/json",
-    },
+    headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify({
       type,
       version: "1",

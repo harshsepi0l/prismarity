@@ -1,5 +1,5 @@
 import type { User } from "@/lib/auth/types";
-import { getValidAccessToken } from "./channels";
+import { helixHeaders } from "./channels";
 
 const HELIX = "https://api.twitch.tv/helix";
 
@@ -47,13 +47,8 @@ export async function getChannelStats(
 ): Promise<ChannelStats> {
   const conn = user.connections.find((c) => c.platform === "twitch");
   if (!conn) return EMPTY;
-  const token = await getValidAccessToken(user);
-  if (!token) return EMPTY;
-
-  const headers: Headers = {
-    Authorization: `Bearer ${token}`,
-    "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-  };
+  const headers = await helixHeaders(user);
+  if (!headers) return EMPTY;
   const ownId = conn.platformUserId;
   const stats: ChannelStats = { ...EMPTY };
 
@@ -137,20 +132,14 @@ export interface TwitchClip {
 // no special scope, works the same whether it's your own channel or one
 // you're just viewing. Helix already returns clips sorted by view count.
 export async function getTopClips(user: User, channelId: string): Promise<TwitchClip[]> {
-  const token = await getValidAccessToken(user);
-  if (!token) return [];
+  const headers = await helixHeaders(user);
+  if (!headers) return [];
 
   const startedAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   try {
     const res = await fetch(
       `${HELIX}/clips?broadcaster_id=${channelId}&first=10&started_at=${startedAt}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Client-Id": process.env.TWITCH_CLIENT_ID ?? "",
-        },
-        cache: "no-store",
-      }
+      { headers, cache: "no-store" }
     );
     if (!res.ok) {
       console.error("[twitch] clips failed:", res.status, await res.text());

@@ -261,11 +261,21 @@ export function ChatProvider({
   const addSelfMessage = useCallback(
     (text: string, platforms: Platform[]) => {
       if (platforms.length === 0) return;
+      const hasTwitch = platforms.includes("twitch");
+      const hasKick = platforms.includes("kick");
+      const user =
+        hasTwitch && hasKick && ownChannel && kickSlug
+          ? `${ownChannel.displayName} • ${kickSlug}`
+          : hasTwitch
+            ? (ownChannel?.displayName ?? "You")
+            : hasKick
+              ? (kickSlug ?? "You")
+              : "You";
       const msg: ChatMessage = {
         id: `self-${Date.now()}-${Math.random()}`,
         platform: "self",
         platforms,
-        user: ownChannel?.displayName ?? kickSlug ?? "You",
+        user,
         text,
         color: null,
         timestamp: Date.now(),
