@@ -1,6 +1,6 @@
 "use client";
 
-import { Flex, Box, Text } from "@chakra-ui/react";
+import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { useChat } from "../useChat";
 import { useStats, PLATFORM_LABEL } from "../useStats";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
@@ -16,12 +16,10 @@ export function StreamHeader() {
 
   const live = shown.filter((p) => p.isLive);
   const isLive = live.length > 0;
-  // Streamer name — Twitch display name, else the Kick slug.
   const name = activeChannel?.displayName ?? shown[0].channelName;
+  // Best available profile picture — prefer live platform, else first shown.
+  const avatar = (isLive ? live : shown).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
 
-  // Description lines: each live platform's own title/category (so both Twitch
-  // and Kick context show, side by side). Falls back to any shown context when
-  // nothing is live.
   const descRows = (isLive ? live : shown).filter((p) => p.title || p.category);
 
   return (
@@ -34,6 +32,34 @@ export function StreamHeader() {
       borderBottomWidth="1px"
       borderColor="line"
     >
+      {/* Profile avatar */}
+      {avatar ? (
+        <chakra.img
+          src={avatar}
+          alt={name}
+          flex="none"
+          w="40px"
+          h="40px"
+          borderRadius="full"
+          objectFit="cover"
+        />
+      ) : (
+        <Flex
+          flex="none"
+          w="40px"
+          h="40px"
+          borderRadius="full"
+          bg="raised"
+          align="center"
+          justify="center"
+          fontSize="16px"
+          fontWeight="700"
+          color="muted"
+        >
+          {name[0]?.toUpperCase()}
+        </Flex>
+      )}
+
       <Box minW="0" flex="1">
         <Flex align="center" gap="9px" mb="3px">
           <Text fontWeight="600" fontSize="16px" color="text" truncate flex="none">
@@ -87,7 +113,13 @@ export function StreamHeader() {
                     {p.platform.toUpperCase()}
                   </Text>
                 )}
-                <Text fontSize="12.5px" color="muted" lineHeight="1.4">
+                <Text
+                  fontSize="12.5px"
+                  color="muted"
+                  lineHeight="1.4"
+                  minW="0"
+                  style={{ overflowWrap: "anywhere" }}
+                >
                   {p.title || "—"}
                   {p.category ? ` · ${p.category}` : ""}
                 </Text>

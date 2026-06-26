@@ -13,6 +13,19 @@ const config = defineConfig({
     "::-webkit-scrollbar-track": { background: "transparent" },
     "::-webkit-scrollbar-thumb": { background: "#232a38", borderRadius: "6px" },
     "::-webkit-scrollbar-thumb:hover": { background: "#2f3850" },
+    // Pop-out lift + shadow on all interactive elements. Platform chips and mode
+    // buttons layer a colored glow on top via component-level _hover.
+    "button:not([disabled]), a": {
+      transition: "box-shadow .15s, transform .12s",
+    },
+    "button:not([disabled]):hover, a:hover": {
+      transform: "translateY(-1px)",
+      boxShadow: "0 6px 24px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.05)",
+    },
+    "button:not([disabled]):active, a:active": {
+      transform: "translateY(0px) scale(0.97)",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+    },
   },
   theme: {
     keyframes: {

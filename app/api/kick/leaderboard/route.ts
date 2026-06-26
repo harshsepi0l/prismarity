@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchKickLeaderboard } from "@/lib/kick/public";
 
 export const runtime = "nodejs";
+export const revalidate = 3600; // weekly leaderboard, check once per hour
 
 // Public weekly gift leaderboard for any Kick channel by slug.
 export async function GET(req: NextRequest) {

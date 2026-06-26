@@ -45,11 +45,18 @@ export async function sendChatMessage(
 
   // Helix returns data: [{ message_id, is_sent, drop_reason? }].
   const json = (await res.json()) as {
-    data?: { is_sent?: boolean; drop_reason?: { message?: string } }[];
+    data?: { is_sent?: boolean; drop_reason?: { code?: string; message?: string } }[];
   };
   const result = json.data?.[0];
   if (result && result.is_sent === false) {
-    return { ok: false, error: result.drop_reason?.message ?? "dropped" };
+    switch (result.drop_reason?.code) {
+      case "msg_followersonly": return { ok: false, error: "follower_only" };
+      case "msg_subsonly":      return { ok: false, error: "sub_only" };
+      case "msg_slowmode":      return { ok: false, error: "slow_mode" };
+      case "msg_timedout":      return { ok: false, error: "timed_out" };
+      case "msg_banned":        return { ok: false, error: "banned" };
+      default:                  return { ok: false, error: result.drop_reason?.code ?? "send_failed" };
+    }
   }
   return { ok: true };
 }

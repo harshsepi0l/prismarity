@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Box, Flex, Input, Button, Text, chakra } from "@chakra-ui/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Box, Flex, Input, Text, chakra } from "@chakra-ui/react";
 import { useChat } from "../../useChat";
 import { useEmotes, useEmoteCategories } from "../../useEmotes";
 import { useSession } from "../../useSession";
@@ -27,6 +27,11 @@ const ERROR_TEXT: Record<string, string> = {
   send_failed: "The platform rejected the message",
   no_channel: "Select a channel to chat",
   network: "Network error",
+  follower_only: "Follower-only chat — follow to send messages",
+  sub_only: "Subscriber-only chat",
+  slow_mode: "Slow mode — wait a moment before sending again",
+  timed_out: "You're timed out in this chat",
+  banned: "You're banned from this chat",
 };
 
 function friendly(error?: string): string {
@@ -41,9 +46,7 @@ export default function Composer() {
   const { sendTargets, toggleSendTarget } = useSession();
   const { platforms } = useStats();
 
-  // Live status per platform for the active selection — drives the offline-chat
-  // indicators (both Twitch and Kick allow chatting in an offline channel, so we
-  // surface the state rather than block the send).
+  // Live status per platform for the active selection.
   const liveByPlatform: Partial<Record<Platform, boolean>> = {};
   for (const p of platforms) liveByPlatform[p.platform] = p.isLive;
 
@@ -53,6 +56,45 @@ export default function Composer() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorPlatform, setErrorPlatform] = useState<"twitch" | "kick" | null>(null);
+
+  // Both platforms are reactive-only: a failed send is the only reliable signal
+  // that the user isn't following. No proactive API checks, no proactive banners.
+  // After clicking Follow we show a countdown so they know when to try again.
+  const [followCountdown, setFollowCountdown] = useState<number | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startFollowCountdown = useCallback((seconds: number) => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    setFollowCountdown(seconds);
+    countdownRef.current = setInterval(() => {
+      setFollowCountdown((n) => {
+        if (n == null || n <= 1) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          countdownRef.current = null;
+          return null;
+        }
+        return n - 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => () => { if (countdownRef.current) clearInterval(countdownRef.current); }, []);
+
+  const twitchFollowerMinutes =
+    platforms.find((p) => p.platform === "twitch")?.chatMode?.followerMinutes ?? 0;
+  const kickFollowerMinutes =
+    platforms.find((p) => p.platform === "kick")?.chatMode?.followerMinutes ?? 0;
+
+  // Reactive follow link — shown only after a failed send proves the user isn't following.
+  const isFollowerError = error === ERROR_TEXT.follower_only;
+  const reactiveFollowLink = isFollowerError
+    ? errorPlatform === "twitch"
+      ? `https://twitch.tv/${activeChannel?.login ?? ""}`
+      : errorPlatform === "kick"
+        ? `https://kick.com/${activeKick?.slug ?? ""}`
+        : null
+    : null;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [emoteQuery, setEmoteQuery] = useState("");
   const [activeTab, setActiveTab] = useState<EmoteTab>("all");
@@ -165,17 +207,20 @@ export default function Composer() {
 
     setSending(true);
     setError(null);
+    setErrorPlatform(null);
     try {
       const results = await Promise.all(
         deliverable.map(async (t) => ({ platform: t, ...(await sendOne(t, message)) }))
       );
       const succeeded = results.filter((r) => r.ok).map((r) => r.platform);
-      // One unified feed entry for everywhere it actually went.
       if (succeeded.length > 0) addSelfMessage(message, succeeded);
 
       const failed = results.find((r) => !r.ok);
       if (failed) {
         setError(friendly(failed.error));
+        setErrorPlatform(
+          failed.platform === "twitch" || failed.platform === "kick" ? failed.platform : null
+        );
       } else {
         setText("");
         setPickerOpen(false);
@@ -373,7 +418,7 @@ export default function Composer() {
             </svg>
           </chakra.button>
 
-          <Button
+          <chakra.button
             type="submit"
             flex="none"
             disabled={!canSend}
@@ -383,11 +428,14 @@ export default function Composer() {
             px="20px"
             py="9px"
             borderRadius="7px"
-            _hover={{ bg: "#968f8f" }}
-            _disabled={{ opacity: 0.5, cursor: "not-allowed" }}
+            color="white"
+            cursor={canSend ? "pointer" : "not-allowed"}
+            opacity={canSend ? 1 : 0.5}
+            transition="background .12s, opacity .12s"
+            _hover={{ bg: canSend ? "#968f8f" : "#4f4c4c" }}
           >
             {sending ? "…" : "Send"}
-          </Button>
+          </chakra.button>
         </Flex>
       </Box>
       <Flex mt="10px" align="center" gap="12px">
@@ -426,7 +474,7 @@ export default function Composer() {
               >
                 <PlatformIcon
                   platform={id}
-                  color={on && offline ? "#5C6479" : color}
+                  color={color}
                   size={17}
                 />
                 {on && offline && (
@@ -437,10 +485,11 @@ export default function Composer() {
                     w="7px"
                     h="7px"
                     borderRadius="full"
-                    bg="#5C6479"
+                    bg="#F5A623"
                     borderWidth="1.5px"
                     borderColor="bg"
                     title="offline"
+                    style={{ animation: "pris-pulse 1.2s ease-in-out infinite" }}
                   />
                 )}
               </chakra.button>
@@ -475,20 +524,81 @@ export default function Composer() {
           </Text>
         )}
 
-        <Text
-          ml="auto"
-          fontFamily="mono"
-          fontSize="10px"
-          letterSpacing="0.04em"
-          color={error ? "#FF5C5C" : "faint"}
-        >
-          {error
-            ? error
-            : channelName
-              ? `Chatting in ${channelName}`
-              : "Select a channel to start chatting."}
-        </Text>
+        {error ? (
+          <Flex align="center" gap="8px" ml="auto">
+            <Text
+              fontFamily="mono"
+              fontSize="10px"
+              letterSpacing="0.04em"
+              color="#FF5C5C"
+            >
+              {error}
+            </Text>
+            {reactiveFollowLink && (
+              <chakra.a
+                href={reactiveFollowLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  const mins = errorPlatform === "twitch" ? twitchFollowerMinutes : kickFollowerMinutes;
+                  startFollowCountdown(Math.max(15, mins > 0 ? mins * 60 : errorPlatform === "twitch" ? 60 : 15));
+                }}
+                px="8px"
+                py="2px"
+                borderRadius="5px"
+                fontSize="10px"
+                fontWeight="600"
+                bg={errorPlatform === "twitch" ? "#A66CFF22" : "#5BE37D22"}
+                color={errorPlatform === "twitch" ? "twitch" : "kick"}
+                borderWidth="1px"
+                borderColor={errorPlatform === "twitch" ? "#A66CFF44" : "#5BE37D44"}
+                flex="none"
+                transition="background .12s"
+                _hover={{ bg: errorPlatform === "twitch" ? "#A66CFF33" : "#5BE37D33" }}
+              >
+                Follow
+              </chakra.a>
+            )}
+          </Flex>
+        ) : (
+          <Text
+            ml="auto"
+            fontFamily="mono"
+            fontSize="10px"
+            letterSpacing="0.04em"
+            color="faint"
+          >
+            {channelName ? `Chatting in ${channelName}` : "Select a channel to start chatting."}
+          </Text>
+        )}
       </Flex>
+
+      {/* Follow countdown — shown after clicking Follow from a reactive error */}
+      {followCountdown !== null && (
+        <Flex
+          align="center"
+          gap="8px"
+          mt="8px"
+          px="12px"
+          py="7px"
+          borderRadius="8px"
+          bg={errorPlatform === "twitch" ? "#1a1f2e" : "#0f2318"}
+          borderWidth="1px"
+          borderColor={errorPlatform === "twitch" ? "#A66CFF44" : "#5BE37D44"}
+        >
+          <Box
+            w="6px" h="6px" flex="none" borderRadius="full"
+            bg={errorPlatform === "twitch" ? "twitch" : "kick"}
+            style={{ animation: "pris-pulse 1s ease-in-out infinite" }}
+          />
+          <Text fontSize="12px" color="muted" flex="1">
+            {"Follow registered — try sending again in "}
+            <Text as="span" color={errorPlatform === "twitch" ? "twitch" : "kick"} fontWeight="600">
+              {followCountdown}s
+            </Text>
+          </Text>
+        </Flex>
+      )}
     </Box>
   );
 }

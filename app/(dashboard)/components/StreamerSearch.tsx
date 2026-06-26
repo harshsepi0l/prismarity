@@ -73,7 +73,7 @@ function ResultRow({
 }
 
 export function StreamerSearch() {
-  const { activeChannel, activeKickOnly, selectSearchResult } = useChat();
+  const { activeChannel, activeKickOnly, selectSearchResult, addWatchedChannel } = useChat();
   const { activeFilters } = useSession();
   const twitchOn = activeFilters.has("twitch");
   const kickOn = activeFilters.has("kick");
@@ -124,6 +124,7 @@ export function StreamerSearch() {
 
   function handleSelect(r: SearchResult) {
     selectSearchResult(r);
+    addWatchedChannel(r);
     setOpen(false);
   }
 
