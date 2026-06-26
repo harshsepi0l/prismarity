@@ -13,12 +13,11 @@ const LABELS: Record<Mode, string> = {
 
 interface ModeToggleProps {
   mode: Mode;
-  modes: Mode[]; // only the modes allowed for the active channel
+  modes: Mode[];
   onChange: (mode: Mode) => void;
 }
 
 export default function ModeToggle({ mode, modes, onChange }: ModeToggleProps) {
-  // Render in a stable order regardless of how `modes` is ordered.
   const order: Mode[] = ["creator", "moderator", "viewer"];
   const shown = order.filter((m) => modes.includes(m));
 
@@ -40,8 +39,8 @@ export default function ModeToggle({ mode, modes, onChange }: ModeToggleProps) {
             cursor="pointer"
             bg={active ? "panel" : "transparent"}
             color={active ? "text" : "faint"}
-            transition="background .12s, color .12s"
-            _hover={active ? undefined : { color: "muted" }}
+            transition="background .12s, color .12s, box-shadow .12s, transform .1s"
+            _hover={active ? { boxShadow: "0 2px 10px rgba(0,0,0,0.4)" } : { color: "muted", boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}
           >
             {active && (
               <Box

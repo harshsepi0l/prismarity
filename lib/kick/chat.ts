@@ -30,8 +30,15 @@ export async function sendKickMessage(
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    console.error("[kick] send chat failed:", res.status, body);
+    const bodyText = await res.text().catch(() => "");
+    console.error("[kick] send chat failed:", res.status, bodyText);
+    // Kick returns 403 for both missing scope AND follower/sub mode rejection.
+    // Distinguish by looking for mode-specific keywords in the response body.
+    if (res.status === 403 || res.status === 422) {
+      const lower = bodyText.toLowerCase();
+      if (lower.includes("follow")) return { ok: false, error: "follower_only" };
+      if (lower.includes("subscri")) return { ok: false, error: "sub_only" };
+    }
     return {
       ok: false,
       error: res.status === 401 || res.status === 403 ? "unauthorized" : "send_failed",

@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getTopClips } from "@/lib/twitch/stats";
 
 export const runtime = "nodejs";
+export const revalidate = 3600; // clips change at most once an hour
 
 // Top clips from the trailing week for any channel — public data either way.
 export async function GET(req: NextRequest) {

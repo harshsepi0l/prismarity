@@ -62,6 +62,29 @@ export function BadgeChip({
     );
   }
 
+  // Level badges: show the actual level number with a distinct Kick-green style.
+  if (badge.setId === "level") {
+    return (
+      <Text
+        fontFamily="mono"
+        fontSize="9px"
+        fontWeight="700"
+        letterSpacing="0.02em"
+        color="#5BE37D"
+        borderWidth="1px"
+        borderColor="#5BE37D44"
+        borderRadius="4px"
+        px="4px"
+        py="1px"
+        flex="none"
+        bg="#5BE37D11"
+        title={`Level ${badge.id}`}
+      >
+        Lv.{badge.id}
+      </Text>
+    );
+  }
+
   return (
     <Text
       fontFamily="mono"

@@ -8,6 +8,7 @@ import { useChat, type KickOnlyChannel } from "../useChat";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon } from "./PlatformIcon";
 import type { FollowedChannel } from "@/lib/twitch/channels";
+import type { SearchResult } from "../chat/types";
 
 const CHAT_ICON = (
   <Box
@@ -206,6 +207,120 @@ function OwnKickButton({
   );
 }
 
+// A channel added from search — sits in the CHANNELS section as a tab.
+function WatchedChannelButton({
+  result,
+  active,
+  collapsed,
+  onSelect,
+  onRemove,
+}: {
+  result: SearchResult;
+  active: boolean;
+  collapsed: boolean;
+  onSelect: () => void;
+  onRemove: () => void;
+}) {
+  const isLive = result.twitch?.isLive || result.kick?.isLive;
+  const avatar = result.profileImageUrl;
+  const initial = result.displayName[0]?.toUpperCase() ?? "?";
+
+  // Small circular avatar — profile image if available, coloured initial otherwise.
+  const Avatar = (
+    <Box position="relative" flex="none" w="24px" h="24px">
+      {avatar ? (
+        <chakra.img
+          src={avatar}
+          alt={result.displayName}
+          w="24px"
+          h="24px"
+          borderRadius="full"
+          objectFit="cover"
+        />
+      ) : (
+        <Flex
+          w="24px"
+          h="24px"
+          borderRadius="full"
+          bg="raised"
+          align="center"
+          justify="center"
+          fontSize="10px"
+          fontWeight="700"
+          color="muted"
+        >
+          {initial}
+        </Flex>
+      )}
+      {isLive && (
+        <Box
+          position="absolute"
+          bottom="-1px"
+          right="-1px"
+          w="7px"
+          h="7px"
+          borderRadius="full"
+          bg="#FF5C5C"
+          borderWidth="1.5px"
+          borderColor="bg"
+        />
+      )}
+    </Box>
+  );
+
+  return (
+    <Flex align="center" gap="3px">
+      <chakra.button
+        type="button"
+        onClick={onSelect}
+        title={collapsed ? result.displayName : undefined}
+        display="flex"
+        alignItems="center"
+        justifyContent={collapsed ? "center" : "flex-start"}
+        gap="8px"
+        flex="1"
+        minW="0"
+        px={collapsed ? "0" : "8px"}
+        py="5px"
+        borderRadius="8px"
+        bg={active ? "raised" : "transparent"}
+        color={active ? "text" : "muted"}
+        cursor="pointer"
+        transition="background .12s, color .12s"
+        _hover={{ bg: "raised", color: "text" }}
+      >
+        {Avatar}
+        {!collapsed && (
+          <Text flex="1" minW="0" fontSize="12px" textAlign="left" truncate>
+            {result.displayName}
+          </Text>
+        )}
+      </chakra.button>
+      {!collapsed && (
+        <chakra.button
+          type="button"
+          onClick={onRemove}
+          title="Remove channel"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          w="18px"
+          h="18px"
+          flex="none"
+          borderRadius="4px"
+          fontSize="10px"
+          color="faint"
+          cursor="pointer"
+          transition="color .12s, background .12s"
+          _hover={{ color: "muted", bg: "raised" }}
+        >
+          ✕
+        </chakra.button>
+      )}
+    </Flex>
+  );
+}
+
 interface NavRailProps {
   auth: {
     twitch: { displayName: string } | null;
@@ -289,8 +404,12 @@ export function NavRail({ auth }: NavRailProps) {
     activeChannel,
     activeKickOnly,
     activeRole,
+    watchedChannels,
     selectChannel,
     selectKickOnly,
+    selectSearchResult,
+    clearSelection,
+    removeWatchedChannel,
   } = useChat();
   const collapsed = navWidth < COLLAPSE_AT;
 
@@ -400,6 +519,37 @@ export function NavRail({ auth }: NavRailProps) {
           )}
         </Flex>
       </Box>
+
+      {watchedChannels.length > 0 && (
+        <Box mb="20px">
+          {!collapsed && <SectionLabel>CHANNELS</SectionLabel>}
+          <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
+            {watchedChannels.map((result) => {
+              const active =
+                (!!result.twitch && activeChannel?.id === result.twitch.id) ||
+                (!!result.kick && activeKickOnly === result.kick.slug.toLowerCase());
+              return (
+                <WatchedChannelButton
+                  key={result.handle}
+                  result={result}
+                  active={active}
+                  collapsed={collapsed}
+                  onSelect={() => selectSearchResult(result)}
+                  onRemove={() => {
+                    if (active) {
+                      const idx = watchedChannels.findIndex((c) => c.handle === result.handle);
+                      const prev = idx > 0 ? watchedChannels[idx - 1] : null;
+                      if (prev) selectSearchResult(prev);
+                      else clearSelection();
+                    }
+                    removeWatchedChannel(result.handle);
+                  }}
+                />
+              );
+            })}
+          </Flex>
+        </Box>
+      )}
 
       {showWorkspace && (
         <>

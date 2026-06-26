@@ -25,14 +25,29 @@ export async function POST(req: NextRequest) {
   }
 
   let broadcasterUserId: number | null = Number(conn.platformUserId);
+  let channelPublic = null as Awaited<ReturnType<typeof fetchKickPublic>>;
   if (body.slug) {
-    const p = await fetchKickPublic(body.slug);
-    broadcasterUserId = p?.broadcasterUserId ?? null;
+    channelPublic = await fetchKickPublic(body.slug);
+    broadcasterUserId = channelPublic?.broadcasterUserId ?? null;
   }
   if (!broadcasterUserId) {
     return NextResponse.json({ ok: false, error: "no_channel" }, { status: 400 });
   }
 
   const result = await sendKickMessage(user, broadcasterUserId, message);
+
+  if (!result.ok && result.error === "unauthorized") {
+    // Kick's API returns a generic 403 "Forbidden" for both missing-scope and
+    // follower/subscriber-mode rejections — the body never mentions "follow".
+    // Cross-check against the channel's known chatMode (already fetched above)
+    // to surface the correct error to the client.
+    if (channelPublic?.chatMode.followerOnly) {
+      return NextResponse.json({ ok: false, error: "follower_only" }, { status: 400 });
+    }
+    if (channelPublic?.chatMode.subOnly) {
+      return NextResponse.json({ ok: false, error: "sub_only" }, { status: 400 });
+    }
+  }
+
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }
