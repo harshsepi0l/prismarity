@@ -1,9 +1,12 @@
 import type { User } from "@/lib/auth/types";
 import { getValidKickToken, kickConnection, KICK_API } from "./client";
-import { fetchKickPublic } from "./public";
+import { fetchKickPublic, type KickChatMode } from "./public";
+
+export type { KickChatMode };
 
 export interface KickStats {
   channelName: string;
+  profileImageUrl: string | null;
   isLive: boolean;
   viewers: number;
   startedAt: string | null;
@@ -11,6 +14,7 @@ export interface KickStats {
   title: string;
   subs: number | null;
   followers: number | null;
+  chatMode: KickChatMode | null;
 }
 
 // Stats for any Kick channel by slug (public data — used for channels you watch).
@@ -18,7 +22,8 @@ export async function getKickStatsBySlug(slug: string): Promise<KickStats | null
   const p = await fetchKickPublic(slug);
   if (!p) return null;
   return {
-    channelName: p.slug,
+    channelName: p.displayName,
+    profileImageUrl: p.profileImageUrl,
     isLive: p.isLive,
     viewers: p.viewers,
     startedAt: p.startedAt,
@@ -26,6 +31,7 @@ export async function getKickStatsBySlug(slug: string): Promise<KickStats | null
     title: p.title,
     subs: p.subs,
     followers: p.followers,
+    chatMode: p.chatMode,
   };
 }
 
@@ -61,7 +67,8 @@ export async function getKickOwnStats(user: User): Promise<KickStats | null> {
     // Followers aren't on the authed channel payload — pull from public data.
     const pub = await fetchKickPublic(c.slug);
     return {
-      channelName: c.slug,
+      channelName: pub?.displayName ?? c.slug,
+      profileImageUrl: pub?.profileImageUrl ?? null,
       isLive: c.stream?.is_live ?? false,
       viewers: c.stream?.viewer_count ?? 0,
       startedAt: c.stream?.start_time ?? null,
@@ -69,6 +76,7 @@ export async function getKickOwnStats(user: User): Promise<KickStats | null> {
       title: c.stream_title ?? "",
       subs: typeof c.active_subscribers_count === "number" ? c.active_subscribers_count : null,
       followers: pub?.followers ?? null,
+      chatMode: pub?.chatMode ?? null,
     };
   } catch (e) {
     console.error("[kick] own stats error:", e instanceof Error ? e.message : e);

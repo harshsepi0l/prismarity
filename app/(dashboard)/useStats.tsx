@@ -3,7 +3,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ChannelStats, TwitchClip } from "@/lib/twitch/stats";
 import type { KickStats } from "@/lib/kick/stats";
-import type { KickLeader } from "@/lib/kick/public";
+import type { KickLeader, KickChatMode } from "@/lib/kick/public";
+import type { TwitchChatSettings } from "@/app/api/twitch/chat/settings/route";
 import type { Platform } from "./chat/types";
 import type { CheerLeader, GiftLeader } from "./chat/useTwitchChat";
 import { useChat } from "./useChat";
@@ -14,7 +15,8 @@ import { useSession } from "./useSession";
 export interface PlatformLive {
   platform: Platform;
   channelName: string;
-  included: boolean; // toggled on via the top-bar chips (the lens)
+  profileImageUrl: string | null;
+  included: boolean;
   isLive: boolean;
   viewers: number;
   peakViewers: number;
@@ -26,6 +28,8 @@ export interface PlatformLive {
   followers: number | null;
   subs: number | null;
   chatters: number | null;
+  // Chat mode restrictions for this platform's current channel.
+  chatMode: { followerOnly: boolean; followerMinutes: number; subOnly: boolean } | null;
 }
 
 export interface LiveStats {
@@ -86,12 +90,39 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
 
   const [twitchServer, setTwitchServer] = useState<ChannelStats | null>(null);
   const [kickServer, setKickServer] = useState<KickStats | null>(null);
+  const [twitchAvatar, setTwitchAvatar] = useState<string | null>(null);
+  const [twitchChatSettings, setTwitchChatSettings] = useState<TwitchChatSettings | null>(null);
   const [peakTwitch, setPeakTwitch] = useState(0);
   const [peakKick, setPeakKick] = useState(0);
   const [loading, setLoading] = useState(false);
   const [derived, setDerived] = useState<Derived>(EMPTY_DERIVED);
   const [kickLeaders, setKickLeaders] = useState<KickLeader[]>([]);
   const [clips, setClips] = useState<TwitchClip[]>([]);
+
+  // Twitch profile picture + chat settings — fetched once per active channel.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!channelId) {
+      setTwitchAvatar(null);
+      setTwitchChatSettings(null);
+      return;
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    fetch(`/api/twitch/user?id=${channelId}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { user?: { profileImageUrl?: string } | null }) => {
+        if (!cancelled) setTwitchAvatar(j.user?.profileImageUrl ?? null);
+      })
+      .catch(() => {});
+    fetch(`/api/twitch/chat/settings?channelId=${channelId}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { ok?: boolean; settings?: TwitchChatSettings } | null) => {
+        if (!cancelled) setTwitchChatSettings(j?.settings ?? null);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [channelId]);
 
   // Weekly Kick gift leaderboard — public for any channel.
   useEffect(() => {
@@ -259,6 +290,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     platforms.push({
       platform: "twitch",
       channelName: activeChannel.displayName,
+      profileImageUrl: twitchAvatar,
       included: activeFilters.has("twitch"),
       isLive: twitchServer?.isLive ?? false,
       viewers: twitchServer?.viewers ?? 0,
@@ -269,12 +301,21 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       followers: twitchServer?.followers ?? null,
       subs: twitchServer?.subs ?? null,
       chatters: twitchServer?.chatters ?? null,
+      chatMode: twitchChatSettings
+        ? {
+            followerOnly: twitchChatSettings.followerOnly,
+            followerMinutes: twitchChatSettings.followerMinutes,
+            subOnly: twitchChatSettings.subOnly,
+          }
+        : null,
     });
   }
   if (activeKick) {
+    const km = kickServer?.chatMode ?? null;
     platforms.push({
       platform: "kick",
       channelName: kickServer?.channelName || activeKick.slug,
+      profileImageUrl: kickServer?.profileImageUrl ?? null,
       included: activeFilters.has("kick"),
       isLive: kickServer?.isLive ?? false,
       viewers: kickServer?.viewers ?? 0,
@@ -285,6 +326,9 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       followers: kickServer?.followers ?? null,
       subs: kickServer?.subs ?? null,
       chatters: null,
+      chatMode: km
+        ? { followerOnly: km.followerOnly, followerMinutes: km.followerMinutes, subOnly: km.subOnly }
+        : null,
     });
   }
 

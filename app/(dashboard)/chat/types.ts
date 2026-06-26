@@ -8,8 +8,9 @@ export type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
 export interface SearchResult {
   handle: string;
   displayName: string;
-  twitch: { id: string; login: string; displayName: string; isLive: boolean; role: Role } | null;
-  kick: { slug: string; isLive: boolean; viewers: number; chatroomId: number | null } | null;
+  profileImageUrl: string | null;
+  twitch: { id: string; login: string; displayName: string; profileImageUrl: string | null; isLive: boolean; role: Role } | null;
+  kick: { slug: string; profileImageUrl: string | null; isLive: boolean; viewers: number; chatroomId: number | null } | null;
 }
 
 export interface ChatMessage {

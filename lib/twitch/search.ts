@@ -7,6 +7,7 @@ export interface TwitchSearchHit {
   id: string;
   login: string;
   displayName: string;
+  profileImageUrl: string | null;
   isLive: boolean;
   role: Role;
 }
@@ -16,6 +17,7 @@ interface HelixSearchChannel {
   broadcaster_login: string;
   display_name: string;
   is_live: boolean;
+  thumbnail_url?: string; // broadcaster's profile image
 }
 
 // Searches Twitch channels by name (Helix search/channels). Tags each hit with
@@ -55,6 +57,7 @@ export async function searchTwitchChannels(
       id: d.id,
       login: d.broadcaster_login,
       displayName: d.display_name,
+      profileImageUrl: d.thumbnail_url ?? null,
       isLive: d.is_live,
       role: d.id === ownId ? "creator" : moderated.has(d.id) ? "moderator" : "viewer",
     }));

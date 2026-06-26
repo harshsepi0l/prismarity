@@ -38,7 +38,17 @@ export default function FilterChips({ active, connected, onChange }: FilterChips
             fontFamily="mono"
             fontSize="12px"
             cursor={isConnected ? "pointer" : "not-allowed"}
-            transition="background .12s, border-color .12s, color .12s"
+            transition="background .12s, border-color .12s, color .12s, box-shadow .12s, transform .1s"
+            _hover={
+              isConnected
+                ? {
+                    transform: "translateY(-2px)",
+                    boxShadow: on
+                      ? `0 0 22px ${color}80, 0 0 8px ${color}50, 0 6px 20px rgba(0,0,0,0.6)`
+                      : `0 0 12px ${color}35, 0 6px 20px rgba(0,0,0,0.55)`,
+                  }
+                : undefined
+            }
             style={
               !isConnected
                 ? { background: "transparent", border: "1px solid #232a38", color: "#5C6479", opacity: 0.4 }

@@ -21,11 +21,12 @@ export async function GET(req: NextRequest) {
     ...new Set([q.toLowerCase(), ...twitchHits.map((h) => h.login.toLowerCase())]),
   ].slice(0, 6);
   const probed = await Promise.all(candidates.map((s) => fetchKickPublic(s)));
-  const kickByHandle = new Map<string, { slug: string; isLive: boolean; viewers: number; chatroomId: number | null }>();
+  const kickByHandle = new Map<string, { slug: string; profileImageUrl: string | null; isLive: boolean; viewers: number; chatroomId: number | null }>();
   for (const p of probed) {
     if (p) {
       kickByHandle.set(p.slug.toLowerCase(), {
         slug: p.slug,
+        profileImageUrl: p.profileImageUrl,
         isLive: p.isLive,
         viewers: p.viewers,
         chatroomId: p.chatroomId,
@@ -39,11 +40,13 @@ export async function GET(req: NextRequest) {
   for (const h of twitchHits) {
     const handle = h.login.toLowerCase();
     seen.add(handle);
+    const kick = kickByHandle.get(handle) ?? null;
     results.push({
       handle,
       displayName: h.displayName,
-      twitch: { id: h.id, login: h.login, displayName: h.displayName, isLive: h.isLive, role: h.role },
-      kick: kickByHandle.get(handle) ?? null,
+      profileImageUrl: h.profileImageUrl ?? kick?.profileImageUrl ?? null,
+      twitch: { id: h.id, login: h.login, displayName: h.displayName, profileImageUrl: h.profileImageUrl, isLive: h.isLive, role: h.role },
+      kick,
     });
   }
 
@@ -51,7 +54,7 @@ export async function GET(req: NextRequest) {
   const qh = q.toLowerCase();
   const kq = kickByHandle.get(qh);
   if (kq && !seen.has(qh)) {
-    results.push({ handle: qh, displayName: kq.slug, twitch: null, kick: kq });
+    results.push({ handle: qh, displayName: kq.slug, profileImageUrl: kq.profileImageUrl, twitch: null, kick: kq });
   }
 
   return NextResponse.json({ results });

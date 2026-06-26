@@ -10,8 +10,19 @@ export interface KickSubBadgeTier {
   imageUrl: string;
 }
 
+export interface KickChatMode {
+  followerOnly: boolean;
+  followerMinutes: number; // 0 = any follower; >0 = must have followed for N minutes
+  subOnly: boolean;
+  slowMode: boolean;
+  slowModeInterval: number;
+  emotesOnly: boolean;
+}
+
 export interface KickPublic {
   slug: string;
+  displayName: string;
+  profileImageUrl: string | null;
   broadcasterUserId: number | null;
   chatroomId: number | null;
   isLive: boolean;
@@ -21,9 +32,8 @@ export interface KickPublic {
   title: string;
   followers: number | null;
   subs: number | null;
-  // Custom subscriber badge art per month-tier, sorted ascending — pick the
-  // highest tier whose `months` is <= the chatter's sub badge count.
   subBadges: KickSubBadgeTier[];
+  chatMode: KickChatMode;
 }
 
 interface V2Channel {
@@ -31,9 +41,18 @@ interface V2Channel {
   user_id?: number;
   broadcaster_user_id?: number;
   slug?: string;
+  user?: { username?: string; profile_pic?: string; profile_picture?: string };
   followers_count?: number;
   followersCount?: number;
-  chatroom?: { id?: number };
+  chatroom?: {
+    id?: number;
+    followers_mode?: boolean;
+    followers_mode_duration?: number; // minutes you must have followed
+    subscribers_mode?: boolean;
+    slow_mode?: boolean;
+    slow_mode_message_interval?: number;
+    emotes_mode?: boolean;
+  };
   subscriber_badges?: { months?: number; badge_image?: { src?: string } }[];
   livestream?: {
     is_live?: boolean;
@@ -65,6 +84,8 @@ export async function fetchKickPublic(slug: string): Promise<KickPublic | null> 
     const ls = c.livestream ?? null;
     return {
       slug: c.slug ?? clean,
+      displayName: c.user?.username ?? c.slug ?? clean,
+      profileImageUrl: c.user?.profile_pic ?? c.user?.profile_picture ?? null,
       broadcasterUserId: c.user_id ?? c.broadcaster_user_id ?? null,
       chatroomId: c.chatroom?.id ?? null,
       isLive: !!ls && (ls.is_live ?? true),
@@ -74,6 +95,14 @@ export async function fetchKickPublic(slug: string): Promise<KickPublic | null> 
       title: ls?.session_title ?? "",
       followers: c.followers_count ?? c.followersCount ?? null,
       subs: null,
+      chatMode: {
+        followerOnly: c.chatroom?.followers_mode ?? false,
+        followerMinutes: c.chatroom?.followers_mode_duration ?? 0,
+        subOnly: c.chatroom?.subscribers_mode ?? false,
+        slowMode: c.chatroom?.slow_mode ?? false,
+        slowModeInterval: c.chatroom?.slow_mode_message_interval ?? 0,
+        emotesOnly: c.chatroom?.emotes_mode ?? false,
+      },
       subBadges: (c.subscriber_badges ?? [])
         .filter((b): b is { months: number; badge_image: { src: string } } =>
           typeof b.months === "number" && !!b.badge_image?.src
@@ -94,7 +123,7 @@ export interface KickLeader {
 
 interface V2LeaderboardEntry {
   username?: string;
-  user?: { username?: string };
+  user?: { username?: string; profile_pic?: string; profile_picture?: string };
   quantity?: number;
   gifted_amount?: number;
   amount?: number;
