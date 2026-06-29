@@ -32,6 +32,11 @@ jobs:
           cp -r .next/server .next/standalone/.next/server
           cp -r public .next/standalone/public
 
+      - name: Zip standalone for deployment
+        run: |
+          cd .next/standalone
+          zip -r ../../standalone.zip .
+
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
@@ -64,4 +69,5 @@ jobs:
         with:
           app-name: 'prismarity'
           slot-name: 'Production'
-          package: .
+          package: standalone.zip
+          clean: true 
