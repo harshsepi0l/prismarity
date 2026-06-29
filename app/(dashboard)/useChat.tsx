@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ChatMessage, ConnectionStatus, Platform, SearchResult } from "./chat/types";
@@ -60,6 +61,8 @@ interface ChatStore {
   addWatchedChannel: (result: SearchResult) => void;
   removeWatchedChannel: (handle: string) => void;
   addSelfMessage: (text: string, platforms: Platform[]) => void;
+  beaconMode: boolean;
+  setBeaconMode: (on: boolean) => void;
 }
 
 const ChatContext = createContext<ChatStore | null>(null);
@@ -115,6 +118,50 @@ export function ChatProvider({
   const [pendingKick, setPendingKick] = useState<PendingKick | null>(null);
   const [activeKick, setActiveKick] = useState<ActiveKick | null>(null);
   const [selfMessages, setSelfMessages] = useState<ChatMessage[]>([]);
+  const [beaconMode, setBeaconModeState] = useState(false);
+  const lastBeaconRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBeaconModeState(localStorage.getItem("prismarity:beacon-mode") === "1");
+  }, []);
+
+  const setBeaconMode = useCallback((on: boolean) => {
+    setBeaconModeState(on);
+    localStorage.setItem("prismarity:beacon-mode", on ? "1" : "0");
+    if (!on) lastBeaconRef.current = null;
+  }, []);
+
+  // Beacon: poll /api/beacon every 3s and auto-select the detected stream.
+  useEffect(() => {
+    if (!beaconMode) return;
+    async function poll() {
+      try {
+        const res = await fetch("/api/beacon");
+        if (!res.ok) return;
+        const data = (await res.json()) as { platform?: string; channel?: string };
+        if (!data.channel || !data.platform) return;
+        const key = `${data.platform}:${data.channel}`;
+        if (key === lastBeaconRef.current) return;
+        lastBeaconRef.current = key;
+        const sr = await fetch(`/api/search?q=${encodeURIComponent(data.channel)}`);
+        if (!sr.ok) return;
+        const { results } = (await sr.json()) as { results: SearchResult[] };
+        const match =
+          results.find(
+            (r) =>
+              (data.platform === "twitch" && r.twitch?.login.toLowerCase() === data.channel) ||
+              (data.platform === "kick" && r.kick?.slug.toLowerCase() === data.channel)
+          ) ?? results[0] ?? null;
+        if (match) selectSearchResult(match);
+      } catch { /* network errors are silent in beacon mode */ }
+    }
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => clearInterval(id);
+  // selectSearchResult is stable (useCallback [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [beaconMode]);
 
   // Pin your own Twitch channel (creator), refreshing live status periodically.
   useEffect(() => {
@@ -344,6 +391,8 @@ export function ChatProvider({
         addWatchedChannel,
         removeWatchedChannel,
         addSelfMessage,
+        beaconMode,
+        setBeaconMode,
       }}
     >
       {children}

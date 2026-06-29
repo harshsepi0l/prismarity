@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { RichInput, type RichInputHandle } from "./RichInput";
 import { Box, Flex, Input, Text, chakra } from "@chakra-ui/react";
 import { useChat } from "../../useChat";
 import { useEmotes, useEmoteCategories } from "../../useEmotes";
@@ -17,7 +18,26 @@ const TAB_LABEL: Record<EmoteTab, string> = {
   "7tv": "7TV",
   bttv: "BTTV",
   ffz: "FFZ",
+  "twitch-channel": "Channel",
 };
+
+function LockBadge() {
+  return (
+    <Box
+      position="absolute"
+      bottom="2px"
+      right="2px"
+      borderRadius="3px"
+      px="2px"
+      py="1px"
+      style={{ background: "rgba(0,0,0,0.65)", lineHeight: 0 }}
+    >
+      <svg width="8" height="8" viewBox="0 0 24 24" fill="white" aria-hidden>
+        <path d="M18 10h-1V7c0-2.76-2.24-5-5-5S7 4.24 7 7v3H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V7c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v3z" />
+      </svg>
+    </Box>
+  );
+}
 
 const ERROR_TEXT: Record<string, string> = {
   not_logged_in: "Log in to chat",
@@ -53,7 +73,9 @@ export default function Composer() {
   // The name shown in placeholders/status — Twitch channel, else the Kick slug.
   const channelName = activeChannel?.displayName ?? activeKick?.slug ?? activeKickOnly ?? null;
 
+  const richInputRef = useRef<RichInputHandle>(null);
   const [text, setText] = useState("");
+  const [textBeforeCursor, setTextBeforeCursor] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorPlatform, setErrorPlatform] = useState<"twitch" | "kick" | null>(null);
@@ -62,7 +84,7 @@ export default function Composer() {
   // Clear input whenever the active channel changes or is removed.
   const selectionKey = activeChannel?.id ?? activeKick?.slug ?? activeKickOnly ?? null;
   useEffect(() => {
-    setText("");
+    richInputRef.current?.clear();
     setError(null);
     setErrorPlatform(null);
     setPickerOpen(false);
@@ -109,10 +131,11 @@ export default function Composer() {
   const [emoteQuery, setEmoteQuery] = useState("");
   const [activeTab, setActiveTab] = useState<EmoteTab>("all");
   const [dismissedShortcode, setDismissedShortcode] = useState<string | null>(null);
+  const [selectedSuggIdx, setSelectedSuggIdx] = useState(0);
 
-  // Inline ":partial" shortcode autocomplete — only live while there's no
-  // space after the colon yet, i.e. you're still actively typing the code.
-  const shortcodeQuery = text.match(/:(\w+)$/)?.[1]?.toLowerCase() ?? null;
+  // Detect ":word" immediately before the caret (not end of full text, since
+  // the caret might not be at the end with a rich input).
+  const shortcodeQuery = textBeforeCursor.match(/:(\w+)$/)?.[1]?.toLowerCase() ?? null;
   const shortcodeSuggestions = useMemo(() => {
     if (!shortcodeQuery || shortcodeQuery === dismissedShortcode || pickerOpen) return [];
     return Object.entries(emotes)
@@ -120,16 +143,28 @@ export default function Composer() {
       .slice(0, 8);
   }, [emotes, shortcodeQuery, dismissedShortcode, pickerOpen]);
 
-  function acceptShortcode(code: string) {
-    setText((t) => t.replace(/:(\w+)$/, `${code} `));
+  // Reset selection index whenever the query changes (new character typed).
+  useEffect(() => {
+    setSelectedSuggIdx(0);
+  }, [shortcodeQuery]);
+
+  function acceptShortcode(code: string, url: string) {
+    richInputRef.current?.acceptShortcode(code, url);
     setDismissedShortcode(null);
   }
 
-  function handleComposerKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function handleComposerKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (shortcodeSuggestions.length === 0) return;
-    if (e.key === "Tab") {
+    if (e.key === "ArrowRight") {
       e.preventDefault();
-      acceptShortcode(shortcodeSuggestions[0][0]);
+      setSelectedSuggIdx((i) => (i + 1) % shortcodeSuggestions.length);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      setSelectedSuggIdx((i) => (i - 1 + shortcodeSuggestions.length) % shortcodeSuggestions.length);
+    } else if (e.key === "Tab" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const [code, url] = shortcodeSuggestions[selectedSuggIdx];
+      acceptShortcode(code, url);
     } else if (e.key === "Escape") {
       e.preventDefault();
       setDismissedShortcode(shortcodeQuery);
@@ -142,20 +177,19 @@ export default function Composer() {
     [categories]
   );
 
-  const filteredEmotes = useMemo(() => {
+  type EmoteEntry = { code: string; url: string; locked?: boolean };
+  const filteredEmotes = useMemo((): EmoteEntry[] => {
     const q = emoteQuery.trim().toLowerCase();
-    const source: [string, string][] =
+    const source: EmoteEntry[] =
       activeTab === "all"
-        ? Object.entries(emotes)
-        : (categories.find((c) => c.source === activeTab)?.emotes ?? []).map(
-            (e) => [e.code, e.url] as [string, string]
-          );
-    const matched = q ? source.filter(([code]) => code.toLowerCase().includes(q)) : source;
-    return matched.slice(0, 200); // cap for performance
+        ? Object.entries(emotes).map(([code, url]) => ({ code, url }))
+        : (categories.find((c) => c.source === activeTab)?.emotes ?? []);
+    const matched = q ? source.filter((e) => e.code.toLowerCase().includes(q)) : source;
+    return matched.slice(0, 200);
   }, [emotes, categories, activeTab, emoteQuery]);
 
-  function insertEmote(code: string) {
-    setText((t) => (t.trim() ? `${t.trimEnd()} ${code} ` : `${code} `));
+  function insertEmote(code: string, url: string) {
+    richInputRef.current?.insertEmote(code, url);
   }
 
   // The platforms you can actually send to for the active selection: Twitch when
@@ -210,8 +244,7 @@ export default function Composer() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function doSend() {
     const message = text.trim();
     if (!message || sending || deliverable.length === 0) return;
 
@@ -231,7 +264,7 @@ export default function Composer() {
           failed.platform === "twitch" || failed.platform === "kick" ? failed.platform : null
         );
       } else {
-        setText("");
+        richInputRef.current?.clear();
         setPickerOpen(false);
       }
     } finally {
@@ -307,19 +340,22 @@ export default function Composer() {
                   No emotes
                 </Text>
               ) : (
-                filteredEmotes.map(([code, url]) => (
+                filteredEmotes.map(({ code, url, locked }) => (
                   <chakra.button
                     key={code}
                     type="button"
-                    onClick={() => insertEmote(code)}
-                    title={code}
+                    onClick={() => insertEmote(code, url)}
+                    title={locked ? `${code} (Subscribers only)` : code}
                     p="4px"
                     borderRadius="6px"
                     cursor="pointer"
                     transition="background .1s"
                     _hover={{ bg: "raised" }}
+                    position="relative"
                   >
-                    <chakra.img src={url} alt={code} h="26px" display="block" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt={code} style={{ display: "block", height: 26 }} />
+                    {locked && <LockBadge />}
                   </chakra.button>
                 ))
               )}
@@ -328,7 +364,7 @@ export default function Composer() {
         )}
 
         {shortcodeSuggestions.length > 0 && (
-          <Flex
+          <Box
             position="absolute"
             bottom="100%"
             left="0"
@@ -337,35 +373,51 @@ export default function Composer() {
             borderWidth="1px"
             borderColor="line"
             borderRadius="10px"
-            p="6px"
-            gap="4px"
             zIndex={5}
             maxW="100%"
-            overflowX="auto"
+            overflow="hidden"
           >
-            {shortcodeSuggestions.map(([code, url]) => (
-              <chakra.button
-                key={code}
-                type="button"
-                onClick={() => acceptShortcode(code)}
-                title={code}
-                display="flex"
-                flexDirection="column"
-                alignItems="center"
-                gap="2px"
-                p="4px"
-                borderRadius="6px"
-                cursor="pointer"
-                flex="none"
-                _hover={{ bg: "raised" }}
-              >
-                <chakra.img src={url} alt={code} h="22px" display="block" />
-                <Text fontSize="9px" color="faint" maxW="56px" truncate>
-                  {code}
-                </Text>
-              </chakra.button>
-            ))}
-          </Flex>
+            <Flex px="8px" pt="5px" pb="1px" justify="space-between" align="center">
+              <Text fontSize="9px" fontFamily="mono" letterSpacing="0.1em" color="faint">
+                EMOTES
+              </Text>
+              <Text fontSize="9px" color="faint">
+                ←→ navigate · Enter insert · Esc close
+              </Text>
+            </Flex>
+            <Flex p="6px" gap="4px" overflowX="auto">
+            {shortcodeSuggestions.map(([code, url], idx) => {
+              const selected = idx === selectedSuggIdx;
+              return (
+                <chakra.button
+                  key={code}
+                  type="button"
+                  onClick={() => acceptShortcode(code, url)}
+                  title={code}
+                  display="flex"
+                  flexDirection="column"
+                  alignItems="center"
+                  gap="2px"
+                  p="4px"
+                  borderRadius="6px"
+                  cursor="pointer"
+                  flex="none"
+                  bg={selected ? "raised" : "transparent"}
+                  outline={selected ? "1px solid" : "none"}
+                  outlineColor={selected ? "#A66CFF66" : "transparent"}
+                  transition="background .1s"
+                  _hover={{ bg: "raised" }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={code} style={{ display: "block", height: 22 }} />
+                  <Text fontSize="9px" color={selected ? "text" : "faint"} maxW="56px" truncate>
+                    {code}
+                  </Text>
+                </chakra.button>
+              );
+            })}
+            </Flex>
+          </Box>
         )}
 
         <Flex
@@ -379,23 +431,17 @@ export default function Composer() {
           pl="16px"
           pr="6px"
           py="6px"
-          onSubmit={handleSubmit}
+          onSubmit={(e) => { e.preventDefault(); void doSend(); }}
         >
-          <Input
-            flex="1"
-            variant="flushed"
-            border="none"
-            px="0"
-            fontSize="14px"
-            color="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
+          <RichInput
+            ref={richInputRef}
+            emotes={emotes}
+            placeholder={channelName ? `Message ${channelName}…` : "Select a channel to chat"}
+            disabled={sending}
+            onChange={setText}
+            onBeforeCursor={setTextBeforeCursor}
             onKeyDown={handleComposerKeyDown}
-            placeholder={
-              channelName ? `Message ${channelName}…` : "Select a channel to chat"
-            }
-            _placeholder={{ color: "muted" }}
-            _focusVisible={{ outline: "none", boxShadow: "none", borderColor: "transparent" }}
+            onSubmit={() => { void doSend(); }}
           />
 
           <chakra.button
@@ -431,6 +477,7 @@ export default function Composer() {
             type="submit"
             flex="none"
             disabled={!canSend}
+            suppressHydrationWarning
             bg="#4f4c4c"
             fontWeight="600"
             fontSize="14px"

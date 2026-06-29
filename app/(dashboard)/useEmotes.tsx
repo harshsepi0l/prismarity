@@ -9,7 +9,7 @@ type EmoteMap = Record<string, string>;
 
 export interface EmoteCategory {
   source: EmoteSource;
-  emotes: { code: string; url: string }[];
+  emotes: { code: string; url: string; locked?: boolean }[];
 }
 
 interface EmoteStore {
