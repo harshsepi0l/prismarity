@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Prismarity Beacon",
+  "version": "1.0.0",
+  "description": "Auto-syncs Twitch and Kick streams to your Prismarity dashboard.",
+  "permissions": ["tabs"],
+  "host_permissions": [
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Prismarity Beacon"
+  }
+}
