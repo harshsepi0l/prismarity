@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType, UserSelection } from "../types";
 import { PlatformIcon } from "../../components/PlatformIcon";
@@ -106,20 +107,20 @@ export function BadgeChip({
 
 // Split on whitespace (kept), replacing any token that matches an emote code
 // with its image. Unicode emoji render natively as text.
+// Native <img> (not chakra.img) so React never replaces the DOM node on re-render,
+// which would restart GIF/animated-WebP animation.
 function renderBody(text: string, emotes: Record<string, string>) {
   return text.split(/(\s+)/).map((token, i) => {
     const url = emotes[token];
     if (!url) return <span key={i}>{token}</span>;
     return (
-      <chakra.img
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
         key={i}
         src={url}
         alt={token}
         title={token}
-        display="inline-block"
-        h="22px"
-        verticalAlign="middle"
-        mx="1px"
+        style={{ display: "inline-block", height: 22, verticalAlign: "middle", margin: "0 1px" }}
       />
     );
   });
@@ -131,7 +132,10 @@ interface ChatMessageProps {
   onSelectUser?: (selection: UserSelection) => void;
 }
 
-export default function ChatMessage({
+// memo prevents re-renders of unchanged messages when new ones arrive.
+// GIF/animated emotes only restart if their <img> DOM node is unmounted or
+// its src changes — memo + stable message object refs ensure neither happens.
+export default memo(function ChatMessage({
   message,
   onHoverChange,
   onSelectUser,
@@ -243,4 +247,4 @@ export default function ChatMessage({
         )}
     </Box>
   );
-}
+});
