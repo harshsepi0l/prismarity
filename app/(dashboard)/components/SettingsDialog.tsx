@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { PlatformIcon } from "./PlatformIcon";
+import { useChat } from "../useChat";
 
 const C = {
   bg: "#0E1118",
@@ -34,6 +35,24 @@ const INFO_ICON = (
     <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
   </svg>
 );
+
+// Beacon icon — a dot with two broadcast arcs, used in both the settings panel
+// and the companion browser extension.
+export const BEACON_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="18" r="2.5" fill="currentColor"/>
+  <path d="M7.5 13.5a6.5 6.5 0 019 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <path d="M4 9.5a11 11 0 0116 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+</svg>`;
+
+function BeaconIcon({ size = 20, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="18" r="2.5" fill={color} />
+      <path d="M7.5 13.5a6.5 6.5 0 019 0" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <path d="M4 9.5a11 11 0 0116 0" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 type Category = "accounts" | "chat" | "about";
 
@@ -126,6 +145,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const router = useRouter();
   const [category, setCategory] = useState<Category>("accounts");
   const [disconnecting, setDisconnecting] = useState<"twitch" | "kick" | null>(null);
+  const { beaconMode, setBeaconMode } = useChat();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -302,10 +322,56 @@ export function SettingsDialog({ auth, onClose }: Props) {
             )}
 
             {category === "chat" && (
-              <Flex direction="column" align="center" justify="center" h="full" gap="6px">
-                <Text fontSize="13px" style={{ color: C.muted }}>Chat display settings</Text>
-                <Text fontSize="12px" style={{ color: C.faint }}>Coming soon</Text>
-              </Flex>
+              <Box>
+                {/* ── Beacon Mode ───────────────────────────── */}
+                <Flex align="center" gap="12px" mb="10px">
+                  <BeaconIcon size={22} color={beaconMode ? "#A66CFF" : C.muted} />
+                  <Box flex="1">
+                    <Text fontSize="14px" fontWeight="600" style={{ color: C.text }}>Beacon Mode</Text>
+                    <Text fontSize="12px" style={{ color: C.faint, marginTop: 2 }}>
+                      Auto-syncs to whatever stream you open in your browser via the Prismarity Beacon extension.
+                    </Text>
+                  </Box>
+                  {/* Toggle pill */}
+                  <chakra.button
+                    type="button"
+                    role="switch"
+                    aria-checked={beaconMode}
+                    onClick={() => setBeaconMode(!beaconMode)}
+                    w="44px" h="24px" borderRadius="full" flex="none"
+                    cursor="pointer"
+                    transition="background .2s"
+                    position="relative"
+                    style={{ background: beaconMode ? "#A66CFF" : C.raised, border: `1px solid ${beaconMode ? "#A66CFF" : C.fieldLine}` }}
+                  >
+                    <Box
+                      position="absolute"
+                      top="3px"
+                      w="18px" h="18px" borderRadius="full"
+                      bg="white"
+                      transition="left .2s"
+                      style={{ left: beaconMode ? "23px" : "3px", boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
+                    />
+                  </chakra.button>
+                </Flex>
+
+                <Box mb="18px" style={{ height: "1px", background: C.line }} />
+
+                {/* Extension install hint */}
+                <Box
+                  borderRadius="8px" px="14px" py="12px"
+                  style={{ background: C.raised, border: `1px solid ${C.line}` }}
+                >
+                  <Flex align="center" gap="8px" mb="6px">
+                    <BeaconIcon size={14} color={C.muted} />
+                    <Text fontSize="12px" fontWeight="600" style={{ color: C.muted }}>Prismarity Beacon Extension</Text>
+                  </Flex>
+                  <Text fontSize="11px" lineHeight="1.7" style={{ color: C.faint }}>
+                    Install the companion extension from the <code style={{ color: C.muted }}>extension/</code> folder in the project.
+                    It watches your active tab for Twitch and Kick streams and signals Prismarity automatically.
+                  </Text>
+                </Box>
+              </Box>
             )}
 
             {category === "about" && (

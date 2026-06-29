@@ -12,15 +12,15 @@ interface ChatFeedProps {
 }
 
 export default function ChatFeed({ messages, activeFilters, onSelectUser }: ChatFeedProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     if (paused) return;
-
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
+    const el = containerRef.current;
+    // Direct scrollTop assignment — avoids CSS smooth-scroll which pauses GIF
+    // animation in Chrome for the duration of the scroll animation.
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, paused]);
 
   const filtered = messages.filter(
@@ -49,6 +49,7 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
 
   return (
     <Box
+      ref={containerRef}
       flex="1"
       overflowY="auto"
       px="22px"
@@ -66,8 +67,6 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
           onSelectUser={onSelectUser}
         />
       ))}
-
-      <div ref={bottomRef} />
     </Box>
   );
 }
