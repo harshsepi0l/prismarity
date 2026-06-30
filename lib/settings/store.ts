@@ -14,20 +14,26 @@ const DEFAULTS: Settings = {
   twitchClientSecretEnc: "",
   kickClientId: "",
   kickClientSecretEnc: "",
-  baseUrl: "",
+  baseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? "",
 };
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const FILE = path.join(DATA_DIR, "settings.json");
-
 const CACHE_TTL = 5 * 60_000;
+
 let _cache: Settings | null = null;
 let _cacheAt = 0;
 
 async function read(): Promise<Settings> {
   try {
     const raw = JSON.parse(await fs.readFile(FILE, "utf8")) as Partial<Settings>;
-    return { ...DEFAULTS, ...raw };
+    return {
+      ...DEFAULTS,
+      ...raw,
+      // Always prefer the env var for baseUrl — file-based value may be stale
+      // or simply absent on Azure's ephemeral filesystem.
+      baseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? raw.baseUrl ?? DEFAULTS.baseUrl,
+    };
   } catch {
     return { ...DEFAULTS };
   }
