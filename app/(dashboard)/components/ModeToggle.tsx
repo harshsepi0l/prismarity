@@ -1,7 +1,7 @@
 "use client";
 
 import { Flex, Box, chakra } from "@chakra-ui/react";
-import type { Mode } from "../useSession";
+import type { Mode } from "../_ctx/session";
 
 const SPECTRUM = "linear-gradient(90deg,#A66CFF,#FF5C5C,#5BE37D)";
 

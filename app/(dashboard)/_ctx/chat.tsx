@@ -9,11 +9,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ChatMessage, ConnectionStatus, Platform, SearchResult } from "./chat/types";
+import type { ChatMessage, ConnectionStatus, Platform, SearchResult } from "../types";
 import type { FollowedChannel } from "@/lib/twitch/channels";
 import type { Role } from "@/lib/auth/types";
-import { useTwitchChat, type CheerLeader, type GiftLeader } from "./chat/useTwitchChat";
-import { useKickChat } from "./chat/useKickChat";
+import { useTwitchChat, type CheerLeader, type GiftLeader } from "../chat/useTwitchChat";
+import { useKickChat } from "../chat/useKickChat";
 
 // Chat session state lives in the dashboard layout, ABOVE the routes, so the
 // live sockets and active selection survive navigating to Loyalty/VODs and back.

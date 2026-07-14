@@ -5,7 +5,7 @@ import { Box, Flex, Text, Button, SimpleGrid, Input } from "@chakra-ui/react";
 import { SectionLabel, Divider, ScreenHeader, HATCH } from "../components/ui";
 import { ResizableSidePanel } from "../components/ResizableSidePanel";
 import { ManagementGuard } from "../components/ManagementGuard";
-import { useSession } from "../useSession";
+import { useSession } from "../_ctx/session";
 
 const SEARCH_KEY = "prismarity:vods-search";
 

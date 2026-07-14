@@ -58,8 +58,6 @@ export async function getCredentials(): Promise<{
 }> {
   const s = await getSettings();
   const clientId = s.twitchClientId || process.env.TWITCH_CLIENT_ID || DEFAULT_CLIENT_ID;
-  // Confidential clients (registered with a secret) must include it in token
-  // exchange even when using PKCE. Public clients can omit it.
   const clientSecret = process.env.TWITCH_CLIENT_SECRET || "";
   const base =
     s.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
@@ -105,7 +103,10 @@ export async function exchangeCode(code: string, verifier: string): Promise<Toke
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!res.ok) throw new Error(`twitch token exchange failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`twitch token exchange failed: ${res.status} — ${body}`);
+  }
   return (await res.json()) as TokenResponse;
 }
 

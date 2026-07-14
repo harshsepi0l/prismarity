@@ -3,7 +3,7 @@ import { SectionLabel, ScreenHeader, HATCH } from "../components/ui";
 import { ResizableSidePanel } from "../components/ResizableSidePanel";
 import { ManagementGuard } from "../components/ManagementGuard";
 import { PlatformIcon } from "../components/PlatformIcon";
-import type { Platform } from "../chat/types";
+import type { Platform } from "../types";
 
 const LEADERS: { rank: string; name: string; points: string; plats: Platform[] }[] = [
   { rank: "01", name: "orbital", points: "48,920", plats: ["twitch", "youtube", "kick"] },

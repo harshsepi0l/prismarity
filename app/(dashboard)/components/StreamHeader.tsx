@@ -1,8 +1,8 @@
 "use client";
 
 import { Flex, Box, Text, chakra } from "@chakra-ui/react";
-import { useChat } from "../useChat";
-import { useStats, PLATFORM_LABEL } from "../useStats";
+import { useChat } from "../_ctx/chat";
+import { useStats, PLATFORM_LABEL } from "../_ctx/stats";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 
 export function StreamHeader() {

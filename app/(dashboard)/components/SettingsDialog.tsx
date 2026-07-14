@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { PlatformIcon } from "./PlatformIcon";
-import { useChat } from "../useChat";
+import { useChat } from "../_ctx/chat";
 
 const C = {
   bg: "#0E1118",

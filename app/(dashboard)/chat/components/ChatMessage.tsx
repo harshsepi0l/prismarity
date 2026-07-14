@@ -1,9 +1,9 @@
 import { memo } from "react";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import type { ChatMessage as ChatMessageType, UserSelection } from "../types";
+import type { ChatMessage as ChatMessageType, UserSelection } from "../../types";
 import { PlatformIcon } from "../../components/PlatformIcon";
-import { useEmotes } from "../../useEmotes";
-import { useBadges, resolveBadgeImage } from "../../useBadges";
+import { useEmotes } from "../../_ctx/emotes";
+import { useBadges, resolveBadgeImage } from "../../_ctx/badges";
 
 const PLATFORM_COLOR: Record<string, string> = {
   twitch: "#A66CFF",

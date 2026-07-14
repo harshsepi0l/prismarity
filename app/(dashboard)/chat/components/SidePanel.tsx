@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Box, Flex, Text, SimpleGrid, chakra } from "@chakra-ui/react";
-import type { Mode } from "../../useSession";
-import { useStats, formatUptime, type PlatformLive } from "../../useStats";
+import type { Mode } from "../../_ctx/session";
+import { useStats, formatUptime, type PlatformLive } from "../../_ctx/stats";
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 import type { TwitchClip } from "@/lib/twitch/stats";
 import type { KickLeader } from "@/lib/kick/public";

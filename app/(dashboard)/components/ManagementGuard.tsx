@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useChat } from "../useChat";
+import { useChat } from "../_ctx/chat";
 
 // Management surfaces (Loyalty, VODs) are only for the active channel's
 // creator/moderator. Viewers (or no channel selected) get redirected to chat.

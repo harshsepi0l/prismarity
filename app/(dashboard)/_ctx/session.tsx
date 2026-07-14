@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { Platform } from "./chat/types";
+import type { Platform } from "../types";
 import type { Role } from "@/lib/auth/types";
 
 // The viewer's role for the current session.

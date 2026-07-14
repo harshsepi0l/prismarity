@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { RichInput, type RichInputHandle } from "./RichInput";
 import { Box, Flex, Input, Text, chakra } from "@chakra-ui/react";
-import { useChat } from "../../useChat";
-import { useEmotes, useEmoteCategories } from "../../useEmotes";
-import { useSession } from "../../useSession";
-import { useStats } from "../../useStats";
+import { useChat } from "../../_ctx/chat";
+import { useEmotes, useEmoteCategories } from "../../_ctx/emotes";
+import { useSession } from "../../_ctx/session";
+import { useStats } from "../../_ctx/stats";
 import { PlatformIcon } from "../../components/PlatformIcon";
-import type { Platform } from "../types";
+import type { Platform } from "../../types";
 import type { EmoteSource } from "@/app/api/emotes/route";
 
 type EmoteTab = "all" | EmoteSource;
@@ -220,7 +220,7 @@ export default function Composer() {
     try {
       if (platform === "twitch") {
         if (!activeChannel) return { ok: false, error: "no_channel" };
-        const res = await fetch("/api/twitch/chat/send", {
+        const res = await fetch("/api/twitch/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ channelId: activeChannel.id, message }),
@@ -230,7 +230,7 @@ export default function Composer() {
       }
       if (platform === "kick") {
         if (!activeKick) return { ok: false, error: "no_channel" };
-        const res = await fetch("/api/kick/chat/send", {
+        const res = await fetch("/api/kick/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ slug: activeKick.slug, message }),

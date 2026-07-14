@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { useChat } from "./useChat";
+import { useChat } from "./chat";
 import type { BadgeInfo } from "@/lib/twitch/badges";
 import type { KickSubBadgeTier } from "@/lib/kick/public";
 import type { KickGlobalBadge } from "@/lib/kick/global-badges";
@@ -27,7 +27,7 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   // Global Kick badges (level badges etc.) — fetched once, not per-channel.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/kick/badges/global")
+    fetch("/api/kick/badges")
       .then((r) => (r.ok ? r.json() : { badges: {} }))
       .then((json: { badges?: Record<string, KickGlobalBadge> }) => {
         if (!cancelled) setKickGlobalBadges(json.badges ?? {});
