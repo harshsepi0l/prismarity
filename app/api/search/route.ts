@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { searchTwitchChannels } from "@/lib/twitch/search";
 import { getUsersByLogin } from "@/lib/twitch/users";
 import { fetchKickPublic } from "@/lib/kick/public";
-import type { SearchResult } from "@/app/(dashboard)/chat/types";
+import type { SearchResult } from "@/app/(dashboard)/types";
 
 export const runtime = "nodejs";
 

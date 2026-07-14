@@ -1,7 +1,7 @@
 "use client";
 
 import { Box } from "@chakra-ui/react";
-import { useLayout } from "../useLayout";
+import { useLayout } from "../_ctx/layout";
 import { ResizeHandle } from "./ResizeHandle";
 
 export function ResizableSidePanel({ children }: { children: React.ReactNode }) {

@@ -4,13 +4,13 @@ import { useState } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import { Flex, Box, Text, chakra } from "@chakra-ui/react";
-import { useLayout, NAV_COLLAPSE_AT } from "../useLayout";
-import { useChat, type KickOnlyChannel } from "../useChat";
+import { useLayout, NAV_COLLAPSE_AT } from "../_ctx/layout";
+import { useChat, type KickOnlyChannel } from "../_ctx/chat";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon } from "./PlatformIcon";
 import { SettingsDialog } from "./SettingsDialog";
 import type { FollowedChannel } from "@/lib/twitch/channels";
-import type { SearchResult } from "../chat/types";
+import type { SearchResult } from "../types";
 
 const CHAT_ICON = (
   <Box

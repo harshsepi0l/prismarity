@@ -5,9 +5,9 @@ import { Logo } from "./Logo";
 import FilterChips from "./FilterChips";
 import ModeToggle from "./ModeToggle";
 import { StreamerSearch } from "./StreamerSearch";
-import { useSession, allowedModes, clampMode } from "../useSession";
-import { useChat } from "../useChat";
-import { useStats } from "../useStats";
+import { useSession, allowedModes, clampMode } from "../_ctx/session";
+import { useChat } from "../_ctx/chat";
+import { useStats } from "../_ctx/stats";
 
 export function TopBar() {
   const { mode, setMode, activeFilters, toggleFilter, connectedPlatforms } = useSession();

@@ -1,10 +1,10 @@
 import { Flex } from "@chakra-ui/react";
-import { LayoutProvider } from "./useLayout";
-import { SessionProvider } from "./useSession";
-import { ChatProvider } from "./useChat";
-import { EmoteProvider } from "./useEmotes";
-import { BadgeProvider } from "./useBadges";
-import { StatsProvider } from "./useStats";
+import { LayoutProvider } from "./_ctx/layout";
+import { SessionProvider } from "./_ctx/session";
+import { ChatProvider } from "./_ctx/chat";
+import { EmoteProvider } from "./_ctx/emotes";
+import { BadgeProvider } from "./_ctx/badges";
+import { StatsProvider } from "./_ctx/stats";
 import { TopBar } from "./components/TopBar";
 import { NavRail } from "./components/NavRail";
 import { getCurrentUser } from "@/lib/auth/session";

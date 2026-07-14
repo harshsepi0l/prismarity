@@ -4,11 +4,11 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ChannelStats, TwitchClip } from "@/lib/twitch/stats";
 import type { KickStats } from "@/lib/kick/stats";
 import type { KickLeader, KickChatMode } from "@/lib/kick/public";
-import type { TwitchChatSettings } from "@/app/api/twitch/chat/settings/route";
-import type { Platform } from "./chat/types";
-import type { CheerLeader, GiftLeader } from "./chat/useTwitchChat";
-import { useChat } from "./useChat";
-import { useSession } from "./useSession";
+import type { TwitchChatSettings } from "@/app/api/twitch/chat/route";
+import type { Platform } from "../types";
+import type { CheerLeader, GiftLeader } from "../chat/useTwitchChat";
+import { useChat } from "./chat";
+import { useSession } from "./session";
 
 // One connected platform's live stats. `included` reflects the top-bar filter
 // chips — toggling a platform off drops it from the combined roll-up.
@@ -115,7 +115,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) setTwitchAvatar(j.user?.profileImageUrl ?? null);
       })
       .catch(() => {});
-    fetch(`/api/twitch/chat/settings?channelId=${channelId}`, { cache: "no-store" })
+    fetch(`/api/twitch/chat?channelId=${channelId}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { ok?: boolean; settings?: TwitchChatSettings } | null) => {
         if (!cancelled) setTwitchChatSettings(j?.settings ?? null);

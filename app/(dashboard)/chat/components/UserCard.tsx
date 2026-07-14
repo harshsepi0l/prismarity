@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import type { ChatMessage as ChatMessageType, UserSelection } from "../types";
+import type { ChatMessage as ChatMessageType, UserSelection } from "../../types";
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 import { BadgeChip } from "./ChatMessage";
 

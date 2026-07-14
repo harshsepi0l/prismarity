@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { ChatMessage, ConnectionStatus } from "./types";
+import type { ChatMessage, ConnectionStatus } from "../types";
 
 // Kick has no official client-readable chat stream, so we read the same Pusher
 // socket Kick's own web client uses. The app key + cluster are the public values

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Flex, Box, Text } from "@chakra-ui/react";
-import type { ChatMessage as ChatMessageType, Platform, UserSelection } from "../types";
+import type { ChatMessage as ChatMessageType, Platform, UserSelection } from "../../types";
 import ChatMessage from "./ChatMessage";
 
 interface ChatFeedProps {

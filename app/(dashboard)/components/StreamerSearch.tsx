@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Box, Flex, Text, Input, chakra } from "@chakra-ui/react";
-import { useChat } from "../useChat";
-import { useSession } from "../useSession";
+import { useChat } from "../_ctx/chat";
+import { useSession } from "../_ctx/session";
 import { PlatformIcon } from "./PlatformIcon";
-import type { SearchResult } from "../chat/types";
+import type { SearchResult } from "../types";
 
 function LiveTag({ isLive }: { isLive: boolean }) {
   return isLive ? (

@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { Flex } from "@chakra-ui/react";
-import { useSession, clampMode } from "../useSession";
-import { useChat } from "../useChat";
+import { useSession, clampMode } from "../_ctx/session";
+import { useChat } from "../_ctx/chat";
 import ChatFeed from "./components/ChatFeed";
 import Composer from "./components/Composer";
 import SidePanel from "./components/SidePanel";
 import { UserCard } from "./components/UserCard";
 import { ResizableSidePanel } from "../components/ResizableSidePanel";
 import { StreamHeader } from "../components/StreamHeader";
-import type { UserSelection } from "./types";
+import type { UserSelection } from "../types";
 
 export default function ChatPage() {
   const { mode, activeFilters } = useSession();

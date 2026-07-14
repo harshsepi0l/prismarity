@@ -1,7 +1,7 @@
 "use client";
 
 import { Flex, Box, chakra } from "@chakra-ui/react";
-import type { Platform } from "../chat/types";
+import type { Platform } from "../types";
 import { PlatformIcon } from "./PlatformIcon";
 
 const PLATFORMS: { id: Platform; label: string; color: string }[] = [

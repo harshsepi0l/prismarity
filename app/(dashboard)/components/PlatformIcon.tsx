@@ -1,4 +1,4 @@
-import type { Platform } from "../chat/types";
+import type { Platform } from "../types";
 
 // Brand glyphs (24x24, fill currentColor by default).
 const PATHS: Record<Platform, string> = {
