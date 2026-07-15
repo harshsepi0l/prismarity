@@ -14,7 +14,6 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Only safe data crosses to the client — never tokens.
   const user = await getCurrentUser();
   const twitch = user?.connections.find((c) => c.platform === "twitch");
   const kick = user?.connections.find((c) => c.platform === "kick");
@@ -32,9 +31,9 @@ export default async function DashboardLayout({
             <BadgeProvider>
               <StatsProvider>
                 <Flex direction="column" h="100vh" overflow="hidden" bg="#0e1320">
-                  <TopBar />
+                  <TopBar auth={auth} />
                   <Flex flex="1" minH="0">
-                    <NavRail auth={auth} />
+                    <NavRail />
                     {children}
                   </Flex>
                 </Flex>

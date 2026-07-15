@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { searchTwitchChannels } from "@/lib/twitch/search";
 import { getUsersByLogin } from "@/lib/twitch/users";
-import { fetchKickPublic } from "@/lib/kick/public";
+import { fetchKickPublic, fetchKickPublicAuthed } from "@/lib/kick/public";
+import { getValidKickToken } from "@/lib/kick/client";
 import type { SearchResult } from "@/app/(dashboard)/types";
 
 export const runtime = "nodejs";
@@ -17,11 +18,17 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   const twitchHits = user ? await searchTwitchChannels(user, q) : [];
 
+  // Official API avoids Cloudflare blocks; fall back to v2 when no token.
+  const kickToken = user ? await getValidKickToken(user) : null;
+  const probeKick = kickToken
+    ? (s: string) => fetchKickPublicAuthed(s, kickToken)
+    : (s: string) => fetchKickPublic(s);
+
   // Probe Kick for the query + each Twitch hit's handle (capped to limit calls).
   const candidates = [
     ...new Set([q.toLowerCase(), ...twitchHits.map((h) => h.login.toLowerCase())]),
   ].slice(0, 6);
-  const probed = await Promise.all(candidates.map((s) => fetchKickPublic(s)));
+  const probed = await Promise.all(candidates.map(probeKick));
   const kickByHandle = new Map<string, { slug: string; profileImageUrl: string | null; isLive: boolean; viewers: number; chatroomId: number | null }>();
   for (const p of probed) {
     if (p) {

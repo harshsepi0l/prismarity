@@ -171,24 +171,33 @@ export default function Composer() {
     }
   }
 
+  // Twitch emotes (7TV/BTTV/FFZ/channel) are only relevant when Twitch is a send target.
+  // If only Kick is targeted, we have no Kick-specific emotes to offer.
+  const showTwitchEmotes = sendTargets.has("twitch");
+
   // Only offer tabs for sources that actually have emotes for this channel.
   const availableTabs: EmoteTab[] = useMemo(
-    () => ["all", ...categories.filter((c) => c.emotes.length > 0).map((c) => c.source)],
-    [categories]
+    () =>
+      showTwitchEmotes
+        ? ["all", ...categories.filter((c) => c.emotes.length > 0).map((c) => c.source)]
+        : [],
+    [categories, showTwitchEmotes]
   );
 
   type EmoteEntry = { code: string; url: string; locked?: boolean };
   const filteredEmotes = useMemo((): EmoteEntry[] => {
+    if (!showTwitchEmotes) return [];
     const q = emoteQuery.trim().toLowerCase();
     const source: EmoteEntry[] =
       activeTab === "all"
-        ? Object.entries(emotes).map(([code, url]) => ({ code, url }))
+        ? categories.flatMap((c) => c.emotes)
         : (categories.find((c) => c.source === activeTab)?.emotes ?? []);
     const matched = q ? source.filter((e) => e.code.toLowerCase().includes(q)) : source;
     return matched.slice(0, 200);
-  }, [emotes, categories, activeTab, emoteQuery]);
+  }, [categories, activeTab, emoteQuery, showTwitchEmotes]);
 
-  function insertEmote(code: string, url: string) {
+  function insertEmote(code: string, url: string, locked?: boolean) {
+    if (locked) return;
     richInputRef.current?.insertEmote(code, url);
   }
 
@@ -344,13 +353,14 @@ export default function Composer() {
                   <chakra.button
                     key={code}
                     type="button"
-                    onClick={() => insertEmote(code, url)}
-                    title={locked ? `${code} (Subscribers only)` : code}
+                    onClick={() => insertEmote(code, url, locked)}
+                    title={locked ? `${code} (Subscribers only — cannot send)` : code}
                     p="4px"
                     borderRadius="6px"
-                    cursor="pointer"
-                    transition="background .1s"
-                    _hover={{ bg: "raised" }}
+                    cursor={locked ? "not-allowed" : "pointer"}
+                    opacity={locked ? 0.45 : 1}
+                    transition="background .1s, opacity .1s"
+                    _hover={{ bg: locked ? "transparent" : "raised" }}
                     position="relative"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -446,8 +456,8 @@ export default function Composer() {
 
           <chakra.button
             type="button"
-            onClick={() => setPickerOpen((v) => !v)}
-            title="Emotes"
+            onClick={() => showTwitchEmotes && setPickerOpen((v) => !v)}
+            title={showTwitchEmotes ? "Emotes" : "Emotes (select Twitch to use)"}
             aria-label="Emotes"
             display="flex"
             alignItems="center"
@@ -456,9 +466,10 @@ export default function Composer() {
             w="32px"
             borderRadius="7px"
             color={pickerOpen ? "text" : "muted"}
-            cursor="pointer"
-            transition="background .12s, color .12s"
-            _hover={{ bg: "raised", color: "text" }}
+            cursor={showTwitchEmotes ? "pointer" : "not-allowed"}
+            opacity={showTwitchEmotes ? 1 : 0.35}
+            transition="background .12s, color .12s, opacity .12s"
+            _hover={{ bg: showTwitchEmotes ? "raised" : "transparent", color: showTwitchEmotes ? "text" : "muted" }}
           >
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
               <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.5" />

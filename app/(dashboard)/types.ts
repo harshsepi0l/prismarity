@@ -24,6 +24,9 @@ export interface ChatMessage {
   // For a "self" message (one you sent): the platforms it was delivered to, so a
   // single entry can show every platform it went out on (e.g. Twitch + Kick).
   platforms?: Platform[];
+  // Per-platform display names for self-messages, used in split view to show
+  // just the relevant name per pane instead of the combined "A • B" label.
+  userByPlatform?: Partial<Record<Platform, string>>;
   // Twitch native emotes for this message (code -> image URL), parsed from the
   // IRC `emotes` tag. Merged with third-party emotes when rendering.
   nativeEmotes?: Record<string, string>;
