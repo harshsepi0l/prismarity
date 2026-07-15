@@ -23,9 +23,19 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, paused]);
 
-  const filtered = messages.filter(
-    (m) => m.platform === "self" || activeFilters.has(m.platform as Platform)
-  );
+  const filtered = messages.filter((m) => {
+    if (m.platform === "self") {
+      // When a single platform is filtered (split view), only show the self
+      // message in the pane(s) that match the platforms it was sent to.
+      if (m.platforms?.length) return m.platforms.some((p) => activeFilters.has(p));
+      return activeFilters.size > 0;
+    }
+    return activeFilters.has(m.platform as Platform);
+  });
+
+  // In single-platform view, show only the relevant display name for self-messages.
+  const singlePlatform: Platform | undefined =
+    activeFilters.size === 1 ? ([...activeFilters][0] as Platform) : undefined;
 
   if (filtered.length === 0) {
     return (
@@ -65,6 +75,7 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
           key={msg.id}
           message={msg}
           onSelectUser={onSelectUser}
+          singlePlatform={singlePlatform}
         />
       ))}
     </Box>
