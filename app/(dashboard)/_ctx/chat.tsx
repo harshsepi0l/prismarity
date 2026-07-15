@@ -276,6 +276,14 @@ export function ChatProvider({
       : "viewer";
 
   // Resolve the pending Kick side into a live target (slug + chatroom id).
+  // Strategy:
+  //   1. If search already gave us a chatroomId, use it directly.
+  //   2. Ask the server (/api/kick/resolve) which scans the official /livestreams
+  //      API — works for any currently-live channel.
+  //   3. Browser-side fallback: fetch kick.com/api/v2/channels/{slug} directly
+  //      from the browser. Browser TLS fingerprint passes Cloudflare even though
+  //      the same call is blocked when made from Node.js server-side. This gives
+  //      us the definitive chatroom.id for any channel, live or offline.
   const pendingSlug = pendingKick?.slug ?? null;
   const pendingRoom = pendingKick?.chatroomId ?? null;
   useEffect(() => {
@@ -285,23 +293,45 @@ export function ChatProvider({
       setActiveKick(null);
       return;
     }
-    if (pendingRoom) {
-      setActiveKick({ slug: pendingSlug, chatroomId: pendingRoom });
-      return;
-    }
     (async () => {
+      let resolvedSlug = pendingSlug;
+      // Start with the cached value (may be null or stale).
+      let chatroomId: number | null = pendingRoom ?? null;
+
+      // Try browser-side v2 fetch — passes Cloudflare when made from a real browser.
+      // If this is blocked, the server-side fallback takes over.
       try {
-        const res = await fetch(`/api/kick/resolve?slug=${encodeURIComponent(pendingSlug)}`);
-        const json = (await res.json()) as { exists?: boolean; slug?: string; chatroomId?: number | null };
-        if (cancelled) return;
-        setActiveKick(json.exists && json.chatroomId ? { slug: json.slug ?? pendingSlug, chatroomId: json.chatroomId } : null);
-      } catch {
-        if (!cancelled) setActiveKick(null);
+        const v2 = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(pendingSlug)}`);
+        if (v2.ok) {
+          const data = (await v2.json()) as { slug?: string; chatroom?: { id?: number } };
+          const v2Id = data?.chatroom?.id ?? null;
+          if (v2Id) {
+            chatroomId = v2Id;
+            if (data.slug) resolvedSlug = data.slug;
+          }
+        }
+      } catch { /* CORS or network error */ }
+
+      if (cancelled) return;
+
+      // Server-side resolve — tries official /channels?slug= (chatroom.id) then /livestreams.
+      if (!chatroomId) {
+        try {
+          const res = await fetch(`/api/kick/resolve?slug=${encodeURIComponent(pendingSlug)}`);
+          if (res.ok) {
+            const json = (await res.json()) as { exists?: boolean; slug?: string; chatroomId?: number | null };
+            if (json.exists) {
+              if (json.slug) resolvedSlug = json.slug;
+              chatroomId = json.chatroomId ?? null;
+            }
+          }
+        } catch { /* network error */ }
       }
+
+      if (cancelled) return;
+      setActiveKick(chatroomId ? { slug: resolvedSlug, chatroomId } : null);
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [pendingSlug, pendingRoom]);
 
   // ── self messages ────────────────────────────────────────
@@ -318,11 +348,16 @@ export function ChatProvider({
             : hasKick
               ? (kickSlug ?? "You")
               : "You";
+      const userByPlatform: Partial<Record<Platform, string>> = {
+        ...(ownChannel ? { twitch: ownChannel.displayName } : {}),
+        ...(kickSlug ? { kick: kickSlug } : {}),
+      };
       const msg: ChatMessage = {
         id: `self-${Date.now()}-${Math.random()}`,
         platform: "self",
         platforms,
         user,
+        userByPlatform,
         text,
         color: null,
         timestamp: Date.now(),

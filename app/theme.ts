@@ -33,6 +33,14 @@ const config = defineConfig({
         "0%, 100%": { opacity: 1 },
         "50%": { opacity: 0.3 },
       },
+      "beacon-pulse": {
+        "0%, 100%": { opacity: 1, transform: "scale(1)" },
+        "50%": { opacity: 0.5, transform: "scale(0.85)" },
+      },
+      "beacon-ring": {
+        "0%": { opacity: 0.6, transform: "scale(1)" },
+        "100%": { opacity: 0, transform: "scale(2.8)" },
+      },
     },
     tokens: {
       colors: {

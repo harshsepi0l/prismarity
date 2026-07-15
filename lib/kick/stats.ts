@@ -1,6 +1,6 @@
 import type { User } from "@/lib/auth/types";
 import { getValidKickToken, kickConnection, KICK_API } from "./client";
-import { fetchKickPublic, type KickChatMode } from "./public";
+import { fetchKickPublic, fetchKickPublicAuthed, type KickChatMode } from "./public";
 
 export type { KickChatMode };
 
@@ -17,9 +17,7 @@ export interface KickStats {
   chatMode: KickChatMode | null;
 }
 
-// Stats for any Kick channel by slug (public data — used for channels you watch).
-export async function getKickStatsBySlug(slug: string): Promise<KickStats | null> {
-  const p = await fetchKickPublic(slug);
+function kickPublicToStats(p: Awaited<ReturnType<typeof fetchKickPublic>>): KickStats | null {
   if (!p) return null;
   return {
     channelName: p.displayName,
@@ -33,6 +31,17 @@ export async function getKickStatsBySlug(slug: string): Promise<KickStats | null
     followers: p.followers,
     chatMode: p.chatMode,
   };
+}
+
+// Stats for any Kick channel by slug (public data — used for channels you watch).
+export async function getKickStatsBySlug(slug: string): Promise<KickStats | null> {
+  return kickPublicToStats(await fetchKickPublic(slug));
+}
+
+// Same as above but uses the authenticated official API (not Cloudflare-blocked).
+// Pass the user's valid Kick access token. Falls back to public fetch on error.
+export async function getKickStatsBySlugAuthed(slug: string, accessToken: string): Promise<KickStats | null> {
+  return kickPublicToStats(await fetchKickPublicAuthed(slug, accessToken));
 }
 
 interface KickChannel {

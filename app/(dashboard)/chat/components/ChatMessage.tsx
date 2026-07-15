@@ -130,6 +130,9 @@ interface ChatMessageProps {
   message: ChatMessageType;
   onHoverChange?: (hovered: boolean) => void;
   onSelectUser?: (selection: UserSelection) => void;
+  // When rendering inside a single-platform pane (split view), show only that
+  // platform's display name and icon for self-messages instead of the combined label.
+  singlePlatform?: "twitch" | "youtube" | "kick";
 }
 
 // memo prevents re-renders of unchanged messages when new ones arrive.
@@ -139,11 +142,24 @@ export default memo(function ChatMessage({
   message,
   onHoverChange,
   onSelectUser,
+  singlePlatform,
 }: ChatMessageProps) {
   const emotes = useEmotes();
   const platformColor = PLATFORM_COLOR[message.platform] ?? "#8B93A7";
   const nameColor = message.color || platformColor;
   const tag = PLATFORM_TAG[message.platform] ?? "??";
+
+  // For self-messages in split view: show only the relevant platform's name/icon.
+  const selfPlatforms: ("twitch" | "youtube" | "kick")[] =
+    message.platform === "self"
+      ? singlePlatform && message.platforms?.includes(singlePlatform)
+        ? [singlePlatform]
+        : (message.platforms ?? []) as ("twitch" | "youtube" | "kick")[]
+      : [];
+  const displayUser =
+    message.platform === "self" && singlePlatform && message.userByPlatform?.[singlePlatform]
+      ? message.userByPlatform[singlePlatform]
+      : message.user;
   // "self" / "youtube" have no real chatter identity to look up — only
   // twitch/kick messages get a clickable username. A local const (not a
   // property access) so the narrowed type survives into the onClick closure.
@@ -173,10 +189,10 @@ export default memo(function ChatMessage({
     >
       <Flex align="baseline" gap="9px" mb="2px">
         {message.platform === "self" ? (
-          // Your sent message — show every platform it went to as one entry.
-          message.platforms && message.platforms.length > 0 ? (
+          // Your sent message — show platform icon(s) for this pane.
+          selfPlatforms.length > 0 ? (
             <Flex align="center" gap="4px" alignSelf="center" opacity={0.95}>
-              {message.platforms.map((p) => (
+              {selfPlatforms.map((p) => (
                 <PlatformIcon key={p} platform={p} size={13} />
               ))}
             </Flex>
@@ -212,7 +228,7 @@ export default memo(function ChatMessage({
 
         {clickablePlatform === null ? (
           <Text fontWeight="600" fontSize="14px" color={nameColor}>
-            {message.user}
+            {displayUser}
           </Text>
         ) : (
           <chakra.button
@@ -230,7 +246,7 @@ export default memo(function ChatMessage({
             cursor="pointer"
             _hover={{ textDecoration: "underline" }}
           >
-            {message.user}
+            {displayUser}
           </chakra.button>
         )}
 
