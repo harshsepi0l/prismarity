@@ -15,6 +15,12 @@ export const PLATFORM_COLOR: Record<Platform, string> = {
   kick: "#5BE37D",
 };
 
+export const PLATFORM_LABEL: Record<Platform, string> = {
+  twitch: "Twitch",
+  youtube: "YouTube",
+  kick: "Kick",
+};
+
 interface PlatformIconProps {
   platform: Platform;
   size?: number;

@@ -7,7 +7,7 @@ import { useChat } from "../../_ctx/chat";
 import { useEmotes, useEmoteCategories } from "../../_ctx/emotes";
 import { useSession } from "../../_ctx/session";
 import { useStats } from "../../_ctx/stats";
-import { PlatformIcon } from "../../components/PlatformIcon";
+import { PlatformIcon, PLATFORM_LABEL } from "../../components/PlatformIcon";
 import type { Platform } from "../../types";
 import type { EmoteSource } from "@/app/api/emotes/route";
 
@@ -216,11 +216,6 @@ export default function Composer() {
   // Armed targets whose channel is currently offline — the message would land in
   // that platform's offline chat.
   const offlineTargets = deliverable.filter((p) => liveByPlatform[p] === false);
-  const PLATFORM_LABELS: Record<Platform, string> = {
-    twitch: "Twitch",
-    youtube: "YouTube",
-    kick: "Kick",
-  };
 
   async function sendOne(
     platform: Platform,
@@ -517,7 +512,7 @@ export default function Composer() {
           {SEND_PLATFORMS.filter(({ id }) => available.includes(id)).map(({ id, color }) => {
             const armed = sendTargets.has(id);
             const offline = liveByPlatform[id] === false;
-            const label = PLATFORM_LABELS[id];
+            const label = PLATFORM_LABEL[id];
             const title = !armed
               ? `Click to send your messages to ${label}`
               : offline
@@ -581,7 +576,7 @@ export default function Composer() {
             <Box w="6px" h="6px" borderRadius="full" bg="#F5A623" flex="none" />
             <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="#F5A623">
               {`Posting to offline chat on ${offlineTargets
-                .map((p) => PLATFORM_LABELS[p])
+                .map((p) => PLATFORM_LABEL[p])
                 .join(" & ")}`}
             </Text>
           </Flex>

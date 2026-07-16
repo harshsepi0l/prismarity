@@ -2,14 +2,8 @@
 
 import { Flex, Text, chakra } from "@chakra-ui/react";
 import type { Platform } from "../../types";
-import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
+import { PlatformIcon, PLATFORM_COLOR, PLATFORM_LABEL } from "../../components/PlatformIcon";
 import { useSession } from "../../_ctx/session";
-
-const PLATFORM_LABEL: Record<Platform, string> = {
-  twitch: "Twitch",
-  kick: "Kick",
-  youtube: "YouTube",
-};
 
 // Tiny eye — open = watching this chat, slashed = hidden.
 function EyeIcon({ open }: { open: boolean }) {

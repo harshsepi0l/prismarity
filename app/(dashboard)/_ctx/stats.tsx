@@ -90,12 +90,6 @@ const EMPTY_DERIVED: Derived = {
   uptimeKickMs: null,
 };
 
-export const PLATFORM_LABEL: Record<Platform, string> = {
-  twitch: "Twitch",
-  youtube: "YouTube",
-  kick: "Kick",
-};
-
 const StatsContext = createContext<LiveStats | null>(null);
 
 export function StatsProvider({ children }: { children: React.ReactNode }) {

@@ -4,14 +4,8 @@ import { useRef, useState } from "react";
 import { Flex, Box, Text } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType, Platform, UserSelection } from "../../types";
 import ChatFeed from "./ChatFeed";
-import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
+import { PlatformIcon, PLATFORM_COLOR, PLATFORM_LABEL } from "../../components/PlatformIcon";
 import { useLayout } from "../../_ctx/layout";
-
-const PLATFORM_LABEL: Record<Platform, string> = {
-  twitch: "Twitch",
-  kick: "Kick",
-  youtube: "YouTube",
-};
 
 const SPLIT_KEY = "prismarity:chat-split";
 const MIN_RATIO = 0.2;
