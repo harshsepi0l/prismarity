@@ -151,7 +151,7 @@ export default function LoyaltyPage() {
   return (
     <ManagementGuard>
       <Flex as="main" flex="1" minW="0">
-        <Box as="section" flex="1" minW="0" overflowY="auto" px="32px" pt="28px" pb="36px">
+        <Box as="section" flex="1" minW="0" overflowY="auto" px={{ base: "16px", md: "32px" }} pt="28px" pb="36px">
         <ScreenHeader
           title="Loyalty"
           subtitle="One points balance that follows each viewer across every platform."

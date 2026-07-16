@@ -109,6 +109,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   const [kickServer, setKickServer] = useState<KickStats | null>(null);
   const [twitchAvatar, setTwitchAvatar] = useState<string | null>(null);
   const [twitchVerified, setTwitchVerified] = useState(false);
+  const [kickVerified, setKickVerified] = useState(false);
   const [twitchChatSettings, setTwitchChatSettings] = useState<TwitchChatSettings | null>(null);
   const [peakTwitch, setPeakTwitch] = useState(0);
   const [peakKick, setPeakKick] = useState(0);
@@ -319,6 +320,28 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [kickSlug]);
 
+  // Kick "verified" flag — only exposed on Kick's Cloudflare-fronted v2 endpoint,
+  // which blocks server IPs (403). A real browser's TLS passes, so we fetch it
+  // directly here (same trick the gift leaderboard uses). Best-effort: if the
+  // browser call is CORS-blocked or fails, the channel just shows unverified.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setKickVerified(false);
+    if (!kickSlug) return;
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(kickSlug)}`, {
+      headers: { Accept: "application/json" },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { verified?: unknown; user?: { verified?: unknown } } | null) => {
+        if (cancelled || !j) return;
+        setKickVerified(!!j.verified || !!j.user?.verified);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [kickSlug]);
+
   // Latest inputs for the off-render-path computation.
   const messagesRef = useRef(messages);
   const twitchStartedRef = useRef<string | null>(null);
@@ -405,7 +428,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       followers: kickServer?.followers ?? null,
       subs: kickServer?.subs ?? null,
       chatters: null,
-      verified: false,
+      verified: kickVerified,
       chatMode: km
         ? { followerOnly: km.followerOnly, followerMinutes: km.followerMinutes, subOnly: km.subOnly }
         : null,

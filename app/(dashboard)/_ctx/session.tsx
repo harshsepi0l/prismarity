@@ -15,7 +15,8 @@ import type { Role } from "@/lib/auth/types";
 export type Mode = "creator" | "viewer" | "moderator";
 
 const MODE_KEY = "prismarity:mode";
-const ACTIVE_KEY = "prismarity:active-platforms";
+const READ_KEY = "prismarity:read-platforms";
+const SEND_KEY = "prismarity:send-platforms";
 const ALL: Platform[] = ["twitch", "youtube", "kick"];
 
 function isMode(v: string | null): v is Mode {
@@ -42,20 +43,26 @@ export function clampMode(mode: Mode, role: Role): Mode {
 interface SessionState {
   mode: Mode;
   setMode: (m: Mode) => void;
-  // Platforms the user has actually connected (logged into). Drives which
-  // platform controls are enabled.
+  // Platforms the user has actually connected (logged into).
   connectedPlatforms: Set<Platform>;
-  // A SINGLE set of active platforms drives both reading and writing — the
-  // top-bar chips and the composer's send glows are the same state, so toggling
-  // either keeps view and send in sync. Always intersected with connected.
+  // Read set — platforms whose chat is shown in the feed. Controlled at the feed
+  // itself (the read bar / column headers). Independent of send. Always
+  // intersected with connected.
   activeFilters: Set<Platform>;
-  toggleFilter: (p: Platform) => void;
-  // Aliases over the same set, for the composer's send-target glows.
+  toggleRead: (p: Platform) => void;
+  // Send set — platforms your outgoing message is delivered to (the composer
+  // "Send to" chips). Independent of read: you may post to a platform you aren't
+  // watching, or watch one you don't post to.
   sendTargets: Set<Platform>;
   toggleSendTarget: (p: Platform) => void;
 }
 
 const SessionContext = createContext<SessionState | null>(null);
+
+interface Selection {
+  read: Platform[];
+  send: Platform[];
+}
 
 export function SessionProvider({
   connectedPlatforms: connectedInput = [],
@@ -65,7 +72,9 @@ export function SessionProvider({
   children: React.ReactNode;
 }) {
   const [mode, setModeState] = useState<Mode>("creator");
-  const [activePlatforms, setActivePlatforms] = useState<Platform[]>([...ALL]);
+  // Default: read + send everything (both sets full) — carve out read-only per
+  // platform via the eye.
+  const [sel, setSel] = useState<Selection>({ read: [...ALL], send: [...ALL] });
 
   const connectedPlatforms = useMemo(
     () => new Set(connectedInput),
@@ -77,13 +86,17 @@ export function SessionProvider({
     const m = localStorage.getItem(MODE_KEY);
     if (isMode(m)) setModeState(m);
 
-    const raw = localStorage.getItem(ACTIVE_KEY);
-    if (raw) {
-      try {
-        setActivePlatforms(sanitize(JSON.parse(raw)));
-      } catch {
-        /* ignore */
+    try {
+      const read = localStorage.getItem(READ_KEY);
+      const send = localStorage.getItem(SEND_KEY);
+      if (read || send) {
+        const r = read ? sanitize(JSON.parse(read)) : [...ALL];
+        // Read and send are independent sets.
+        const s = send ? sanitize(JSON.parse(send)) : [...ALL];
+        setSel({ read: r, send: s });
       }
+    } catch {
+      /* ignore malformed storage */
     }
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
@@ -93,26 +106,54 @@ export function SessionProvider({
     localStorage.setItem(MODE_KEY, m);
   }, []);
 
-  // One toggle for both view and send.
-  const toggle = useCallback(
+  const persist = (next: Selection) => {
+    localStorage.setItem(READ_KEY, JSON.stringify(next.read));
+    localStorage.setItem(SEND_KEY, JSON.stringify(next.send));
+  };
+
+  // Read toggle (feed): show/hide this platform's chat. Independent of send.
+  const toggleRead = useCallback(
     (p: Platform) => {
-      if (!connectedPlatforms.has(p)) return; // can't act on an unconnected platform
-      setActivePlatforms((prev) => {
-        const s = new Set(prev);
-        if (s.has(p)) s.delete(p);
-        else s.add(p);
-        const arr = [...s];
-        localStorage.setItem(ACTIVE_KEY, JSON.stringify(arr));
-        return arr;
+      if (!connectedPlatforms.has(p)) return;
+      setSel((prev) => {
+        const has = prev.read.includes(p);
+        const next: Selection = {
+          ...prev,
+          read: has ? prev.read.filter((x) => x !== p) : [...prev.read, p],
+        };
+        persist(next);
+        return next;
       });
     },
     [connectedPlatforms]
   );
 
-  // The active set only ever includes connected platforms.
-  const active = useMemo(
-    () => new Set(activePlatforms.filter((p) => connectedPlatforms.has(p))),
-    [activePlatforms, connectedPlatforms]
+  // Send toggle (composer): arm/disarm this platform as a delivery target.
+  // Independent of read.
+  const toggleSendTarget = useCallback(
+    (p: Platform) => {
+      if (!connectedPlatforms.has(p)) return;
+      setSel((prev) => {
+        const has = prev.send.includes(p);
+        const next: Selection = {
+          ...prev,
+          send: has ? prev.send.filter((x) => x !== p) : [...prev.send, p],
+        };
+        persist(next);
+        return next;
+      });
+    },
+    [connectedPlatforms]
+  );
+
+  // Both sets only ever include connected platforms.
+  const activeFilters = useMemo(
+    () => new Set(sel.read.filter((p) => connectedPlatforms.has(p))),
+    [sel.read, connectedPlatforms]
+  );
+  const sendTargets = useMemo(
+    () => new Set(sel.send.filter((p) => connectedPlatforms.has(p))),
+    [sel.send, connectedPlatforms]
   );
 
   return (
@@ -121,10 +162,10 @@ export function SessionProvider({
         mode,
         setMode,
         connectedPlatforms,
-        activeFilters: active,
-        toggleFilter: toggle,
-        sendTargets: active,
-        toggleSendTarget: toggle,
+        activeFilters,
+        toggleRead,
+        sendTargets,
+        toggleSendTarget,
       }}
     >
       {children}

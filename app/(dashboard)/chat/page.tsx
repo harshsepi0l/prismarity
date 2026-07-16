@@ -7,6 +7,7 @@ import { useChat } from "../_ctx/chat";
 import { useLayout } from "../_ctx/layout";
 import ChatFeed from "./components/ChatFeed";
 import SplitChatView from "./components/SplitChatView";
+import ChatReadBar from "./components/ChatReadBar";
 import Composer from "./components/Composer";
 import SidePanel from "./components/SidePanel";
 import { UserCard } from "./components/UserCard";
@@ -17,20 +18,29 @@ const PLATFORM_ORDER: Platform[] = ["twitch", "kick", "youtube"];
 
 export default function ChatPage() {
   const { activeFilters, connectedPlatforms } = useSession();
-  const { messages, activeRole } = useChat();
+  const { messages, activeRole, activeChannel, activeKick, activeKickOnly } = useChat();
   const { chatLayout } = useLayout();
   const [selectedUser, setSelectedUser] = useState<UserSelection | null>(null);
 
-  // Ordered list of platforms that are both connected and active in filter.
-  const activePlatforms = PLATFORM_ORDER.filter(
-    (p) => connectedPlatforms.has(p) && activeFilters.has(p)
+  // Platforms that have a chat for the current channel selection (regardless of
+  // whether you're currently watching them) — the read bar toggles among these.
+  const availablePlatforms = PLATFORM_ORDER.filter(
+    (p) =>
+      connectedPlatforms.has(p) &&
+      ((p === "twitch" && !!activeChannel) ||
+        (p === "kick" && (!!activeKick || !!activeKickOnly)))
   );
+
+  // The subset you're actually watching — drives which columns/messages show.
+  const activePlatforms = availablePlatforms.filter((p) => activeFilters.has(p));
+  const readFilters = new Set<Platform>(activePlatforms);
 
   const showSplit = chatLayout === "split" && activePlatforms.length > 1;
 
   return (
     <Flex as="main" flex="1" minW="0">
       <Flex direction="column" flex="1" minW="0">
+        <ChatReadBar available={availablePlatforms} />
         {showSplit ? (
           <SplitChatView
             messages={messages}
@@ -40,7 +50,7 @@ export default function ChatPage() {
         ) : (
           <ChatFeed
             messages={messages}
-            activeFilters={activeFilters}
+            activeFilters={readFilters}
             onSelectUser={setSelectedUser}
           />
         )}

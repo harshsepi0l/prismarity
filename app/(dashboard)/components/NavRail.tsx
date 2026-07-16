@@ -4,7 +4,7 @@ import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Flex, Box, Text, chakra } from "@chakra-ui/react";
-import { useLayout, NAV_COLLAPSE_AT } from "../_ctx/layout";
+import { useLayout, NAV_RAIL_WIDTH } from "../_ctx/layout";
 import { useChat } from "../_ctx/chat";
 import { useSession } from "../_ctx/session";
 import { ResizeHandle } from "./ResizeHandle";
@@ -25,6 +25,7 @@ const VODS_ICON = (
 function SidebarSearch({ collapsed }: { collapsed: boolean }) {
   const { selectSearchResult, addWatchedChannel } = useChat();
   const { activeFilters } = useSession();
+  const { setSearchOpen } = useLayout();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -68,11 +69,13 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
+  // Collapsed rail has no room for the inline field — the icon opens the shared
+  // ⌘K CommandSearch overlay instead (fixes the dead collapsed-search path).
   if (collapsed) {
     return (
       <Box w="100%" h="34px" position="relative">
         <chakra.button
-          type="button" onClick={openSearch}
+          type="button" onClick={() => setSearchOpen(true)}
           position="absolute" top="0" left="calc(50% - 17px)"
           display="flex" alignItems="center" justifyContent="center"
           w="34px" h="34px" borderRadius="8px"
@@ -187,6 +190,7 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
 function OwnChannelButton({
   platform,
   name,
+  avatar,
   isLive,
   viewers,
   active,
@@ -195,6 +199,7 @@ function OwnChannelButton({
 }: {
   platform: "twitch" | "kick";
   name: string;
+  avatar: string | null;
   isLive: boolean;
   viewers?: number;
   active: boolean;
@@ -202,6 +207,36 @@ function OwnChannelButton({
   onClick: () => void;
 }) {
   const color = PLATFORM_COLOR[platform];
+
+  // Own account avatar with a platform-colored ring (so Twitch vs Kick still
+  // reads at a glance now that the platform logo is replaced by the pfp).
+  const size = collapsed ? 26 : 22;
+  const AvatarEl = (
+    <Box position="relative" flex="none" w={`${size}px`} h={`${size}px`}>
+      {avatar ? (
+        <chakra.img
+          src={avatar} alt={name} w={`${size}px`} h={`${size}px`}
+          borderRadius="full" objectFit="cover"
+          style={{ boxShadow: `0 0 0 1.5px ${active ? color : `${color}80`}` }}
+        />
+      ) : (
+        <Flex
+          w={`${size}px`} h={`${size}px`} borderRadius="full" bg="raised"
+          align="center" justify="center" fontSize="9px" fontWeight="700" color="muted"
+          style={{ boxShadow: `0 0 0 1.5px ${active ? color : `${color}80`}` }}
+        >
+          {name[0]?.toUpperCase()}
+        </Flex>
+      )}
+      {isLive && (
+        <Box
+          position="absolute" bottom="-1px" right="-1px"
+          w="6px" h="6px" borderRadius="full" bg="#FF5C5C"
+          borderWidth="1.5px" borderColor="bg"
+        />
+      )}
+    </Box>
+  );
 
   if (collapsed) {
     return (
@@ -216,16 +251,7 @@ function OwnChannelButton({
           transition="background .12s"
           _hover={{ bg: "raised" }}
         >
-          <Box position="relative">
-            <PlatformIcon platform={platform} color={active ? color : "#5C6479"} size={16} />
-            {isLive && (
-              <Box
-                position="absolute" bottom="-2px" right="-2px"
-                w="6px" h="6px" borderRadius="full" bg="#FF5C5C"
-                borderWidth="1.5px" borderColor="bg"
-              />
-            )}
-          </Box>
+          {AvatarEl}
         </chakra.button>
       </Box>
     );
@@ -247,16 +273,7 @@ function OwnChannelButton({
         style={{ background: color, opacity: active ? 1 : 0.35 }}
         transition="opacity .12s"
       />
-      <Box position="relative" flex="none">
-        <PlatformIcon platform={platform} color={active ? color : "#5C6479"} size={15} />
-        {isLive && (
-          <Box
-            position="absolute" bottom="-2px" right="-2px"
-            w="5px" h="5px" borderRadius="full" bg="#FF5C5C"
-            borderWidth="1px" borderColor="bg"
-          />
-        )}
-      </Box>
+      {AvatarEl}
       <Text flex="1" minW="0" fontSize="13px" fontWeight={active ? "500" : "400"} color={active ? "text" : "muted"} textAlign="left" truncate>
         {name}
       </Text>
@@ -392,7 +409,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function NavRail() {
   const pathname = usePathname();
-  const { navWidth, setNavWidth } = useLayout();
+  const { navWidth, setNavWidth, isMobile, navOpen, setNavOpen, navMode } = useLayout();
   const {
     ownChannel, ownKick,
     activeChannel, activeKickOnly,
@@ -401,7 +418,16 @@ export function NavRail() {
     clearSelection, removeWatchedChannel,
   } = useChat();
 
-  const collapsed = navWidth > 0 && navWidth < NAV_COLLAPSE_AT;
+  // Three user-cyclable modes: expanded (labels + resizable), rail (icon-only),
+  // hidden. On mobile the rail is an overlay drawer that always shows full labels.
+  const collapsed = !isMobile && navMode === "rail";
+  const dockedWidth = isMobile
+    ? 0
+    : navMode === "hidden"
+      ? 0
+      : navMode === "rail"
+        ? NAV_RAIL_WIDTH
+        : navWidth;
   const vodsActive = pathname === "/vods";
 
   const ownTwitchActive = !!ownChannel && activeChannel?.id === ownChannel.id;
@@ -409,25 +435,8 @@ export function NavRail() {
 
   const hasOwnChannels = !!ownChannel || !!ownKick;
 
-  return (
-    <Flex
-      as="nav"
-      position="relative"
-      flex="none"
-      w={`${navWidth}px`}
-      direction="column"
-      borderRightWidth={navWidth > 0 ? "1px" : "0"}
-      borderColor="line"
-      px={collapsed ? "8px" : "12px"}
-      py={navWidth > 0 ? "20px" : "0"}
-      gap="0"
-      style={{
-        overflow: navWidth < NAV_COLLAPSE_AT ? "visible" : "hidden",
-        pointerEvents: navWidth === 0 ? "none" : undefined,
-      }}
-    >
-      {navWidth > 0 && (
-        <>
+  const content = (
+    <>
           {/* Own channels — pinned */}
           {hasOwnChannels && (
             <Box mb="18px">
@@ -437,6 +446,7 @@ export function NavRail() {
                   <OwnChannelButton
                     platform="twitch"
                     name={ownChannel.displayName}
+                    avatar={ownChannel.profileImageUrl}
                     isLive={ownChannel.isLive}
                     viewers={ownChannel.viewerCount}
                     active={ownTwitchActive}
@@ -448,6 +458,7 @@ export function NavRail() {
                   <OwnChannelButton
                     platform="kick"
                     name={ownKick.slug}
+                    avatar={ownKick.profileImageUrl}
                     isLive={ownKick.isLive}
                     viewers={ownKick.viewers}
                     active={ownKickActive}
@@ -531,10 +542,56 @@ export function NavRail() {
               </Flex>
             </Box>
           )}
-        </>
-      )}
+    </>
+  );
 
-      <ResizeHandle side="right" width={navWidth} onResize={setNavWidth} />
+  // Mobile: off-canvas overlay drawer toggled from the TopBar hamburger.
+  if (isMobile) {
+    if (!navOpen) return null;
+    return (
+      <>
+        <Box
+          position="fixed" inset="0" zIndex={70} bg="rgba(0,0,0,0.55)"
+          onClick={() => setNavOpen(false)}
+        />
+        <Flex
+          as="nav"
+          position="fixed" top="0" left="0" bottom="0" zIndex={71}
+          w="min(280px, 82vw)" direction="column"
+          bg="bg" borderRightWidth="1px" borderColor="line"
+          px="12px" py="20px" gap="0" overflowY="auto"
+        >
+          {content}
+        </Flex>
+      </>
+    );
+  }
+
+  // Desktop / tablet: docked rail. The tablet band auto-collapses to an icon
+  // strip (fixed width, no resize handle).
+  return (
+    <Flex
+      as="nav"
+      position="relative"
+      flex="none"
+      w={`${dockedWidth}px`}
+      direction="column"
+      borderRightWidth={dockedWidth > 0 ? "1px" : "0"}
+      borderColor="line"
+      px={collapsed ? "8px" : "12px"}
+      py={dockedWidth > 0 ? "20px" : "0"}
+      gap="0"
+      style={{
+        overflow: collapsed ? "visible" : "hidden",
+        pointerEvents: dockedWidth === 0 ? "none" : undefined,
+      }}
+    >
+      {dockedWidth > 0 && content}
+
+      {/* Drag-resize only in expanded mode, clamped to [min, max] by the context. */}
+      {navMode === "expanded" && (
+        <ResizeHandle side="right" width={navWidth} onResize={setNavWidth} />
+      )}
     </Flex>
   );
 }

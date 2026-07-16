@@ -9,7 +9,6 @@ import { MentionText } from "./MentionText";
 import { PlatformIcon, PLATFORM_COLOR, VerifiedBadge } from "./PlatformIcon";
 import { useLayout } from "../_ctx/layout";
 import { useChat } from "../_ctx/chat";
-import { useSession } from "../_ctx/session";
 import { useStats } from "../_ctx/stats";
 
 export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null };
@@ -33,78 +32,6 @@ function SplitIcon() {
   );
 }
 
-// Platform badge — a chat filter toggle (same behavior as the old sidebar
-// chips). Prominent icon + label chip: glows in the platform color when that
-// chat is shown, ghosts out when hidden. Unconnected platforms open settings.
-function PlatformBadge({
-  platform,
-  connected,
-  on,
-  accountName,
-  isLive,
-  onToggle,
-  onConnect,
-}: {
-  platform: "twitch" | "kick";
-  connected: boolean;
-  on: boolean;
-  accountName: string | null;
-  isLive: boolean;
-  onToggle: () => void;
-  onConnect: () => void;
-}) {
-  const color = PLATFORM_COLOR[platform];
-  const label = platform === "twitch" ? "TWITCH" : "KICK";
-
-  return (
-    <chakra.button
-      type="button"
-      onClick={connected ? onToggle : onConnect}
-      title={
-        connected
-          ? `${accountName} — ${on ? "hide" : "show"} ${label.toLowerCase()} chat`
-          : `${label.toLowerCase()} not connected — open settings to connect`
-      }
-      position="relative"
-      display="flex" alignItems="center" gap="7px"
-      px="11px" h="30px" borderRadius="8px" flex="none"
-      cursor="pointer"
-      transition="background .15s, border-color .15s, box-shadow .2s, opacity .15s"
-      style={
-        !connected
-          ? { background: "transparent", border: "1px solid #232a38", opacity: 0.3 }
-          : on
-            ? {
-                background: `${color}1E`,
-                border: `1px solid ${color}`,
-                boxShadow: `0 0 14px ${color}45, inset 0 0 10px ${color}12`,
-              }
-            : { background: "transparent", border: "1px solid #2a3244", opacity: 0.55 }
-      }
-      _hover={connected ? { background: `${color}28` } : { opacity: 0.55 }}
-    >
-      <PlatformIcon platform={platform} color={connected && on ? color : "#8B93A7"} size={13} />
-      <Text
-        as="span"
-        fontFamily="mono"
-        fontSize="10px"
-        fontWeight="700"
-        letterSpacing="0.12em"
-        style={{ color: connected && on ? color : "#5C6479" }}
-      >
-        {label}
-      </Text>
-      {connected && isLive && (
-        <Box
-          position="absolute" top="-3px" right="-3px"
-          w="8px" h="8px" borderRadius="full" bg="#FF5C5C"
-          borderWidth="2px" borderColor="bg"
-        />
-      )}
-    </chakra.button>
-  );
-}
-
 // Center pill — the stream you're tuned into: avatar, name, LIVE state,
 // viewers and stream title, live from the stats context. Beacon state folds
 // in here: waiting animation when beacon is on with no channel, a steady
@@ -112,6 +39,7 @@ function PlatformBadge({
 function ActiveChannelPill() {
   const { activeChannel, activeKick, activeKickOnly, beaconMode } = useChat();
   const { platforms, collab } = useStats();
+  const { isMobile } = useLayout();
   const [beaconSignal, setBeaconSignal] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -195,10 +123,12 @@ function ActiveChannelPill() {
   return (
     <Flex
       position="relative"
-      align="center" gap="9px" px="11px" h="36px"
+      align="center" px="11px" h="36px"
       borderRadius="9px" borderWidth="1px" borderColor="line"
       bg="panel" maxW="100%" minW="0"
     >
+      {/* Inner content clips so a long name/title can never overlap the badges. */}
+      <Flex align="center" gap="9px" minW="0" overflow="hidden" flex="1">
       {beaconMode && beaconSignal && (
         <Box
           w="6px" h="6px" borderRadius="full" flex="none"
@@ -257,7 +187,7 @@ function ActiveChannelPill() {
         type="button"
         onClick={() => setAboutOpen((o) => !o)}
         title="View channel info"
-        display="flex" alignItems="center" gap="4px" flex="none" maxW="190px"
+        display="flex" alignItems="center" gap="4px" flex="none" minW="0" maxW={{ base: "96px", sm: "130px", md: "190px" }}
         bg="transparent" cursor="pointer"
         color="text"
         _hover={{ color: "#fff" }}
@@ -266,6 +196,9 @@ function ActiveChannelPill() {
           {name}
         </Text>
         {twitchP?.verified && <VerifiedBadge size={12} title="Verified partner" />}
+        {kickP?.verified && (
+          <VerifiedBadge size={12} color={PLATFORM_COLOR.kick} title="Verified on Kick" />
+        )}
       </chakra.button>
 
       {isLive ? (
@@ -290,7 +223,7 @@ function ActiveChannelPill() {
               <Text fontFamily="mono" fontSize="8px" fontWeight="700" letterSpacing="0.1em" color="faint" flex="none">
                 WITH
               </Text>
-              {collab.slice(0, 2).map((c) => (
+              {collab.slice(0, isMobile ? 3 : 2).map((c) => (
                 <Flex key={c.login} align="center" gap="3px" flex="none">
                   {c.profileImageUrl && (
                     <chakra.img
@@ -299,25 +232,30 @@ function ActiveChannelPill() {
                       style={c.host ? { boxShadow: "0 0 0 1.5px #A66CFF" } : undefined}
                     />
                   )}
-                  <Text fontSize="11px" fontWeight="600" color="text">
-                    {c.displayName}
-                  </Text>
-                  {c.host && (
-                    <Text fontFamily="mono" fontSize="8px" fontWeight="700" letterSpacing="0.05em" color="#A66CFF" flex="none" title="Stream Together host">
-                      HOST
-                    </Text>
-                  )}
-                  {c.verified && <VerifiedBadge size={11} title="Verified partner" />}
-                  {c.viewers != null && (
-                    <Text fontFamily="mono" fontSize="10px" color="muted" flex="none">
-                      {c.viewers.toLocaleString()}
-                    </Text>
+                  {/* Names/roles/viewers collapse to avatars-only on mobile. */}
+                  {!isMobile && (
+                    <>
+                      <Text fontSize="11px" fontWeight="600" color="text">
+                        {c.displayName}
+                      </Text>
+                      {c.host && (
+                        <Text fontFamily="mono" fontSize="8px" fontWeight="700" letterSpacing="0.05em" color="#A66CFF" flex="none" title="Stream Together host">
+                          HOST
+                        </Text>
+                      )}
+                      {c.verified && <VerifiedBadge size={11} title="Verified partner" />}
+                      {c.viewers != null && (
+                        <Text fontFamily="mono" fontSize="10px" color="muted" flex="none">
+                          {c.viewers.toLocaleString()}
+                        </Text>
+                      )}
+                    </>
                   )}
                 </Flex>
               ))}
-              {collab.length > 2 && (
+              {collab.length > (isMobile ? 3 : 2) && (
                 <Text fontFamily="mono" fontSize="10px" color="muted" flex="none">
-                  +{collab.length - 2}
+                  +{collab.length - (isMobile ? 3 : 2)}
                 </Text>
               )}
             </Flex>
@@ -332,15 +270,16 @@ function ActiveChannelPill() {
         </Text>
       )}
 
-      {/* Stream title + category */}
+      {/* Stream title + category — hidden below md to keep the pill compact. */}
       {title && (
-        <>
+        <Flex hideBelow="md" align="center" gap="9px" minW="0" flex="1">
           <Box w="1px" h="16px" bg="line" flex="none" />
           <Text fontSize="12px" color="muted" truncate minW="0" title={title}>
             <MentionText text={title} />
           </Text>
-        </>
+        </Flex>
       )}
+      </Flex>
 
       {aboutOpen && <ChannelAbout onClose={() => setAboutOpen(false)} />}
     </Flex>
@@ -404,11 +343,8 @@ interface TopBarProps {
 }
 
 export function TopBar({ auth }: TopBarProps) {
-  const { chatLayout, setChatLayout } = useLayout();
-  const { ownChannel, ownKick } = useChat();
-  const { activeFilters, toggleFilter, connectedPlatforms } = useSession();
+  const { chatLayout, setChatLayout, searchOpen, setSearchOpen, setNavOpen, navMode, cycleNavMode, panelMode, togglePanel } = useLayout();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
 
   // ⌘K / Ctrl+K opens the channel search.
   useEffect(() => {
@@ -420,7 +356,7 @@ export function TopBar({ auth }: TopBarProps) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [setSearchOpen]);
 
   return (
     <>
@@ -429,15 +365,58 @@ export function TopBar({ auth }: TopBarProps) {
         flex="none"
         h="56px"
         align="center"
-        gap="12px"
-        px="20px"
+        gap={{ base: "8px", md: "12px" }}
+        px={{ base: "12px", md: "20px" }}
         borderBottomWidth="1px"
         borderColor="line"
       >
-        {/* Left: prism + brand */}
+        {/* Left: hamburger (mobile only) + prism + brand */}
         <Flex align="center" gap="10px" flex="none">
+          <chakra.button
+            hideFrom="md"
+            type="button"
+            onClick={() => setNavOpen(true)}
+            aria-label="Open navigation"
+            title="Menu"
+            display="flex" alignItems="center" justifyContent="center"
+            w="34px" h="34px" borderRadius="9px" flex="none"
+            bg="transparent" cursor="pointer"
+            borderWidth="1px" borderColor="#232a38"
+            _hover={{ bg: "raised" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M2 4h12M2 8h12M2 12h12" stroke="#8B93A7" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </chakra.button>
+          {/* Desktop: cycle the sidebar through expanded → rail → hidden. */}
+          <chakra.button
+            hideBelow="md"
+            type="button"
+            onClick={cycleNavMode}
+            aria-label="Toggle sidebar"
+            title={
+              navMode === "expanded"
+                ? "Collapse sidebar to icons"
+                : navMode === "rail"
+                  ? "Hide sidebar"
+                  : "Show sidebar"
+            }
+            display="flex" alignItems="center" justifyContent="center"
+            w="34px" h="34px" borderRadius="9px" flex="none"
+            bg="transparent" cursor="pointer"
+            borderWidth="1px" borderColor="#232a38"
+            _hover={{ bg: "raised" }}
+          >
+            <svg
+              width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden
+              style={{ transform: navMode === "hidden" ? "rotate(180deg)" : "none", transition: "transform .15s" }}
+            >
+              <path d="M10 3 L5 8 L10 13" stroke="#8B93A7" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </chakra.button>
           <ProfileButton onClick={() => setSettingsOpen(true)} />
           <Text
+            hideBelow="sm"
             fontFamily="mono"
             fontSize="13px"
             fontWeight="700"
@@ -454,29 +433,9 @@ export function TopBar({ auth }: TopBarProps) {
           <ActiveChannelPill />
         </Flex>
 
-        {/* Right: platform chat toggles + split view */}
+        {/* Right: view controls. Per-platform read/send toggles now live solely
+            in the composer (a single shared active-set drives both). */}
         <Flex align="center" gap="7px" flex="none">
-          <PlatformBadge
-            platform="twitch"
-            connected={connectedPlatforms.has("twitch")}
-            on={activeFilters.has("twitch")}
-            accountName={auth.twitch?.displayName ?? null}
-            isLive={ownChannel?.isLive ?? false}
-            onToggle={() => toggleFilter("twitch")}
-            onConnect={() => setSettingsOpen(true)}
-          />
-          <PlatformBadge
-            platform="kick"
-            connected={connectedPlatforms.has("kick")}
-            on={activeFilters.has("kick")}
-            accountName={auth.kick?.displayName ?? null}
-            isLive={ownKick?.isLive ?? false}
-            onToggle={() => toggleFilter("kick")}
-            onConnect={() => setSettingsOpen(true)}
-          />
-
-          <Box w="1px" h="20px" bg="line" mx="3px" flex="none" />
-
           <chakra.button
             type="button"
             title={chatLayout === "combined" ? "Switch to split view" : "Switch to combined view"}
@@ -492,6 +451,29 @@ export function TopBar({ auth }: TopBarProps) {
             _hover={{ background: "rgba(166,108,255,0.08)", borderColor: "rgba(166,108,255,0.3)" }}
           >
             {chatLayout === "combined" ? <CombinedIcon /> : <SplitIcon />}
+          </chakra.button>
+
+          {/* Desktop: show/hide the right stats panel. */}
+          <chakra.button
+            hideBelow="md"
+            type="button"
+            title={panelMode === "hidden" ? "Show stats panel" : "Hide stats panel"}
+            aria-label="Toggle stats panel"
+            onClick={togglePanel}
+            display="flex" alignItems="center" justifyContent="center"
+            w="30px" h="30px" borderRadius="7px" flex="none"
+            transition="background .12s, border-color .12s"
+            style={
+              panelMode === "expanded"
+                ? { background: "rgba(166,108,255,0.14)", border: "1px solid rgba(166,108,255,0.45)" }
+                : { background: "transparent", border: "1px solid #232a38" }
+            }
+            _hover={{ background: "rgba(166,108,255,0.08)", borderColor: "rgba(166,108,255,0.3)" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="#8B93A7" strokeWidth="1.4" />
+              <line x1="10.5" y1="3" x2="10.5" y2="13" stroke="#8B93A7" strokeWidth="1.4" />
+            </svg>
           </chakra.button>
         </Flex>
       </Flex>

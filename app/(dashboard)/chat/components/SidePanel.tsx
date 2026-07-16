@@ -33,7 +33,7 @@ function Divider() {
 function StatCard({ label, value, accent }: { label: string; value: React.ReactNode; accent?: string }) {
   return (
     <Box borderWidth="1px" borderColor="line" bg="raised" borderRadius="8px" px="12px" py="10px">
-      <Text fontFamily="mono" fontSize="20px" fontWeight="600" lineHeight="1.1" color={accent ?? "text"}>
+      <Text fontFamily="mono" fontSize="20px" fontWeight="600" lineHeight="1.1" color={accent ?? "text"} whiteSpace="nowrap">
         {value}
       </Text>
       <Text fontSize="10px" color="muted" mt="4px">
@@ -354,7 +354,7 @@ export default function SidePanel({ mode }: SidePanelProps) {
   return (
     <>
       <SectionLabel>COMBINED</SectionLabel>
-      <SimpleGrid columns={2} gap="8px">
+      <SimpleGrid minChildWidth="118px" gap="8px">
         <StatCard label="viewers" value={viewers} accent={stats.anyLive ? "#FF5C5C" : undefined} />
         <StatCard label="messages / min" value={stats.messagesPerMin} />
         <StatCard label="active (5m)" value={stats.activeChatters} />

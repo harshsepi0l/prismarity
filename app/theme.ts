@@ -67,6 +67,14 @@ const config = defineConfig({
         mono:    { value: "var(--font-ibm-plex-mono), monospace" },
       },
     },
+    semanticTokens: {
+      colors: {
+        // Chakra's default semantic `bg` token is white in light mode and shadows
+        // our raw `bg` color token — so `bg="bg"` rendered white (this app has no
+        // dark-mode toggle). Pin it to our dark canvas so `bg="bg"` is always dark.
+        bg: { DEFAULT: { value: "#0E1118" } },
+      },
+    },
   },
 });
 
