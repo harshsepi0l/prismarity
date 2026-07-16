@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { attachConnection } from "@/lib/auth/store";
+import { getBaseUrl } from "@/lib/settings/store";
 import {
   SESSION_COOKIE,
   sessionCookieValue,
@@ -27,6 +28,10 @@ export async function GET(
   const oauthError = sp.get("error");
   const isPopup = !!req.cookies.get(POPUP_COOKIE)?.value;
 
+  // Public origin for redirects — never req.url, which is the internal
+  // container host behind a proxy (Azure) and would leak into Location.
+  const base = await getBaseUrl();
+
   // Narrow to the right lib so TypeScript sees concrete TokenResponse types in each branch.
   const twitchLib = platform === "twitch" ? await import("@/lib/auth/twitch") : null;
   const kickLib = platform === "kick" ? await import("@/lib/auth/kick") : null;
@@ -44,8 +49,8 @@ export async function GET(
   const fail = (reason: string) => {
     console.error(`[auth] ${platform} callback failed: ${reason}`);
     const dest = isPopup
-      ? new URL(`/auth/success?error=${encodeURIComponent(reason)}`, url.origin)
-      : new URL(`/chat?auth=error&reason=${encodeURIComponent(reason)}`, url.origin);
+      ? new URL(`/auth/success?error=${encodeURIComponent(reason)}`, base)
+      : new URL(`/chat?auth=error&reason=${encodeURIComponent(reason)}`, base);
     const res = NextResponse.redirect(dest);
     clearAuthCookies(res);
     return res;
@@ -74,8 +79,8 @@ export async function GET(
     }
     const user = await attachConnection(connection, current?.id);
     const dest = isPopup
-      ? new URL("/auth/success", url.origin)
-      : new URL("/chat", url.origin);
+      ? new URL("/auth/success", base)
+      : new URL("/chat", base);
     const res = NextResponse.redirect(dest);
     clearAuthCookies(res);
     res.cookies.set(SESSION_COOKIE, sessionCookieValue(user.id), sessionCookieOptions);
