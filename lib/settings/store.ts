@@ -51,6 +51,16 @@ async function read(): Promise<Settings> {
   }
 }
 
+// The public origin to build user-facing redirect URLs from. Must NOT be
+// derived from the incoming request: behind a proxy/container (e.g. Azure)
+// req.url carries the internal host:port, which then leaks into Location headers.
+export async function getBaseUrl(): Promise<string> {
+  const s = await getSettings();
+  return normalizeBaseUrl(
+    s.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
+  );
+}
+
 export async function getSettings(): Promise<Settings> {
   if (_cache && Date.now() - _cacheAt < CACHE_TTL) return _cache;
   _cache = await read();
