@@ -5,6 +5,7 @@ import { Box, Flex, Text, SimpleGrid, chakra } from "@chakra-ui/react";
 import type { Mode } from "../../_ctx/session";
 import { useStats, formatUptime, type PlatformLive } from "../../_ctx/stats";
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
+import { SectionLabel, Divider } from "../../components/ui";
 import type { TwitchClip } from "@/lib/twitch/stats";
 import type { KickLeader } from "@/lib/kick/public";
 import type { CheerLeader, GiftLeader } from "../useTwitchChat";
@@ -17,18 +18,6 @@ const MOD_TOGGLES = [
   { id: "emote", label: "Emote only" },
   { id: "subs", label: "Subscribers only" },
 ];
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text fontFamily="mono" fontSize="10px" letterSpacing="0.18em" color="faint" mb="12px">
-      {children}
-    </Text>
-  );
-}
-
-function Divider() {
-  return <Box h="1px" bg="line" my="22px" />;
-}
 
 function StatCard({ label, value, accent }: { label: string; value: React.ReactNode; accent?: string }) {
   return (

@@ -9,6 +9,7 @@ import { useChat } from "../_ctx/chat";
 import { useSession } from "../_ctx/session";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
+import { SectionLabel } from "./ui";
 import type { SearchResult } from "../types";
 
 const VODS_ICON = (
@@ -389,19 +390,6 @@ function WatchedChannelButton({
         {isLive && <Box flex="none" w="5px" h="5px" borderRadius="full" bg="#FF5C5C" />}
       </chakra.button>
     </Box>
-  );
-}
-
-// ── Section label ────────────────────────────────────────────────────────────
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text
-      fontFamily="mono" fontSize="9px" letterSpacing="0.18em"
-      color="faint" px="10px" pb="6px"
-    >
-      {children}
-    </Text>
   );
 }
 
