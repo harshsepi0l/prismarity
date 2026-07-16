@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { RichInput, type RichInputHandle } from "./RichInput";
 import { Box, Flex, Input, Text, chakra } from "@chakra-ui/react";
-import { useChat } from "../../useChat";
-import { useEmotes, useEmoteCategories } from "../../useEmotes";
-import { useSession } from "../../useSession";
-import { useStats } from "../../useStats";
-import { PlatformIcon } from "../../components/PlatformIcon";
-import type { Platform } from "../types";
+import { useChat } from "../../_ctx/chat";
+import { useEmotes, useEmoteCategories } from "../../_ctx/emotes";
+import { useSession } from "../../_ctx/session";
+import { useStats } from "../../_ctx/stats";
+import { PlatformIcon, PLATFORM_LABEL } from "../../components/PlatformIcon";
+import type { Platform } from "../../types";
 import type { EmoteSource } from "@/app/api/emotes/route";
 
 type EmoteTab = "all" | EmoteSource;
@@ -171,24 +171,33 @@ export default function Composer() {
     }
   }
 
+  // Twitch emotes (7TV/BTTV/FFZ/channel) are only relevant when Twitch is a send target.
+  // If only Kick is targeted, we have no Kick-specific emotes to offer.
+  const showTwitchEmotes = sendTargets.has("twitch");
+
   // Only offer tabs for sources that actually have emotes for this channel.
   const availableTabs: EmoteTab[] = useMemo(
-    () => ["all", ...categories.filter((c) => c.emotes.length > 0).map((c) => c.source)],
-    [categories]
+    () =>
+      showTwitchEmotes
+        ? ["all", ...categories.filter((c) => c.emotes.length > 0).map((c) => c.source)]
+        : [],
+    [categories, showTwitchEmotes]
   );
 
   type EmoteEntry = { code: string; url: string; locked?: boolean };
   const filteredEmotes = useMemo((): EmoteEntry[] => {
+    if (!showTwitchEmotes) return [];
     const q = emoteQuery.trim().toLowerCase();
     const source: EmoteEntry[] =
       activeTab === "all"
-        ? Object.entries(emotes).map(([code, url]) => ({ code, url }))
+        ? categories.flatMap((c) => c.emotes)
         : (categories.find((c) => c.source === activeTab)?.emotes ?? []);
     const matched = q ? source.filter((e) => e.code.toLowerCase().includes(q)) : source;
     return matched.slice(0, 200);
-  }, [emotes, categories, activeTab, emoteQuery]);
+  }, [categories, activeTab, emoteQuery, showTwitchEmotes]);
 
-  function insertEmote(code: string, url: string) {
+  function insertEmote(code: string, url: string, locked?: boolean) {
+    if (locked) return;
     richInputRef.current?.insertEmote(code, url);
   }
 
@@ -207,11 +216,6 @@ export default function Composer() {
   // Armed targets whose channel is currently offline — the message would land in
   // that platform's offline chat.
   const offlineTargets = deliverable.filter((p) => liveByPlatform[p] === false);
-  const PLATFORM_LABELS: Record<Platform, string> = {
-    twitch: "Twitch",
-    youtube: "YouTube",
-    kick: "Kick",
-  };
 
   async function sendOne(
     platform: Platform,
@@ -220,7 +224,7 @@ export default function Composer() {
     try {
       if (platform === "twitch") {
         if (!activeChannel) return { ok: false, error: "no_channel" };
-        const res = await fetch("/api/twitch/chat/send", {
+        const res = await fetch("/api/twitch/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ channelId: activeChannel.id, message }),
@@ -230,7 +234,7 @@ export default function Composer() {
       }
       if (platform === "kick") {
         if (!activeKick) return { ok: false, error: "no_channel" };
-        const res = await fetch("/api/kick/chat/send", {
+        const res = await fetch("/api/kick/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ slug: activeKick.slug, message }),
@@ -275,7 +279,7 @@ export default function Composer() {
   const canSend = deliverable.length > 0 && !!text.trim() && !sending;
 
   return (
-    <Box flex="none" px="24px" pt="16px" pb="22px">
+    <Box flex="none" px={{ base: "12px", md: "24px" }} pt="16px" pb="22px">
       <Box position="relative">
         {pickerOpen && (
           <Box
@@ -344,13 +348,14 @@ export default function Composer() {
                   <chakra.button
                     key={code}
                     type="button"
-                    onClick={() => insertEmote(code, url)}
-                    title={locked ? `${code} (Subscribers only)` : code}
+                    onClick={() => insertEmote(code, url, locked)}
+                    title={locked ? `${code} (Subscribers only — cannot send)` : code}
                     p="4px"
                     borderRadius="6px"
-                    cursor="pointer"
-                    transition="background .1s"
-                    _hover={{ bg: "raised" }}
+                    cursor={locked ? "not-allowed" : "pointer"}
+                    opacity={locked ? 0.45 : 1}
+                    transition="background .1s, opacity .1s"
+                    _hover={{ bg: locked ? "transparent" : "raised" }}
                     position="relative"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -446,8 +451,8 @@ export default function Composer() {
 
           <chakra.button
             type="button"
-            onClick={() => setPickerOpen((v) => !v)}
-            title="Emotes"
+            onClick={() => showTwitchEmotes && setPickerOpen((v) => !v)}
+            title={showTwitchEmotes ? "Emotes" : "Emotes (select Twitch to use)"}
             aria-label="Emotes"
             display="flex"
             alignItems="center"
@@ -456,9 +461,10 @@ export default function Composer() {
             w="32px"
             borderRadius="7px"
             color={pickerOpen ? "text" : "muted"}
-            cursor="pointer"
-            transition="background .12s, color .12s"
-            _hover={{ bg: "raised", color: "text" }}
+            cursor={showTwitchEmotes ? "pointer" : "not-allowed"}
+            opacity={showTwitchEmotes ? 1 : 0.35}
+            transition="background .12s, color .12s, opacity .12s"
+            _hover={{ bg: showTwitchEmotes ? "raised" : "transparent", color: showTwitchEmotes ? "text" : "muted" }}
           >
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
               <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.5" />
@@ -494,46 +500,54 @@ export default function Composer() {
           </chakra.button>
         </Flex>
       </Box>
-      <Flex mt="10px" align="center" gap="12px">
+      <Flex mt="10px" align="center" gap="12px" wrap="wrap" rowGap="6px">
 
-        
-        <Flex align="center" gap="9px">
-          {/* Send-target glow toggles, one per available platform. Toggling Kick
-              glows it and routes your message there too. */}
+
+        <Flex align="center" gap="8px">
+          {/* Pure send targets — each chip arms/disarms a platform your message
+              is delivered to. Reading is controlled separately, up at the feed. */}
+          <Text fontFamily="mono" fontSize="10px" letterSpacing="0.06em" color="faint" flex="none">
+            SEND TO
+          </Text>
           {SEND_PLATFORMS.filter(({ id }) => available.includes(id)).map(({ id, color }) => {
-            const on = sendTargets.has(id);
-            const label = PLATFORM_LABELS[id];
+            const armed = sendTargets.has(id);
             const offline = liveByPlatform[id] === false;
-            // Three states: off (dim), on+offline (grey, no glow, offline dot),
-            // on+live (colored glow).
-            const title = !on
-              ? `Send to ${label} (off)`
+            const label = PLATFORM_LABEL[id];
+            const title = !armed
+              ? `Click to send your messages to ${label}`
               : offline
-                ? `${label} is offline — message posts to its offline chat`
-                : `Send to ${label}`;
+                ? `${label} is offline — your message posts to its offline chat`
+                : `Sending to ${label} — click to stop`;
             return (
               <chakra.button
                 key={id}
                 type="button"
                 onClick={() => toggleSendTarget(id)}
                 title={title}
-                aria-pressed={on}
+                aria-pressed={armed}
                 position="relative"
                 display="inline-flex"
+                alignItems="center"
+                gap="6px"
+                flex="none"
+                px="9px"
+                py="4px"
+                borderRadius="full"
+                borderWidth="1px"
+                borderColor={armed ? `${color}66` : "fieldLine"}
+                bg={armed ? `${color}1A` : "transparent"}
+                color={armed ? "text" : "faint"}
+                opacity={armed ? 1 : 0.7}
                 cursor="pointer"
-                opacity={on ? 1 : 0.3}
-                transition="opacity .15s, filter .15s"
-                style={{
-                  filter: on && !offline ? `drop-shadow(0 0 5px ${color})` : "none",
-                }}
-                _hover={{ opacity: 1 }}
+                transition="background .12s, border-color .12s, opacity .12s, filter .12s"
+                style={{ filter: armed && !offline ? `drop-shadow(0 0 4px ${color}55)` : "none" }}
+                _hover={{ opacity: 1, borderColor: `${color}66` }}
               >
-                <PlatformIcon
-                  platform={id}
-                  color={color}
-                  size={17}
-                />
-                {on && offline && (
+                <PlatformIcon platform={id} color={color} size={14} />
+                <Text fontSize="11px" fontWeight="600">
+                  {label}
+                </Text>
+                {armed && offline && (
                   <Box
                     position="absolute"
                     top="-3px"
@@ -544,7 +558,7 @@ export default function Composer() {
                     bg="#F5A623"
                     borderWidth="1.5px"
                     borderColor="bg"
-                    title="offline"
+                    pointerEvents="none"
                     style={{ animation: "pris-pulse 1.2s ease-in-out infinite" }}
                   />
                 )}
@@ -552,17 +566,9 @@ export default function Composer() {
             );
           })}
           {available.length === 0 && (
-            <Box
-              as="span"
-              display="inline-flex"
-              title="Select a channel to chat"
-              opacity={0.3}
-            >
-              
-              <PlatformIcon platform="twitch" color="#A66CFF" size={14}/>
-              <PlatformIcon platform="kick" color="#5BE37D" size={14} />
-            </Box>
-            
+            <Text fontSize="11px" color="faint" opacity={0.7}>
+              Select a channel
+            </Text>
           )}
         </Flex>
         {offlineTargets.length > 0 ? (
@@ -570,13 +576,13 @@ export default function Composer() {
             <Box w="6px" h="6px" borderRadius="full" bg="#F5A623" flex="none" />
             <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="#F5A623">
               {`Posting to offline chat on ${offlineTargets
-                .map((p) => PLATFORM_LABELS[p])
+                .map((p) => PLATFORM_LABEL[p])
                 .join(" & ")}`}
             </Text>
           </Flex>
         ) : (
-          <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="faint">
-            {"You can read or send chats based on the platform(s) you select at the top!"}
+          <Text hideBelow="md" fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="faint">
+            {"Show or hide a chat from its header above."}
           </Text>
         )}
 

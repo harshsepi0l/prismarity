@@ -9,11 +9,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ChatMessage, ConnectionStatus, Platform, SearchResult } from "./chat/types";
+import type { ChatMessage, ConnectionStatus, Platform, SearchResult } from "../types";
 import type { FollowedChannel } from "@/lib/twitch/channels";
 import type { Role } from "@/lib/auth/types";
-import { useTwitchChat, type CheerLeader, type GiftLeader } from "./chat/useTwitchChat";
-import { useKickChat } from "./chat/useKickChat";
+import { useTwitchChat, type CheerLeader, type GiftLeader } from "../chat/useTwitchChat";
+import { useKickChat } from "../chat/useKickChat";
 
 // Chat session state lives in the dashboard layout, ABOVE the routes, so the
 // live sockets and active selection survive navigating to Loyalty/VODs and back.
@@ -31,6 +31,7 @@ export interface KickOnlyChannel {
   slug: string;
   isLive: boolean;
   viewers: number;
+  profileImageUrl: string | null;
 }
 
 interface PendingKick {
@@ -112,7 +113,7 @@ export function ChatProvider({
   }, []);
 
   const [ownChannel, setOwnChannel] = useState<FollowedChannel | null>(null);
-  const [ownKickStat, setOwnKickStat] = useState<{ isLive: boolean; viewers: number } | null>(null);
+  const [ownKickStat, setOwnKickStat] = useState<{ isLive: boolean; viewers: number; profileImageUrl: string | null } | null>(null);
   const [activeChannel, setActiveChannel] = useState<FollowedChannel | null>(null);
   const [activeKickOnly, setActiveKickOnly] = useState<string | null>(null);
   const [pendingKick, setPendingKick] = useState<PendingKick | null>(null);
@@ -201,9 +202,9 @@ export function ChatProvider({
       try {
         const res = await fetch("/api/kick/stats");
         if (!res.ok) return;
-        const json = (await res.json()) as { stats?: { isLive: boolean; viewers: number } | null };
+        const json = (await res.json()) as { stats?: { isLive: boolean; viewers: number; profileImageUrl: string | null } | null };
         if (!cancelled && json.stats) {
-          setOwnKickStat({ isLive: json.stats.isLive, viewers: json.stats.viewers });
+          setOwnKickStat({ isLive: json.stats.isLive, viewers: json.stats.viewers, profileImageUrl: json.stats.profileImageUrl ?? null });
         }
       } catch {
         /* ignore */
@@ -220,7 +221,7 @@ export function ChatProvider({
   const ownKick = useMemo<KickOnlyChannel | null>(
     () =>
       kickSlug
-        ? { slug: kickSlug.toLowerCase(), isLive: ownKickStat?.isLive ?? false, viewers: ownKickStat?.viewers ?? 0 }
+        ? { slug: kickSlug.toLowerCase(), isLive: ownKickStat?.isLive ?? false, viewers: ownKickStat?.viewers ?? 0, profileImageUrl: ownKickStat?.profileImageUrl ?? null }
         : null,
     [kickSlug, ownKickStat]
   );
@@ -255,6 +256,7 @@ export function ChatProvider({
         id: t.id,
         login: t.login,
         displayName: t.displayName,
+        profileImageUrl: t.profileImageUrl,
         isLive: t.isLive,
         viewerCount: 0,
         role: t.role,
@@ -276,6 +278,14 @@ export function ChatProvider({
       : "viewer";
 
   // Resolve the pending Kick side into a live target (slug + chatroom id).
+  // Strategy:
+  //   1. If search already gave us a chatroomId, use it directly.
+  //   2. Ask the server (/api/kick/resolve) which scans the official /livestreams
+  //      API — works for any currently-live channel.
+  //   3. Browser-side fallback: fetch kick.com/api/v2/channels/{slug} directly
+  //      from the browser. Browser TLS fingerprint passes Cloudflare even though
+  //      the same call is blocked when made from Node.js server-side. This gives
+  //      us the definitive chatroom.id for any channel, live or offline.
   const pendingSlug = pendingKick?.slug ?? null;
   const pendingRoom = pendingKick?.chatroomId ?? null;
   useEffect(() => {
@@ -285,23 +295,45 @@ export function ChatProvider({
       setActiveKick(null);
       return;
     }
-    if (pendingRoom) {
-      setActiveKick({ slug: pendingSlug, chatroomId: pendingRoom });
-      return;
-    }
     (async () => {
+      let resolvedSlug = pendingSlug;
+      // Start with the cached value (may be null or stale).
+      let chatroomId: number | null = pendingRoom ?? null;
+
+      // Try browser-side v2 fetch — passes Cloudflare when made from a real browser.
+      // If this is blocked, the server-side fallback takes over.
       try {
-        const res = await fetch(`/api/kick/resolve?slug=${encodeURIComponent(pendingSlug)}`);
-        const json = (await res.json()) as { exists?: boolean; slug?: string; chatroomId?: number | null };
-        if (cancelled) return;
-        setActiveKick(json.exists && json.chatroomId ? { slug: json.slug ?? pendingSlug, chatroomId: json.chatroomId } : null);
-      } catch {
-        if (!cancelled) setActiveKick(null);
+        const v2 = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(pendingSlug)}`);
+        if (v2.ok) {
+          const data = (await v2.json()) as { slug?: string; chatroom?: { id?: number } };
+          const v2Id = data?.chatroom?.id ?? null;
+          if (v2Id) {
+            chatroomId = v2Id;
+            if (data.slug) resolvedSlug = data.slug;
+          }
+        }
+      } catch { /* CORS or network error */ }
+
+      if (cancelled) return;
+
+      // Server-side resolve — tries official /channels?slug= (chatroom.id) then /livestreams.
+      if (!chatroomId) {
+        try {
+          const res = await fetch(`/api/kick/resolve?slug=${encodeURIComponent(pendingSlug)}`);
+          if (res.ok) {
+            const json = (await res.json()) as { exists?: boolean; slug?: string; chatroomId?: number | null };
+            if (json.exists) {
+              if (json.slug) resolvedSlug = json.slug;
+              chatroomId = json.chatroomId ?? null;
+            }
+          }
+        } catch { /* network error */ }
       }
+
+      if (cancelled) return;
+      setActiveKick(chatroomId ? { slug: resolvedSlug, chatroomId } : null);
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [pendingSlug, pendingRoom]);
 
   // ── self messages ────────────────────────────────────────
@@ -318,11 +350,16 @@ export function ChatProvider({
             : hasKick
               ? (kickSlug ?? "You")
               : "You";
+      const userByPlatform: Partial<Record<Platform, string>> = {
+        ...(ownChannel ? { twitch: ownChannel.displayName } : {}),
+        ...(kickSlug ? { kick: kickSlug } : {}),
+      };
       const msg: ChatMessage = {
         id: `self-${Date.now()}-${Math.random()}`,
         platform: "self",
         platforms,
         user,
+        userByPlatform,
         text,
         color: null,
         timestamp: Date.now(),

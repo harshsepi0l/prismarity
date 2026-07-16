@@ -33,6 +33,14 @@ const config = defineConfig({
         "0%, 100%": { opacity: 1 },
         "50%": { opacity: 0.3 },
       },
+      "beacon-pulse": {
+        "0%, 100%": { opacity: 1, transform: "scale(1)" },
+        "50%": { opacity: 0.5, transform: "scale(0.85)" },
+      },
+      "beacon-ring": {
+        "0%": { opacity: 0.6, transform: "scale(1)" },
+        "100%": { opacity: 0, transform: "scale(2.8)" },
+      },
     },
     tokens: {
       colors: {
@@ -57,6 +65,14 @@ const config = defineConfig({
         heading: { value: "var(--font-space-grotesk), sans-serif" },
         body:    { value: "var(--font-ibm-plex-sans), sans-serif" },
         mono:    { value: "var(--font-ibm-plex-mono), monospace" },
+      },
+    },
+    semanticTokens: {
+      colors: {
+        // Chakra's default semantic `bg` token is white in light mode and shadows
+        // our raw `bg` color token — so `bg="bg"` rendered white (this app has no
+        // dark-mode toggle). Pin it to our dark canvas so `bg="bg"` is always dark.
+        bg: { DEFAULT: { value: "#0E1118" } },
       },
     },
   },

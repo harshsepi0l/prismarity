@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ChatMessage, ConnectionStatus } from "./types";
+import type { ChatMessage, ConnectionStatus } from "../types";
 
 export interface CheerLeader {
   user: string;
@@ -167,7 +167,7 @@ export function useTwitchChat(): UseTwitchChatReturn {
             setStatus("connected");
             return;
           }
-          fetch("/api/twitch/chat/subscribe", {
+          fetch("/api/twitch/subscribe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ channelId, sessionId: session.id }),

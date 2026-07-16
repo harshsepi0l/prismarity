@@ -3,12 +3,13 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ChannelStats, TwitchClip } from "@/lib/twitch/stats";
 import type { KickStats } from "@/lib/kick/stats";
-import type { KickLeader, KickChatMode } from "@/lib/kick/public";
-import type { TwitchChatSettings } from "@/app/api/twitch/chat/settings/route";
-import type { Platform } from "./chat/types";
-import type { CheerLeader, GiftLeader } from "./chat/useTwitchChat";
-import { useChat } from "./useChat";
-import { useSession } from "./useSession";
+import type { KickLeader } from "@/lib/kick/public";
+import { kickLeaderboardUrl, parseKickLeaderboard } from "@/lib/kick/public";
+import type { TwitchChatSettings } from "@/app/api/twitch/chat/route";
+import type { Platform } from "../types";
+import type { CheerLeader, GiftLeader } from "../chat/useTwitchChat";
+import { useChat } from "./chat";
+import { useSession } from "./session";
 
 // One connected platform's live stats. `included` reflects the top-bar filter
 // chips — toggling a platform off drops it from the combined roll-up.
@@ -28,6 +29,8 @@ export interface PlatformLive {
   followers: number | null;
   subs: number | null;
   chatters: number | null;
+  // Twitch "verified" partner status (always false for platforms without the concept).
+  verified: boolean;
   // Chat mode restrictions for this platform's current channel.
   chatMode: { followerOnly: boolean; followerMinutes: number; subOnly: boolean } | null;
 }
@@ -55,6 +58,20 @@ export interface LiveStats {
   clips: TwitchClip[];
   // Weekly Kick gift leaderboard — public for any channel.
   kickLeaders: KickLeader[];
+  // Twitch "Stream Together" co-streamers — the OTHER participants sharing the
+  // active channel's chat (empty when not co-streaming).
+  collab: CollabPartner[];
+}
+
+export interface CollabPartner {
+  login: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  verified: boolean;
+  // LEADER of the Stream Together session (the co-stream host) vs a guest.
+  host: boolean;
+  // This partner's own live viewer count (null if unavailable).
+  viewers: number | null;
 }
 
 interface Derived {
@@ -73,12 +90,6 @@ const EMPTY_DERIVED: Derived = {
   uptimeKickMs: null,
 };
 
-export const PLATFORM_LABEL: Record<Platform, string> = {
-  twitch: "Twitch",
-  youtube: "YouTube",
-  kick: "Kick",
-};
-
 const StatsContext = createContext<LiveStats | null>(null);
 
 export function StatsProvider({ children }: { children: React.ReactNode }) {
@@ -91,6 +102,8 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   const [twitchServer, setTwitchServer] = useState<ChannelStats | null>(null);
   const [kickServer, setKickServer] = useState<KickStats | null>(null);
   const [twitchAvatar, setTwitchAvatar] = useState<string | null>(null);
+  const [twitchVerified, setTwitchVerified] = useState(false);
+  const [kickVerified, setKickVerified] = useState(false);
   const [twitchChatSettings, setTwitchChatSettings] = useState<TwitchChatSettings | null>(null);
   const [peakTwitch, setPeakTwitch] = useState(0);
   const [peakKick, setPeakKick] = useState(0);
@@ -98,12 +111,14 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   const [derived, setDerived] = useState<Derived>(EMPTY_DERIVED);
   const [kickLeaders, setKickLeaders] = useState<KickLeader[]>([]);
   const [clips, setClips] = useState<TwitchClip[]>([]);
+  const [collab, setCollab] = useState<CollabPartner[]>([]);
 
   // Twitch profile picture + chat settings — fetched once per active channel.
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     if (!channelId) {
       setTwitchAvatar(null);
+      setTwitchVerified(false);
       setTwitchChatSettings(null);
       return;
     }
@@ -111,11 +126,14 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     fetch(`/api/twitch/user?id=${channelId}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((j: { user?: { profileImageUrl?: string } | null }) => {
-        if (!cancelled) setTwitchAvatar(j.user?.profileImageUrl ?? null);
+      .then((j: { user?: { profileImageUrl?: string; broadcasterType?: string } | null }) => {
+        if (!cancelled) {
+          setTwitchAvatar(j.user?.profileImageUrl ?? null);
+          setTwitchVerified(j.user?.broadcasterType === "partner");
+        }
       })
       .catch(() => {});
-    fetch(`/api/twitch/chat/settings?channelId=${channelId}`, { cache: "no-store" })
+    fetch(`/api/twitch/chat?channelId=${channelId}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { ok?: boolean; settings?: TwitchChatSettings } | null) => {
         if (!cancelled) setTwitchChatSettings(j?.settings ?? null);
@@ -134,6 +152,19 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     /* eslint-enable react-hooks/set-state-in-effect */
     let cancelled = false;
     async function load() {
+      // Browser-side fetch first — a real browser's TLS fingerprint passes
+      // Cloudflare where the server IP is blocked (403). Fall back to the
+      // server route if the direct call is blocked by CORS or fails.
+      try {
+        const v2 = await fetch(kickLeaderboardUrl(kickSlug!));
+        if (v2.ok) {
+          const leaders = parseKickLeaderboard(await v2.json());
+          if (!cancelled) setKickLeaders(leaders);
+          return;
+        }
+      } catch {
+        /* CORS or network — fall through to the server route */
+      }
       try {
         const res = await fetch(`/api/kick/leaderboard?slug=${encodeURIComponent(kickSlug!)}`);
         if (!res.ok) return;
@@ -172,6 +203,48 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     }
     load();
     const id = setInterval(load, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [channelId]);
+
+  // Twitch "Stream Together" co-streamers for the active channel.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!channelId) {
+      setCollab([]);
+      return;
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/twitch/shared-chat?channelId=${channelId}`);
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          active?: boolean;
+          participants?: { id: string; login: string; displayName: string; profileImageUrl: string | null; verified: boolean; host: boolean; viewers: number | null }[];
+        };
+        if (cancelled) return;
+        const others = (json.active ? json.participants ?? [] : [])
+          .filter((p) => p.id !== channelId)
+          .map((p) => ({
+            login: p.login,
+            displayName: p.displayName,
+            profileImageUrl: p.profileImageUrl,
+            verified: p.verified,
+            host: p.host,
+            viewers: p.viewers,
+          }));
+        setCollab(others);
+      } catch {
+        /* ignore */
+      }
+    }
+    load();
+    // Co-streams start/end mid-broadcast, so poll a little faster than stats.
+    const id = setInterval(load, 25_000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -241,6 +314,28 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [kickSlug]);
 
+  // Kick "verified" flag — only exposed on Kick's Cloudflare-fronted v2 endpoint,
+  // which blocks server IPs (403). A real browser's TLS passes, so we fetch it
+  // directly here (same trick the gift leaderboard uses). Best-effort: if the
+  // browser call is CORS-blocked or fails, the channel just shows unverified.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setKickVerified(false);
+    if (!kickSlug) return;
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(kickSlug)}`, {
+      headers: { Accept: "application/json" },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { verified?: unknown; user?: { verified?: unknown } } | null) => {
+        if (cancelled || !j) return;
+        setKickVerified(!!j.verified || !!j.user?.verified);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [kickSlug]);
+
   // Latest inputs for the off-render-path computation.
   const messagesRef = useRef(messages);
   const twitchStartedRef = useRef<string | null>(null);
@@ -301,6 +396,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       followers: twitchServer?.followers ?? null,
       subs: twitchServer?.subs ?? null,
       chatters: twitchServer?.chatters ?? null,
+      verified: twitchVerified,
       chatMode: twitchChatSettings
         ? {
             followerOnly: twitchChatSettings.followerOnly,
@@ -326,6 +422,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       followers: kickServer?.followers ?? null,
       subs: kickServer?.subs ?? null,
       chatters: null,
+      verified: kickVerified,
       chatMode: km
         ? { followerOnly: km.followerOnly, followerMinutes: km.followerMinutes, subOnly: km.subOnly }
         : null,
@@ -356,6 +453,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     giftLeaders,
     clips,
     kickLeaders,
+    collab,
   };
 
   return <StatsContext.Provider value={stats}>{children}</StatsContext.Provider>;

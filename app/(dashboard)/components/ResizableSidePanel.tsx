@@ -1,11 +1,15 @@
 "use client";
 
 import { Box } from "@chakra-ui/react";
-import { useLayout } from "../useLayout";
+import { useLayout } from "../_ctx/layout";
 import { ResizeHandle } from "./ResizeHandle";
 
 export function ResizableSidePanel({ children }: { children: React.ReactNode }) {
-  const { panelWidth, setPanelWidth } = useLayout();
+  const { panelWidth, setPanelWidth, isMobile, panelMode } = useLayout();
+
+  // Mobile hides it so chat gets the full width; on desktop the TopBar toggle
+  // can hide it too. When shown it's resizable within [min, max] (clamped by ctx).
+  if (isMobile || panelMode === "hidden") return null;
 
   // Always render the same Box so the ResizeHandle stays in the same DOM node
   // across width=0 ↔ width>0 transitions — pointer capture survives the re-render.

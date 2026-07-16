@@ -1,4 +1,4 @@
-import type { Platform } from "../chat/types";
+import type { Platform } from "../types";
 
 // Brand glyphs (24x24, fill currentColor by default).
 const PATHS: Record<Platform, string> = {
@@ -15,10 +15,46 @@ export const PLATFORM_COLOR: Record<Platform, string> = {
   kick: "#5BE37D",
 };
 
+export const PLATFORM_LABEL: Record<Platform, string> = {
+  twitch: "Twitch",
+  youtube: "YouTube",
+  kick: "Kick",
+};
+
 interface PlatformIconProps {
   platform: Platform;
   size?: number;
   color?: string;
+}
+
+// Verified seal — a colored scalloped badge with a white check. Defaults to the
+// Twitch partner purple; pass `color` (e.g. Kick green) for other platforms.
+export function VerifiedBadge({
+  size = 12,
+  title,
+  color = "#A66CFF",
+}: {
+  size?: number;
+  title?: string;
+  color?: string;
+}) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden style={{ flex: "none" }}>
+      {title ? <title>{title}</title> : null}
+      <path
+        d="M12 1.2l2.55 1.86 3.15-.22 1 3 2.65 1.72-1 3 1 3-2.65 1.72-1 3-3.15-.22L12 22.8l-2.55-1.86-3.15.22-1-3L2.65 15.4l1-3-1-3 2.65-1.72 1-3 3.15.22z"
+        fill={color}
+      />
+      <path
+        d="M8 12l2.6 2.6L16.2 9"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export function PlatformIcon({ platform, size = 14, color }: PlatformIconProps) {

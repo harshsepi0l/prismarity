@@ -9,6 +9,7 @@ export interface FollowedChannel {
   id: string;
   login: string;
   displayName: string;
+  profileImageUrl: string | null;
   isLive: boolean;
   viewerCount: number;
   // Your relationship to this channel, derived server-side.
@@ -128,10 +129,21 @@ export async function getOwnChannel(user: User): Promise<FollowedChannel | null>
     id: conn.platformUserId,
     login: conn.login,
     displayName: conn.displayName,
+    profileImageUrl: null,
     isLive: false,
     viewerCount: 0,
     role: "creator",
   };
+  // Profile image for the sidebar avatar (own login → helix users).
+  try {
+    const res = await fetch(`${HELIX}/users?id=${conn.platformUserId}`, { headers, cache: "no-store" });
+    if (res.ok) {
+      const json = (await res.json()) as { data?: { profile_image_url?: string }[] };
+      own.profileImageUrl = json.data?.[0]?.profile_image_url ?? null;
+    }
+  } catch {
+    /* non-fatal — falls back to a placeholder initial */
+  }
   await applyLiveStatus(headers, [own]);
   return own;
 }

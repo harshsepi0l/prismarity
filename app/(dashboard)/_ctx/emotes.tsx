@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { useChat } from "./useChat";
+import { useChat } from "./chat";
 import type { EmoteSource } from "@/app/api/emotes/route";
 
 // code -> CDN image URL. Global third-party emotes plus the active channel's.

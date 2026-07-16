@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Box, Flex, Text, SimpleGrid, chakra } from "@chakra-ui/react";
-import type { Mode } from "../../useSession";
-import { useStats, formatUptime, type PlatformLive } from "../../useStats";
+import type { Mode } from "../../_ctx/session";
+import { useStats, formatUptime, type PlatformLive } from "../../_ctx/stats";
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
+import { SectionLabel, Divider } from "../../components/ui";
 import type { TwitchClip } from "@/lib/twitch/stats";
 import type { KickLeader } from "@/lib/kick/public";
 import type { CheerLeader, GiftLeader } from "../useTwitchChat";
@@ -18,22 +19,10 @@ const MOD_TOGGLES = [
   { id: "subs", label: "Subscribers only" },
 ];
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text fontFamily="mono" fontSize="10px" letterSpacing="0.18em" color="faint" mb="12px">
-      {children}
-    </Text>
-  );
-}
-
-function Divider() {
-  return <Box h="1px" bg="line" my="22px" />;
-}
-
 function StatCard({ label, value, accent }: { label: string; value: React.ReactNode; accent?: string }) {
   return (
     <Box borderWidth="1px" borderColor="line" bg="raised" borderRadius="8px" px="12px" py="10px">
-      <Text fontFamily="mono" fontSize="20px" fontWeight="600" lineHeight="1.1" color={accent ?? "text"}>
+      <Text fontFamily="mono" fontSize="20px" fontWeight="600" lineHeight="1.1" color={accent ?? "text"} whiteSpace="nowrap">
         {value}
       </Text>
       <Text fontSize="10px" color="muted" mt="4px">
@@ -354,7 +343,7 @@ export default function SidePanel({ mode }: SidePanelProps) {
   return (
     <>
       <SectionLabel>COMBINED</SectionLabel>
-      <SimpleGrid columns={2} gap="8px">
+      <SimpleGrid minChildWidth="118px" gap="8px">
         <StatCard label="viewers" value={viewers} accent={stats.anyLive ? "#FF5C5C" : undefined} />
         <StatCard label="messages / min" value={stats.messagesPerMin} />
         <StatCard label="active (5m)" value={stats.activeChatters} />

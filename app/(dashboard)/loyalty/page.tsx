@@ -3,7 +3,7 @@ import { SectionLabel, ScreenHeader, HATCH } from "../components/ui";
 import { ResizableSidePanel } from "../components/ResizableSidePanel";
 import { ManagementGuard } from "../components/ManagementGuard";
 import { PlatformIcon } from "../components/PlatformIcon";
-import type { Platform } from "../chat/types";
+import type { Platform } from "../types";
 
 const LEADERS: { rank: string; name: string; points: string; plats: Platform[] }[] = [
   { rank: "01", name: "orbital", points: "48,920", plats: ["twitch", "youtube", "kick"] },
@@ -151,7 +151,7 @@ export default function LoyaltyPage() {
   return (
     <ManagementGuard>
       <Flex as="main" flex="1" minW="0">
-        <Box as="section" flex="1" minW="0" overflowY="auto" px="32px" pt="28px" pb="36px">
+        <Box as="section" flex="1" minW="0" overflowY="auto" px={{ base: "16px", md: "32px" }} pt="28px" pb="36px">
         <ScreenHeader
           title="Loyalty"
           subtitle="One points balance that follows each viewer across every platform."
