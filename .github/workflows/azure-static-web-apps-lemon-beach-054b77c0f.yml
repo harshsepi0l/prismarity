@@ -50,6 +50,7 @@ jobs:
           NEXT_PUBLIC_BASE_URL: ${{ secrets.NEXT_PUBLIC_BASE_URL }}
           TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
           KICK_CLIENT_SECRET: ${{ secrets.KICK_CLIENT_SECRET }}
+          TWITCH_CLIENT_ID: ${{ secrets.}}
           ###### End of Repository/Build Configurations ######
 
   close_pull_request_job:
