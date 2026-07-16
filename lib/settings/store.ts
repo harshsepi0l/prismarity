@@ -21,6 +21,18 @@ const DATA_DIR = path.join(process.cwd(), ".data");
 const FILE = path.join(DATA_DIR, "settings.json");
 const CACHE_TTL = 5 * 60_000;
 
+// Reduce a configured base URL to just its origin (scheme + host + port),
+// dropping any stray path — e.g. a mistakenly pasted "/api/auth/twitch/callback"
+// suffix — so platform callback URLs are always built correctly.
+export function normalizeBaseUrl(base: string): string {
+  if (!base) return "";
+  try {
+    return new URL(base).origin;
+  } catch {
+    return base.replace(/\/+$/, "");
+  }
+}
+
 let _cache: Settings | null = null;
 let _cacheAt = 0;
 
@@ -32,7 +44,7 @@ async function read(): Promise<Settings> {
       ...raw,
       // Always prefer the env var for baseUrl — file-based value may be stale
       // or simply absent on Azure's ephemeral filesystem.
-      baseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? raw.baseUrl ?? DEFAULTS.baseUrl,
+      baseUrl: normalizeBaseUrl(process.env.NEXT_PUBLIC_BASE_URL ?? raw.baseUrl ?? DEFAULTS.baseUrl),
     };
   } catch {
     return { ...DEFAULTS };
