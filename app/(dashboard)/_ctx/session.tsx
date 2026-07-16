@@ -9,7 +9,6 @@ import {
   useState,
 } from "react";
 import type { Platform } from "../types";
-import type { Role } from "@/lib/auth/types";
 
 // The viewer's role for the current session.
 export type Mode = "creator" | "viewer" | "moderator";
@@ -26,18 +25,6 @@ function isMode(v: string | null): v is Mode {
 function sanitize(arr: unknown): Platform[] {
   if (!Array.isArray(arr)) return [...ALL];
   return arr.filter((x): x is Platform => ALL.includes(x as Platform));
-}
-
-// Modes you may use for a channel given your role on it (highest → lowest).
-export function allowedModes(role: Role): Mode[] {
-  if (role === "creator") return ["creator", "moderator", "viewer"];
-  if (role === "moderator") return ["moderator", "viewer"];
-  return ["viewer"];
-}
-
-// Keep the chosen mode if you're entitled to it for this role, else drop to viewer.
-export function clampMode(mode: Mode, role: Role): Mode {
-  return allowedModes(role).includes(mode) ? mode : "viewer";
 }
 
 interface SessionState {
