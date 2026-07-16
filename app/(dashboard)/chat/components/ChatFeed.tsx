@@ -62,7 +62,7 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
       ref={containerRef}
       flex="1"
       overflowY="auto"
-      px="22px"
+      px={{ base: "12px", md: "22px" }}
       py="4px"
       display="flex"
       flexDirection="column"

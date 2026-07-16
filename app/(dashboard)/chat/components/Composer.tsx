@@ -284,7 +284,7 @@ export default function Composer() {
   const canSend = deliverable.length > 0 && !!text.trim() && !sending;
 
   return (
-    <Box flex="none" px="24px" pt="16px" pb="22px">
+    <Box flex="none" px={{ base: "12px", md: "24px" }} pt="16px" pb="22px">
       <Box position="relative">
         {pickerOpen && (
           <Box
@@ -505,46 +505,54 @@ export default function Composer() {
           </chakra.button>
         </Flex>
       </Box>
-      <Flex mt="10px" align="center" gap="12px">
+      <Flex mt="10px" align="center" gap="12px" wrap="wrap" rowGap="6px">
 
-        
-        <Flex align="center" gap="9px">
-          {/* Send-target glow toggles, one per available platform. Toggling Kick
-              glows it and routes your message there too. */}
+
+        <Flex align="center" gap="8px">
+          {/* Pure send targets — each chip arms/disarms a platform your message
+              is delivered to. Reading is controlled separately, up at the feed. */}
+          <Text fontFamily="mono" fontSize="10px" letterSpacing="0.06em" color="faint" flex="none">
+            SEND TO
+          </Text>
           {SEND_PLATFORMS.filter(({ id }) => available.includes(id)).map(({ id, color }) => {
-            const on = sendTargets.has(id);
-            const label = PLATFORM_LABELS[id];
+            const armed = sendTargets.has(id);
             const offline = liveByPlatform[id] === false;
-            // Three states: off (dim), on+offline (grey, no glow, offline dot),
-            // on+live (colored glow).
-            const title = !on
-              ? `Send to ${label} (off)`
+            const label = PLATFORM_LABELS[id];
+            const title = !armed
+              ? `Click to send your messages to ${label}`
               : offline
-                ? `${label} is offline — message posts to its offline chat`
-                : `Send to ${label}`;
+                ? `${label} is offline — your message posts to its offline chat`
+                : `Sending to ${label} — click to stop`;
             return (
               <chakra.button
                 key={id}
                 type="button"
                 onClick={() => toggleSendTarget(id)}
                 title={title}
-                aria-pressed={on}
+                aria-pressed={armed}
                 position="relative"
                 display="inline-flex"
+                alignItems="center"
+                gap="6px"
+                flex="none"
+                px="9px"
+                py="4px"
+                borderRadius="full"
+                borderWidth="1px"
+                borderColor={armed ? `${color}66` : "fieldLine"}
+                bg={armed ? `${color}1A` : "transparent"}
+                color={armed ? "text" : "faint"}
+                opacity={armed ? 1 : 0.7}
                 cursor="pointer"
-                opacity={on ? 1 : 0.3}
-                transition="opacity .15s, filter .15s"
-                style={{
-                  filter: on && !offline ? `drop-shadow(0 0 5px ${color})` : "none",
-                }}
-                _hover={{ opacity: 1 }}
+                transition="background .12s, border-color .12s, opacity .12s, filter .12s"
+                style={{ filter: armed && !offline ? `drop-shadow(0 0 4px ${color}55)` : "none" }}
+                _hover={{ opacity: 1, borderColor: `${color}66` }}
               >
-                <PlatformIcon
-                  platform={id}
-                  color={color}
-                  size={17}
-                />
-                {on && offline && (
+                <PlatformIcon platform={id} color={color} size={14} />
+                <Text fontSize="11px" fontWeight="600">
+                  {label}
+                </Text>
+                {armed && offline && (
                   <Box
                     position="absolute"
                     top="-3px"
@@ -555,7 +563,7 @@ export default function Composer() {
                     bg="#F5A623"
                     borderWidth="1.5px"
                     borderColor="bg"
-                    title="offline"
+                    pointerEvents="none"
                     style={{ animation: "pris-pulse 1.2s ease-in-out infinite" }}
                   />
                 )}
@@ -563,17 +571,9 @@ export default function Composer() {
             );
           })}
           {available.length === 0 && (
-            <Box
-              as="span"
-              display="inline-flex"
-              title="Select a channel to chat"
-              opacity={0.3}
-            >
-              
-              <PlatformIcon platform="twitch" color="#A66CFF" size={14}/>
-              <PlatformIcon platform="kick" color="#5BE37D" size={14} />
-            </Box>
-            
+            <Text fontSize="11px" color="faint" opacity={0.7}>
+              Select a channel
+            </Text>
           )}
         </Flex>
         {offlineTargets.length > 0 ? (
@@ -586,8 +586,8 @@ export default function Composer() {
             </Text>
           </Flex>
         ) : (
-          <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="faint">
-            {"You can read or send chats based on the platform(s) you select at the top!"}
+          <Text hideBelow="md" fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="faint">
+            {"Show or hide a chat from its header above."}
           </Text>
         )}
 

@@ -31,6 +31,7 @@ export interface KickOnlyChannel {
   slug: string;
   isLive: boolean;
   viewers: number;
+  profileImageUrl: string | null;
 }
 
 interface PendingKick {
@@ -112,7 +113,7 @@ export function ChatProvider({
   }, []);
 
   const [ownChannel, setOwnChannel] = useState<FollowedChannel | null>(null);
-  const [ownKickStat, setOwnKickStat] = useState<{ isLive: boolean; viewers: number } | null>(null);
+  const [ownKickStat, setOwnKickStat] = useState<{ isLive: boolean; viewers: number; profileImageUrl: string | null } | null>(null);
   const [activeChannel, setActiveChannel] = useState<FollowedChannel | null>(null);
   const [activeKickOnly, setActiveKickOnly] = useState<string | null>(null);
   const [pendingKick, setPendingKick] = useState<PendingKick | null>(null);
@@ -201,9 +202,9 @@ export function ChatProvider({
       try {
         const res = await fetch("/api/kick/stats");
         if (!res.ok) return;
-        const json = (await res.json()) as { stats?: { isLive: boolean; viewers: number } | null };
+        const json = (await res.json()) as { stats?: { isLive: boolean; viewers: number; profileImageUrl: string | null } | null };
         if (!cancelled && json.stats) {
-          setOwnKickStat({ isLive: json.stats.isLive, viewers: json.stats.viewers });
+          setOwnKickStat({ isLive: json.stats.isLive, viewers: json.stats.viewers, profileImageUrl: json.stats.profileImageUrl ?? null });
         }
       } catch {
         /* ignore */
@@ -220,7 +221,7 @@ export function ChatProvider({
   const ownKick = useMemo<KickOnlyChannel | null>(
     () =>
       kickSlug
-        ? { slug: kickSlug.toLowerCase(), isLive: ownKickStat?.isLive ?? false, viewers: ownKickStat?.viewers ?? 0 }
+        ? { slug: kickSlug.toLowerCase(), isLive: ownKickStat?.isLive ?? false, viewers: ownKickStat?.viewers ?? 0, profileImageUrl: ownKickStat?.profileImageUrl ?? null }
         : null,
     [kickSlug, ownKickStat]
   );
@@ -255,6 +256,7 @@ export function ChatProvider({
         id: t.id,
         login: t.login,
         displayName: t.displayName,
+        profileImageUrl: t.profileImageUrl,
         isLive: t.isLive,
         viewerCount: 0,
         role: t.role,

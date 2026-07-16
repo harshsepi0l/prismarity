@@ -205,8 +205,9 @@ export function SettingsDialog({ auth, onClose }: Props) {
         top="50%"
         left="50%"
         w="720px"
-        maxW="calc(100vw - 32px)"
+        maxW="calc(100vw - 24px)"
         h="480px"
+        maxH="calc(100vh - 24px)"
         borderRadius="12px"
         display="flex"
         flexDirection="column"
@@ -257,7 +258,8 @@ export function SettingsDialog({ auth, onClose }: Props) {
             flex="none"
             py="10px"
             gap="1px"
-            style={{ width: "160px", background: C.panel, borderRight: `1px solid ${C.line}` }}
+            w={{ base: "128px", md: "160px" }}
+            style={{ background: C.panel, borderRight: `1px solid ${C.line}` }}
           >
             {CATEGORIES.map((cat) => {
               const active = category === cat.id;

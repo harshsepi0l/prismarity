@@ -5,6 +5,7 @@ import { Flex, Box, Text } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType, Platform, UserSelection } from "../../types";
 import ChatFeed from "./ChatFeed";
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
+import { useLayout } from "../../_ctx/layout";
 
 const PLATFORM_LABEL: Record<Platform, string> = {
   twitch: "Twitch",
@@ -26,6 +27,7 @@ export default function SplitChatView({ messages, platforms, onSelectUser }: Spl
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<{ x: number; ratio: number } | null>(null);
   const [active, setActive] = useState(false);
+  const { isMobile } = useLayout();
 
   const [splitRatio, setSplitRatio] = useState(() => {
     if (typeof window !== "undefined") {
@@ -43,6 +45,24 @@ export default function SplitChatView({ messages, platforms, onSelectUser }: Spl
 
   const left = platforms[0];
   const right = platforms[1];
+
+  // Mobile: no room for side-by-side columns — stack them 50/50 vertically with
+  // a static divider (horizontal drag doesn't translate to a vertical split).
+  if (isMobile) {
+    return (
+      <Flex direction="column" flex="1" minH="0" minW="0">
+        <Flex direction="column" flex="1" minH="0" minW="0">
+          <ColumnHeader platform={left} />
+          <ChatFeed messages={messages} activeFilters={new Set([left])} onSelectUser={onSelectUser} />
+        </Flex>
+        <Box h="1px" bg="line" flex="none" />
+        <Flex direction="column" flex="1" minH="0" minW="0">
+          <ColumnHeader platform={right} />
+          <ChatFeed messages={messages} activeFilters={new Set([right])} onSelectUser={onSelectUser} />
+        </Flex>
+      </Flex>
+    );
+  }
 
   function onPointerDown(e: React.PointerEvent) {
     e.currentTarget.setPointerCapture(e.pointerId);
