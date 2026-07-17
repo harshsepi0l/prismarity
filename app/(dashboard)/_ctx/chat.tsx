@@ -51,6 +51,8 @@ interface ChatStore {
   kickConnected: boolean;
   // Channels added from search — persisted to localStorage.
   watchedChannels: SearchResult[];
+  // Channels you follow on Twitch (Kick-cross-linked) — fetched from the API.
+  followedChannels: SearchResult[];
   // Live, session-scoped tallies for the active Twitch channel (see
   // useTwitchChat for why these aren't Twitch's actual weekly numbers).
   cheerLeaders: CheerLeader[];
@@ -89,6 +91,7 @@ export function ChatProvider({
   const kickConnected = !!kickSlug;
 
   const [watchedChannels, setWatchedChannels] = useState<SearchResult[]>([]);
+  const [followedChannels, setFollowedChannels] = useState<SearchResult[]>([]);
 
   useEffect(() => {
     try {
@@ -178,6 +181,29 @@ export function ChatProvider({
     if (!on) lastBeaconRef.current = null;
   }, []);
 
+  // Select a unified search result — wires up whichever platforms it spans.
+  // Declared above the beacon effect (below), which references it.
+  const selectSearchResult = useCallback((result: SearchResult) => {
+    if (result.twitch) {
+      const t = result.twitch;
+      setActiveKickOnly(null);
+      setActiveChannel({
+        id: t.id,
+        login: t.login,
+        displayName: t.displayName,
+        profileImageUrl: t.profileImageUrl,
+        isLive: t.isLive,
+        viewerCount: 0,
+        role: t.role,
+      });
+      setPendingKick(result.kick ? { slug: result.kick.slug, chatroomId: result.kick.chatroomId } : null);
+    } else if (result.kick) {
+      setActiveChannel(null);
+      setActiveKickOnly(result.kick.slug.toLowerCase());
+      setPendingKick({ slug: result.kick.slug, chatroomId: result.kick.chatroomId });
+    }
+  }, []);
+
   // Beacon: poll /api/beacon every 3s and auto-select the detected stream.
   useEffect(() => {
     if (!beaconMode) return;
@@ -242,6 +268,34 @@ export function ChatProvider({
     };
   }, [twitchConnected]);
 
+  // Followed channels (Twitch follows, Kick-cross-linked). Re-fetch on connect
+  // and re-poll for fresh live status. Token-derived, so it clears on logout.
+  useEffect(() => {
+    if (!twitchConnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFollowedChannels([]);
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/twitch/followed");
+        if (!res.ok) return;
+        const { results } = (await res.json()) as { results: SearchResult[] };
+        if (!cancelled) setFollowedChannels(results);
+      } catch {
+        /* ignore */
+      }
+    }
+    load();
+    // Heavier endpoint (follows + streams + Kick probes) — poll less often.
+    const id = setInterval(load, 120_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [twitchConnected]);
+
   // Live status for your own Kick channel.
   useEffect(() => {
     if (!kickSlug) {
@@ -297,28 +351,6 @@ export function ChatProvider({
     setActiveKickOnly(null);
     setPendingKick(null);
     setActiveKick(null);
-  }, []);
-
-  // Select a unified search result — wires up whichever platforms it spans.
-  const selectSearchResult = useCallback((result: SearchResult) => {
-    if (result.twitch) {
-      const t = result.twitch;
-      setActiveKickOnly(null);
-      setActiveChannel({
-        id: t.id,
-        login: t.login,
-        displayName: t.displayName,
-        profileImageUrl: t.profileImageUrl,
-        isLive: t.isLive,
-        viewerCount: 0,
-        role: t.role,
-      });
-      setPendingKick(result.kick ? { slug: result.kick.slug, chatroomId: result.kick.chatroomId } : null);
-    } else if (result.kick) {
-      setActiveChannel(null);
-      setActiveKickOnly(result.kick.slug.toLowerCase());
-      setPendingKick({ slug: result.kick.slug, chatroomId: result.kick.chatroomId });
-    }
   }, []);
 
   // Role for the active selection — own Twitch/Kick = creator; a moderated
@@ -471,6 +503,7 @@ export function ChatProvider({
         activeKick,
         kickConnected,
         watchedChannels,
+        followedChannels,
         cheerLeaders,
         giftLeaders,
         selectChannel,

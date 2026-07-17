@@ -6,6 +6,7 @@ import { useSession } from "../_ctx/session";
 import { useChat } from "../_ctx/chat";
 import { useLayout } from "../_ctx/layout";
 import ChatFeed from "./components/ChatFeed";
+import ChatEmptyState from "./components/ChatEmptyState";
 import SplitChatView from "./components/SplitChatView";
 import ChatReadBar from "./components/ChatReadBar";
 import Composer from "./components/Composer";
@@ -36,6 +37,15 @@ export default function ChatPage() {
   const readFilters = new Set<Platform>(activePlatforms);
 
   const showSplit = chatLayout === "split" && activePlatforms.length > 1;
+
+  // Not logged into any platform — show the "get started" gate instead of chat.
+  if (connectedPlatforms.size === 0) {
+    return (
+      <Flex as="main" flex="1" minW="0">
+        <ChatEmptyState />
+      </Flex>
+    );
+  }
 
   return (
     <Flex as="main" flex="1" minW="0">

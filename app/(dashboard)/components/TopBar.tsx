@@ -286,9 +286,29 @@ function ActiveChannelPill() {
   );
 }
 
-// Profile button — prism icon that emits a rainbow aura on hover, opens settings on click.
-function ProfileButton({ onClick }: { onClick: () => void }) {
+// Profile button — a 3D-looking prism whose interior fills top→bottom in three
+// equal bands (Twitch, Kick, YouTube). Each band lights up in its platform color
+// when that platform is connected; YouTube stays a dim placeholder. The whole
+// prism glows in the connected platforms' colors, brightening on hover. Opens
+// settings on click.
+function ProfileButton({
+  onClick,
+  connected,
+}: {
+  onClick: () => void;
+  connected: { twitch: boolean; kick: boolean };
+}) {
   const [hovered, setHovered] = useState(false);
+
+  // Baseline glow reflects what's connected; hover blooms the full rainbow.
+  const restGlow = [
+    connected.twitch ? "drop-shadow(0 0 3px rgba(166,108,255,0.85))" : "",
+    connected.kick ? "drop-shadow(0 0 3px rgba(91,227,125,0.85))" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const hoverGlow =
+    "drop-shadow(0 0 3px rgba(166,108,255,1)) drop-shadow(0 0 8px rgba(91,227,125,0.7)) drop-shadow(0 0 16px rgba(56,189,248,0.5)) drop-shadow(0 0 26px rgba(250,204,21,0.25))";
 
   return (
     <chakra.button
@@ -310,27 +330,53 @@ function ProfileButton({ onClick }: { onClick: () => void }) {
       transition="filter .3s ease, border-color .2s, background .12s"
       style={{
         borderColor: hovered ? "rgba(166,108,255,0.5)" : "#232a38",
-        filter: hovered
-          ? "drop-shadow(0 0 3px rgba(166,108,255,1)) drop-shadow(0 0 8px rgba(91,227,125,0.7)) drop-shadow(0 0 16px rgba(56,189,248,0.5)) drop-shadow(0 0 26px rgba(250,204,21,0.25))"
-          : "none",
+        filter: hovered ? hoverGlow : restGlow || "none",
       }}
     >
-      <svg width="16" height="18" viewBox="0 0 16 18" fill="none" aria-hidden>
+      <svg width="21" height="23" viewBox="0 0 20 22" fill="none" aria-hidden>
+        <defs>
+          <clipPath id="prism-clip">
+            <path d="M10 2 L2 20 L18 20 Z" />
+          </clipPath>
+          {/* Glassy tinted body — lighter at the top, deeper at the base. */}
+          <linearGradient id="prism-body" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(44,50,66,0.55)" />
+            <stop offset="100%" stopColor="rgba(15,18,26,0.85)" />
+          </linearGradient>
+          {/* Diagonal gloss reflection across the upper-left face. */}
+          <linearGradient id="prism-sheen" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.32)" />
+            <stop offset="40%" stopColor="rgba(255,255,255,0.05)" />
+            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+          </linearGradient>
+        </defs>
+
+        <g clipPath="url(#prism-clip)">
+          <rect x="0" y="0" width="20" height="22" fill="url(#prism-body)" />
+          {/* Equal top→bottom bands, refracting through the glass:
+              red (YouTube) · green (Kick) · purple (Twitch). */}
+          <rect x="0" y="2" width="20" height="6" fill={PLATFORM_COLOR.youtube} opacity={0.16} />
+          <rect x="0" y="8" width="20" height="6" fill={PLATFORM_COLOR.kick} opacity={connected.kick ? 0.62 : 0} style={{ transition: "opacity .3s" }} />
+          <rect x="0" y="14" width="20" height="6" fill={PLATFORM_COLOR.twitch} opacity={connected.twitch ? 0.62 : 0} style={{ transition: "opacity .3s" }} />
+          {/* Gloss layer on top makes it read as glass. */}
+          <rect x="0" y="0" width="20" height="22" fill="url(#prism-sheen)" />
+        </g>
+
+        {/* Bright rim light down the left edge for the glass highlight. */}
+        <line x1="10" y1="2" x2="2" y2="20" stroke="rgba(255,255,255,0.4)" strokeWidth="0.75" strokeLinecap="round" />
         <path
-          d="M8 1 L1 17 L15 17 Z"
-          fill="#171B26"
-          stroke={hovered ? "rgba(200,185,255,0.75)" : "rgba(80,90,110,0.8)"}
+          d="M10 2 L2 20 L18 20 Z"
+          fill="none"
+          stroke={hovered ? "rgba(210,196,255,0.85)" : "rgba(96,106,128,0.85)"}
           strokeWidth="1.1"
           strokeLinejoin="round"
           style={{ transition: "stroke .2s" }}
         />
-        <line x1="8" y1="1" x2="1" y2="17" stroke="rgba(255,255,255,0.06)" strokeWidth="0.6" />
-        <line x1="8" y1="1" x2="15" y2="17" stroke="rgba(255,255,255,0.04)" strokeWidth="0.6" />
         {hovered && (
           <>
-            <circle cx="8"    cy="1.5"  r="1.4" fill="rgba(230,210,255,0.95)" />
-            <circle cx="1.5"  cy="16.5" r="1.1" fill="rgba(56,189,248,0.9)"  />
-            <circle cx="14.5" cy="16.5" r="1.1" fill="rgba(91,227,125,0.9)"  />
+            <circle cx="10"   cy="2.5"  r="1.5" fill="rgba(230,210,255,0.95)" />
+            <circle cx="2.5"  cy="19.5" r="1.2" fill="rgba(56,189,248,0.9)"  />
+            <circle cx="17.5" cy="19.5" r="1.2" fill="rgba(91,227,125,0.9)"  />
           </>
         )}
       </svg>
@@ -414,7 +460,10 @@ export function TopBar({ auth }: TopBarProps) {
               <path d="M10 3 L5 8 L10 13" stroke="#8B93A7" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </chakra.button>
-          <ProfileButton onClick={() => setSettingsOpen(true)} />
+          <ProfileButton
+            onClick={() => setSettingsOpen(true)}
+            connected={{ twitch: !!auth.twitch, kick: !!auth.kick }}
+          />
           <Text
             hideBelow="sm"
             fontFamily="mono"

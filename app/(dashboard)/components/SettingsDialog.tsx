@@ -312,7 +312,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
             {category === "accounts" && (
               <Box>
                 <Text fontSize="13px" mb="20px" lineHeight="1.6" style={{ color: C.muted }}>
-                  Connect your accounts to the streaming platforms you'd like to sync with Prismarity.
+                  Connect your accounts to the streaming platforms you&apos;d like to sync with Prismarity.
                 </Text>
 
                 <PlatformSection
@@ -334,6 +334,20 @@ export function SettingsDialog({ auth, onClose }: Props) {
                   onDisconnect={disconnect}
                   onConnect={() => openPopup("kick")}
                 />
+
+                <Box my="12px" />
+
+                {/* Placeholder for the upcoming YouTube integration */}
+                <Flex
+                  align="center" gap="10px" px="10px" py="11px" borderRadius="8px"
+                  style={{ background: C.raised, opacity: 0.55 }}
+                >
+                  <PlatformIcon platform="youtube" size={13} />
+                  <Text fontSize="12px" style={{ color: C.text }}>YouTube</Text>
+                  <Text fontSize="11px" ml="auto" fontFamily="mono" style={{ color: C.faint }}>
+                    Coming soon
+                  </Text>
+                </Flex>
               </Box>
             )}
 

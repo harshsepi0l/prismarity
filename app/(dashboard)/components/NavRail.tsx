@@ -24,7 +24,7 @@ const VODS_ICON = (
 // ── Inline sidebar search ────────────────────────────────────────────────────
 
 function SidebarSearch({ collapsed }: { collapsed: boolean }) {
-  const { selectSearchResult, addWatchedChannel } = useChat();
+  const { selectSearchResult, addWatchedChannel, followedChannels, ownChannel, ownKick } = useChat();
   const { activeFilters } = useSession();
   const { setSearchOpen } = useLayout();
   const [open, setOpen] = useState(false);
@@ -60,7 +60,13 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
 
   function handleSelect(r: SearchResult) {
     selectSearchResult(r);
-    addWatchedChannel(r);
+    // Only track it under RECENT if it isn't already one of your own channels
+    // or something you follow — no duplicates across sections.
+    const isOwn =
+      (!!ownChannel && r.twitch?.id === ownChannel.id) ||
+      (!!ownKick && r.kick?.slug.toLowerCase() === ownKick.slug.toLowerCase());
+    const isFollowed = followedChannels.some((c) => c.handle === r.handle);
+    if (!isOwn && !isFollowed) addWatchedChannel(r);
     setOpen(false);
     setQuery("");
   }
@@ -309,7 +315,7 @@ function WatchedChannelButton({
   active: boolean;
   collapsed: boolean;
   onSelect: () => void;
-  onRemove: () => void;
+  onRemove?: () => void; // omitted for followed channels (not removable)
 }) {
   const isLive = result.twitch?.isLive || result.kick?.isLive;
   const avatar = result.profileImageUrl;
@@ -363,19 +369,21 @@ function WatchedChannelButton({
             <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">offline</Text>
           )}
         </chakra.button>
-        <chakra.button
-          type="button"
-          onClick={(e: React.MouseEvent) => { e.stopPropagation(); onRemove(); }}
-          title="Remove channel"
-          position="absolute" right="6px" top="50%" transform="translateY(-50%)"
-          display="flex" alignItems="center" justifyContent="center"
-          w="16px" h="16px" borderRadius="3px"
-          fontSize="10px" fontWeight="700"
-          color="faint" cursor="pointer"
-          opacity="0.45"
-          transition="opacity .12s, color .12s, background .12s"
-          _hover={{ opacity: 1, color: "text", bg: "raised" }}
-        >✕</chakra.button>
+        {onRemove && (
+          <chakra.button
+            type="button"
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onRemove(); }}
+            title="Remove channel"
+            position="absolute" right="6px" top="50%" transform="translateY(-50%)"
+            display="flex" alignItems="center" justifyContent="center"
+            w="16px" h="16px" borderRadius="3px"
+            fontSize="10px" fontWeight="700"
+            color="faint" cursor="pointer"
+            opacity="0.45"
+            transition="opacity .12s, color .12s, background .12s"
+            _hover={{ opacity: 1, color: "text", bg: "raised" }}
+          >✕</chakra.button>
+        )}
       </Box>
     );
   }
@@ -409,10 +417,19 @@ export function NavRail() {
   const {
     ownChannel, ownKick,
     activeChannel, activeKickOnly,
-    watchedChannels,
+    watchedChannels, followedChannels,
     selectChannel, selectKickOnly, selectSearchResult,
     clearSelection, removeWatchedChannel,
   } = useChat();
+
+  // A channel you already follow shouldn't also appear under RECENT.
+  const followedHandles = new Set(followedChannels.map((c) => c.handle));
+  const visibleWatched = watchedChannels.filter((c) => !followedHandles.has(c.handle));
+
+  // FOLLOWED is API-sorted (most viewers → offline); paginate it 10 at a time.
+  const [followedShown, setFollowedShown] = useState(10);
+  const followedVisible = followedChannels.slice(0, followedShown);
+  const followedMore = followedChannels.length - followedShown;
 
   // Three user-cyclable modes: expanded (labels + resizable), rail (icon-only),
   // hidden. On mobile the rail is an overlay drawer that always shows full labels.
@@ -433,7 +450,21 @@ export function NavRail() {
 
   const content = (
     <>
-          {/* Own channels — pinned */}
+          {/* Add channel — pinned to the top */}
+          <Box mb="12px">
+            <SidebarSearch collapsed={collapsed} />
+          </Box>
+
+          {/* Scrollable channel list (fixes desktop scroll: the docked rail
+              itself is overflow-hidden, so the list scrolls here instead) */}
+          <Box
+            flex="1"
+            minH="0"
+            overflowY={collapsed ? "visible" : "auto"}
+            overflowX={collapsed ? "visible" : "hidden"}
+            pr={collapsed ? "0" : "2px"}
+          >
+          {/* Own channels */}
           {hasOwnChannels && (
             <Box mb="18px">
               {!collapsed && <SectionLabel>YOUR CHANNELS</SectionLabel>}
@@ -466,12 +497,47 @@ export function NavRail() {
             </Box>
           )}
 
-          {/* Watched channels */}
-          {watchedChannels.length > 0 && (
+          {/* Followed channels — from Twitch, Kick-linked where present */}
+          {followedChannels.length > 0 && (
             <Box mb="12px">
-              {!collapsed && <SectionLabel>WATCHING</SectionLabel>}
+              {!collapsed && <SectionLabel>FOLLOWED</SectionLabel>}
               <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
-                {watchedChannels.map((result) => {
+                {followedVisible.map((result) => {
+                  const active =
+                    (!!result.twitch && activeChannel?.id === result.twitch.id) ||
+                    (!!result.kick && activeKickOnly === result.kick.slug.toLowerCase());
+                  return (
+                    <WatchedChannelButton
+                      key={`followed-${result.handle}`}
+                      result={result}
+                      active={active}
+                      collapsed={collapsed}
+                      onSelect={() => selectSearchResult(result)}
+                    />
+                  );
+                })}
+              </Flex>
+              {!collapsed && (followedMore > 0 || followedShown > 10) && (
+                <chakra.button
+                  type="button"
+                  onClick={() => setFollowedShown((n) => (followedMore > 0 ? n + 10 : 10))}
+                  w="100%" mt="4px" py="4px" borderRadius="6px"
+                  fontSize="11px" color="faint" cursor="pointer"
+                  transition="color .12s, background .12s"
+                  _hover={{ color: "muted", bg: "raised" }}
+                >
+                  {followedMore > 0 ? `Show ${Math.min(10, followedMore)} more` : "Show less"}
+                </chakra.button>
+              )}
+            </Box>
+          )}
+
+          {/* Recent — channels you opened from search but don't follow */}
+          {visibleWatched.length > 0 && (
+            <Box mb="12px">
+              {!collapsed && <SectionLabel>RECENT</SectionLabel>}
+              <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
+                {visibleWatched.map((result) => {
                   const active =
                     (!!result.twitch && activeChannel?.id === result.twitch.id) ||
                     (!!result.kick && activeKickOnly === result.kick.slug.toLowerCase());
@@ -498,14 +564,10 @@ export function NavRail() {
             </Box>
           )}
 
-          {/* Add channel search */}
-          <Box mb="4px">
-            <SidebarSearch collapsed={collapsed} />
-          </Box>
+          </Box>{/* end scrollable channel list */}
 
-          <Box flex="1" minH="16px" />
-
-          {/* VODs link */}
+          {/* VODs — pinned to the bottom */}
+          <Box mt="10px">
           {!collapsed ? (
             <Flex
               asChild align="center" justify="flex-start" gap="12px"
@@ -538,6 +600,7 @@ export function NavRail() {
               </Flex>
             </Box>
           )}
+          </Box>{/* end pinned VODs */}
     </>
   );
 
@@ -555,7 +618,7 @@ export function NavRail() {
           position="fixed" top="0" left="0" bottom="0" zIndex={71}
           w="min(280px, 82vw)" direction="column"
           bg="bg" borderRightWidth="1px" borderColor="line"
-          px="12px" py="20px" gap="0" overflowY="auto"
+          px="12px" py="20px" gap="0" overflow="hidden"
         >
           {content}
         </Flex>
