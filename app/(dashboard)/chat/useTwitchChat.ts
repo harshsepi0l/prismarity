@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ChatMessage, ConnectionStatus } from "../types";
+import { nextSeq } from "./seq";
 
 export interface CheerLeader {
   user: string;
@@ -203,6 +204,7 @@ export function useTwitchChat(): UseTwitchChatReturn {
                 text: e.message.text,
                 color: e.color || null,
                 timestamp: Date.now(),
+                seq: nextSeq(),
                 nativeEmotes: nativeEmotesFromFragments(e.message.fragments ?? []),
                 badges: e.badges?.map((b) => ({ setId: b.set_id, id: b.id })) ?? [],
               },

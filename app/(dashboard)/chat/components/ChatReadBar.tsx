@@ -1,9 +1,10 @@
 "use client";
 
-import { Flex, Text, chakra } from "@chakra-ui/react";
-import type { Platform } from "../../types";
+import { Flex, Box, Text, chakra } from "@chakra-ui/react";
+import type { Platform, UserSelection } from "../../types";
 import { PlatformIcon, PLATFORM_COLOR, PLATFORM_LABEL } from "../../components/PlatformIcon";
 import { useSession } from "../../_ctx/session";
+import ParticipantsButton from "./ParticipantsButton";
 
 // Tiny eye — open = watching this chat, slashed = hidden.
 function EyeIcon({ open }: { open: boolean }) {
@@ -18,11 +19,19 @@ function EyeIcon({ open }: { open: boolean }) {
 
 // The read control for the chat pane: one eye-pill per platform available for the
 // current channel. Click to show/hide that platform's chat in the feed below.
-// Independent of the composer's "Send to" targets.
-export default function ChatReadBar({ available }: { available: Platform[] }) {
+// Independent of the composer's "Send to" targets. The right side hosts the
+// participants roster. Read-toggle pills only appear when there are 2+ chats to
+// choose between; the bar itself shows whenever a channel is selected.
+export default function ChatReadBar({
+  available,
+  onSelectUser,
+}: {
+  available: Platform[];
+  onSelectUser?: (selection: UserSelection) => void;
+}) {
   const { activeFilters, toggleRead } = useSession();
-  // Only meaningful when there's more than one chat to choose between.
-  if (available.length < 2) return null;
+  if (available.length === 0) return null;
+  const multi = available.length >= 2;
 
   return (
     <Flex
@@ -34,10 +43,12 @@ export default function ChatReadBar({ available }: { available: Platform[] }) {
       borderBottomWidth="1px"
       borderColor="line"
     >
-      <Text fontFamily="mono" fontSize="10px" letterSpacing="0.06em" color="faint" flex="none">
-        WATCHING
-      </Text>
-      {available.map((id) => {
+      {multi && (
+        <Text fontFamily="mono" fontSize="10px" letterSpacing="0.06em" color="faint" flex="none">
+          WATCHING
+        </Text>
+      )}
+      {multi && available.map((id) => {
         const color = PLATFORM_COLOR[id];
         const reading = activeFilters.has(id);
         const label = PLATFORM_LABEL[id];
@@ -72,6 +83,10 @@ export default function ChatReadBar({ available }: { available: Platform[] }) {
           </chakra.button>
         );
       })}
+
+      <Box flex="1" />
+
+      <ParticipantsButton available={available} onSelectUser={onSelectUser} />
     </Flex>
   );
 }

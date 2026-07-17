@@ -51,7 +51,7 @@ export default function ChatPage() {
   return (
     <Flex as="main" flex="1" minW="0">
       <Flex direction="column" flex="1" minW="0">
-        <ChatReadBar available={availablePlatforms} />
+        <ChatReadBar available={availablePlatforms} onSelectUser={setSelectedUser} />
         {showSplit ? (
           <SplitChatView
             messages={messages}

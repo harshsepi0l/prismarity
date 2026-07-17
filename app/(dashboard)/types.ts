@@ -20,6 +20,10 @@ export interface ChatMessage {
   text: string;
   color?: string | null;
   timestamp: number;
+  // Monotonic client-arrival order across ALL platforms — the sole sort key for
+  // the merged feed. `timestamp` stays wall-clock (used by stats/labels); `seq`
+  // is what keeps Twitch and Kick from reordering into the past. See chat/seq.ts.
+  seq?: number;
   demo?: boolean;
   // For a "self" message (one you sent): the platforms it was delivered to, so a
   // single entry can show every platform it went out on (e.g. Twitch + Kick).

@@ -14,6 +14,7 @@ import type { FollowedChannel } from "@/lib/twitch/channels";
 import type { Role } from "@/lib/auth/types";
 import { useTwitchChat, type CheerLeader, type GiftLeader } from "../chat/useTwitchChat";
 import { useKickChat } from "../chat/useKickChat";
+import { nextSeq } from "../chat/seq";
 
 // Chat session state lives in the dashboard layout, ABOVE the routes, so the
 // live sockets and active selection survive navigating to Loyalty/VODs and back.
@@ -32,6 +33,16 @@ export interface KickOnlyChannel {
   isLive: boolean;
   viewers: number;
   profileImageUrl: string | null;
+}
+
+// A recent chatter — surfaced by the composer's @-mention autocomplete and the
+// chat header's participants roster.
+export interface MentionCandidate {
+  user: string;
+  platform: "twitch" | "kick";
+  color: string | null;
+  // Platform user id, when known — lets the participants roster open the UserCard.
+  userId?: string;
 }
 
 interface PendingKick {
@@ -70,6 +81,12 @@ interface ChatStore {
   addWatchedChannel: (result: SearchResult) => void;
   removeWatchedChannel: (handle: string) => void;
   addSelfMessage: (text: string, platforms: Platform[]) => void;
+  // Recent chatters matching `query` on the given platforms, most-recent first.
+  // Reads a ref, so calling it does NOT subscribe the caller to the message feed.
+  getMentionCandidates: (query: string, platforms: Platform[], limit?: number) => MentionCandidate[];
+  // The full roster of chatters seen this session on the given platforms, most
+  // recently active first. Same ref-backed, non-subscribing read as above.
+  getAllParticipants: (platforms: Platform[]) => MentionCandidate[];
   beaconMode: boolean;
   setBeaconMode: (on: boolean) => void;
 }
@@ -454,6 +471,7 @@ export function ChatProvider({
         text,
         color: null,
         timestamp: Date.now(),
+        seq: nextSeq(),
       };
       setSelfMessages((prev) => [...prev.slice(-50), msg]);
     },
@@ -479,8 +497,12 @@ export function ChatProvider({
     connectKick(kickRoom);
   }, [kickRoom, connectKick]);
 
-  // Merge both feeds chronologically (bounded). Socket echoes of a message we
-  // just sent are dropped in favour of its single unified self entry.
+  // Merge both feeds by client-arrival order (bounded). Ordering by `seq` — a
+  // single monotonic counter stamped when each message reaches the browser —
+  // rather than by `timestamp` is what stops Twitch and Kick messages (whose
+  // timestamps come from different clocks) from reordering into the past. New
+  // messages only ever append at the bottom. Socket echoes of a message we just
+  // sent are dropped in favour of its single unified self entry.
   const messages = useMemo(() => {
     if (!activeChannel && !activeKickOnly) return [];
     const socket = [...twitchMessages, ...kickMessages].filter(
@@ -493,9 +515,65 @@ export function ChatProvider({
         )
     );
     return [...socket, ...selfMessages]
-      .sort((a, b) => a.timestamp - b.timestamp)
+      // Fail-safe: a message missing `seq` (should never happen — all three
+      // producers stamp it) sorts to the END rather than mixing seq-domain
+      // integers with epoch-ms timestamps, which would pin it wrongly.
+      .sort((a, b) => (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER))
       .slice(-300);
   }, [activeChannel, activeKickOnly, twitchMessages, kickMessages, selfMessages]);
+
+  // ── @-mention participant registry ───────────────────────
+  // A rolling record of who has chatted (per platform), kept in a ref so the
+  // composer can query candidates on demand WITHOUT subscribing to the feed and
+  // re-rendering on every message. Updated as raw socket messages arrive.
+  const participantsRef = useRef<Map<string, MentionCandidate & { seq: number }>>(new Map());
+  useEffect(() => {
+    const reg = participantsRef.current;
+    for (const m of [...twitchMessages, ...kickMessages]) {
+      if (m.platform !== "twitch" && m.platform !== "kick") continue;
+      const key = `${m.platform}:${m.user.toLowerCase()}`;
+      const seq = m.seq ?? 0;
+      const prev = reg.get(key);
+      if (!prev || seq >= prev.seq) {
+        reg.set(key, { user: m.user, platform: m.platform, color: m.color ?? null, userId: m.userId, seq });
+      }
+    }
+    // Bound growth on very busy channels — keep the 500 most recent chatters.
+    if (reg.size > 500) {
+      const keep = [...reg.entries()].sort((a, b) => b[1].seq - a[1].seq).slice(0, 500);
+      participantsRef.current = new Map(keep);
+    }
+  }, [twitchMessages, kickMessages]);
+
+  // Clear the registry when the channel selection changes — a new channel has a
+  // different chatter set.
+  useEffect(() => {
+    participantsRef.current = new Map();
+  }, [selectionKey]);
+
+  const getMentionCandidates = useCallback(
+    (query: string, platforms: Platform[], limit = 6): MentionCandidate[] => {
+      const q = query.toLowerCase();
+      const allow = new Set(platforms);
+      return [...participantsRef.current.values()]
+        .filter((p) => allow.has(p.platform) && p.user.toLowerCase().startsWith(q))
+        .sort((a, b) => b.seq - a.seq)
+        .slice(0, limit)
+        .map(({ user, platform, color, userId }) => ({ user, platform, color, userId }));
+    },
+    []
+  );
+
+  const getAllParticipants = useCallback(
+    (platforms: Platform[]): MentionCandidate[] => {
+      const allow = new Set(platforms);
+      return [...participantsRef.current.values()]
+        .filter((p) => allow.has(p.platform))
+        .sort((a, b) => b.seq - a.seq)
+        .map(({ user, platform, color, userId }) => ({ user, platform, color, userId }));
+    },
+    []
+  );
 
   // Memoized so the reference stays stable across the frequent re-renders the
   // message feed triggers — consumers of channels/selection don't re-render.
@@ -519,6 +597,8 @@ export function ChatProvider({
       addWatchedChannel,
       removeWatchedChannel,
       addSelfMessage,
+      getMentionCandidates,
+      getAllParticipants,
       beaconMode,
       setBeaconMode,
     }),
@@ -526,7 +606,8 @@ export function ChatProvider({
       ownChannel, ownKick, activeChannel, activeKickOnly, activeRole, activeKick,
       kickConnected, watchedChannels, followedChannels, cheerLeaders, giftLeaders,
       selectChannel, selectKickOnly, selectSearchResult, clearSelection,
-      addWatchedChannel, removeWatchedChannel, addSelfMessage, beaconMode, setBeaconMode,
+      addWatchedChannel, removeWatchedChannel, addSelfMessage, getMentionCandidates,
+      getAllParticipants, beaconMode, setBeaconMode,
     ]
   );
 
