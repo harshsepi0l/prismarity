@@ -29,27 +29,32 @@ interface PlatformIconProps {
 
 // Verified seal — a colored scalloped badge with a white check. Defaults to the
 // Twitch partner purple; pass `color` (e.g. Kick green) for other platforms.
+// Platform-specific verified badges — Twitch's is a purple octagon, Kick's a
+// green rounded badge; both carry a white check. (They're genuinely different
+// marks, so this switches shape + color by platform rather than recoloring one.)
 export function VerifiedBadge({
+  platform = "twitch",
   size = 12,
   title,
-  color = "#A66CFF",
 }: {
+  platform?: "twitch" | "kick";
   size?: number;
   title?: string;
-  color?: string;
 }) {
+  const fill = PLATFORM_COLOR[platform];
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden style={{ flex: "none" }}>
       {title ? <title>{title}</title> : null}
+      {platform === "twitch" ? (
+        <path d="M7 1.8 H17 L22.2 7 V17 L17 22.2 H7 L1.8 17 V7 Z" fill={fill} />
+      ) : (
+        <rect x="1.8" y="1.8" width="20.4" height="20.4" rx="6.5" fill={fill} />
+      )}
       <path
-        d="M12 1.2l2.55 1.86 3.15-.22 1 3 2.65 1.72-1 3 1 3-2.65 1.72-1 3-3.15-.22L12 22.8l-2.55-1.86-3.15.22-1-3L2.65 15.4l1-3-1-3 2.65-1.72 1-3 3.15.22z"
-        fill={color}
-      />
-      <path
-        d="M8 12l2.6 2.6L16.2 9"
+        d="M7.5 12.2 L10.7 15.4 L16.6 8.6"
         fill="none"
         stroke="#fff"
-        strokeWidth="2.1"
+        strokeWidth="2.3"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

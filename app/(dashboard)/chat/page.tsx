@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Flex } from "@chakra-ui/react";
 import { useSession } from "../_ctx/session";
-import { useChat } from "../_ctx/chat";
+import { useChat, useChatMessages } from "../_ctx/chat";
 import { useLayout } from "../_ctx/layout";
 import ChatFeed from "./components/ChatFeed";
 import ChatEmptyState from "./components/ChatEmptyState";
@@ -19,7 +19,8 @@ const PLATFORM_ORDER: Platform[] = ["twitch", "kick", "youtube"];
 
 export default function ChatPage() {
   const { activeFilters, connectedPlatforms } = useSession();
-  const { messages, activeRole, activeChannel, activeKick, activeKickOnly } = useChat();
+  const { activeRole, activeChannel, activeKick, activeKickOnly } = useChat();
+  const { messages } = useChatMessages();
   const { chatLayout } = useLayout();
   const [selectedUser, setSelectedUser] = useState<UserSelection | null>(null);
 

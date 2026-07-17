@@ -5,8 +5,7 @@ import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { SettingsDialog } from "./SettingsDialog";
 import { CommandSearch } from "./CommandSearch";
 import { ChannelAbout } from "./ChannelAbout";
-import { MentionText } from "./MentionText";
-import { PlatformIcon, PLATFORM_COLOR, VerifiedBadge } from "./PlatformIcon";
+import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import { useLayout } from "../_ctx/layout";
 import { useChat } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
@@ -105,12 +104,6 @@ function ActiveChannelPill() {
   const avatar =
     (isLive ? live : platforms).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
   const viewers = live.reduce((sum, p) => sum + p.viewers, 0);
-  // Only a LIVE platform's own title/category is shown — never one platform's
-  // logo paired with another's description.
-  const desc = live.find((p) => p.title || p.category);
-  const title = desc
-    ? `${desc.title || "—"}${desc.category ? ` · ${desc.category}` : ""}`
-    : "";
 
   // Per-platform presence + live state. The icon lights up in the platform's
   // color only when it is actually live there; a present-but-offline platform
@@ -195,10 +188,6 @@ function ActiveChannelPill() {
         <Text fontSize="13px" fontWeight="600" truncate>
           {name}
         </Text>
-        {twitchP?.verified && <VerifiedBadge size={12} title="Verified partner" />}
-        {kickP?.verified && (
-          <VerifiedBadge size={12} color={PLATFORM_COLOR.kick} title="Verified on Kick" />
-        )}
       </chakra.button>
 
       {isLive ? (
@@ -243,7 +232,6 @@ function ActiveChannelPill() {
                           HOST
                         </Text>
                       )}
-                      {c.verified && <VerifiedBadge size={11} title="Verified partner" />}
                       {c.viewers != null && (
                         <Text fontFamily="mono" fontSize="10px" color="muted" flex="none">
                           {c.viewers.toLocaleString()}
@@ -270,15 +258,6 @@ function ActiveChannelPill() {
         </Text>
       )}
 
-      {/* Stream title + category — hidden below md to keep the pill compact. */}
-      {title && (
-        <Flex hideBelow="md" align="center" gap="9px" minW="0" flex="1">
-          <Box w="1px" h="16px" bg="line" flex="none" />
-          <Text fontSize="12px" color="muted" truncate minW="0" title={title}>
-            <MentionText text={title} />
-          </Text>
-        </Flex>
-      )}
       </Flex>
 
       {aboutOpen && <ChannelAbout onClose={() => setAboutOpen(false)} />}

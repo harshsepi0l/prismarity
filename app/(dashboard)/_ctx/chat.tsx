@@ -39,9 +39,15 @@ interface PendingKick {
   chatroomId: number | null;
 }
 
-interface ChatStore {
+// High-frequency chat feed lives in its own context so components that only
+// need channels/selection (NavRail, Settings, TopBar…) don't re-render on every
+// incoming message — only the feed (chat page, stats) subscribes here.
+interface ChatMessages {
   status: ConnectionStatus;
   messages: ChatMessage[];
+}
+
+interface ChatStore {
   ownChannel: FollowedChannel | null;
   ownKick: KickOnlyChannel | null;
   activeChannel: FollowedChannel | null;
@@ -69,6 +75,7 @@ interface ChatStore {
 }
 
 const ChatContext = createContext<ChatStore | null>(null);
+const ChatMessagesContext = createContext<ChatMessages | null>(null);
 
 export function ChatProvider({
   kickSlug = null,
@@ -490,34 +497,49 @@ export function ChatProvider({
       .slice(-300);
   }, [activeChannel, activeKickOnly, twitchMessages, kickMessages, selfMessages]);
 
+  // Memoized so the reference stays stable across the frequent re-renders the
+  // message feed triggers — consumers of channels/selection don't re-render.
+  const chatValue = useMemo<ChatStore>(
+    () => ({
+      ownChannel,
+      ownKick,
+      activeChannel,
+      activeKickOnly,
+      activeRole,
+      activeKick,
+      kickConnected,
+      watchedChannels,
+      followedChannels,
+      cheerLeaders,
+      giftLeaders,
+      selectChannel,
+      selectKickOnly,
+      selectSearchResult,
+      clearSelection,
+      addWatchedChannel,
+      removeWatchedChannel,
+      addSelfMessage,
+      beaconMode,
+      setBeaconMode,
+    }),
+    [
+      ownChannel, ownKick, activeChannel, activeKickOnly, activeRole, activeKick,
+      kickConnected, watchedChannels, followedChannels, cheerLeaders, giftLeaders,
+      selectChannel, selectKickOnly, selectSearchResult, clearSelection,
+      addWatchedChannel, removeWatchedChannel, addSelfMessage, beaconMode, setBeaconMode,
+    ]
+  );
+
+  const messagesValue = useMemo<ChatMessages>(
+    () => ({ status, messages }),
+    [status, messages]
+  );
+
   return (
-    <ChatContext.Provider
-      value={{
-        status,
-        messages,
-        ownChannel,
-        ownKick,
-        activeChannel,
-        activeKickOnly,
-        activeRole,
-        activeKick,
-        kickConnected,
-        watchedChannels,
-        followedChannels,
-        cheerLeaders,
-        giftLeaders,
-        selectChannel,
-        selectKickOnly,
-        selectSearchResult,
-        clearSelection,
-        addWatchedChannel,
-        removeWatchedChannel,
-        addSelfMessage,
-        beaconMode,
-        setBeaconMode,
-      }}
-    >
-      {children}
+    <ChatContext.Provider value={chatValue}>
+      <ChatMessagesContext.Provider value={messagesValue}>
+        {children}
+      </ChatMessagesContext.Provider>
     </ChatContext.Provider>
   );
 }
@@ -525,5 +547,11 @@ export function ChatProvider({
 export function useChat(): ChatStore {
   const ctx = useContext(ChatContext);
   if (!ctx) throw new Error("useChat must be used within a ChatProvider");
+  return ctx;
+}
+
+export function useChatMessages(): ChatMessages {
+  const ctx = useContext(ChatMessagesContext);
+  if (!ctx) throw new Error("useChatMessages must be used within a ChatProvider");
   return ctx;
 }

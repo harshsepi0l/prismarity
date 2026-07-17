@@ -2,7 +2,7 @@
 
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { useLayout, NAV_RAIL_WIDTH } from "../_ctx/layout";
 import { useChat } from "../_ctx/chat";
@@ -194,7 +194,7 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
 
 // ── Own channel button ───────────────────────────────────────────────────────
 
-function OwnChannelButton({
+const OwnChannelButton = memo(function OwnChannelButton({
   platform,
   name,
   avatar,
@@ -304,18 +304,21 @@ function OwnChannelButton({
       )}
     </chakra.button>
   );
-}
+});
 
 // ── Watched channel button ───────────────────────────────────────────────────
 
-function WatchedChannelButton({
+// memo'd so it skips re-render on every chat message (NavRail re-renders via
+// context, but these keep the same props). Handlers take the result so callers
+// pass STABLE context callbacks instead of per-render closures.
+const WatchedChannelButton = memo(function WatchedChannelButton({
   result, active, collapsed, onSelect, onRemove,
 }: {
   result: SearchResult;
   active: boolean;
   collapsed: boolean;
-  onSelect: () => void;
-  onRemove?: () => void; // omitted for followed channels (not removable)
+  onSelect: (result: SearchResult) => void;
+  onRemove?: (result: SearchResult) => void; // omitted for followed channels (not removable)
 }) {
   const isLive = result.twitch?.isLive || result.kick?.isLive;
   const avatar = result.profileImageUrl;
@@ -349,7 +352,7 @@ function WatchedChannelButton({
     return (
       <Box position="relative" role="group">
         <chakra.button
-          type="button" onClick={onSelect}
+          type="button" onClick={() => onSelect(result)}
           display="flex" alignItems="center" justifyContent="flex-start"
           gap="8px" w="100%" pl="6px" py="5px" pr="28px"
           borderRadius="8px" bg={active ? "raised" : "transparent"} color={active ? "text" : "muted"}
@@ -372,7 +375,7 @@ function WatchedChannelButton({
         {onRemove && (
           <chakra.button
             type="button"
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onRemove(); }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onRemove(result); }}
             title="Remove channel"
             position="absolute" right="6px" top="50%" transform="translateY(-50%)"
             display="flex" alignItems="center" justifyContent="center"
@@ -391,7 +394,7 @@ function WatchedChannelButton({
   return (
     <Box w="100%" h="34px" position="relative">
       <chakra.button
-        type="button" onClick={onSelect}
+        type="button" onClick={() => onSelect(result)}
         position="absolute" top="0" left="calc(50% - 17px)"
         display="flex" alignItems="center" gap="8px"
         pl="6px" pr="10px" h="34px"
@@ -407,7 +410,7 @@ function WatchedChannelButton({
       </chakra.button>
     </Box>
   );
-}
+});
 
 // ── Main NavRail ─────────────────────────────────────────────────────────────
 
@@ -423,13 +426,46 @@ export function NavRail() {
   } = useChat();
 
   // A channel you already follow shouldn't also appear under RECENT.
-  const followedHandles = new Set(followedChannels.map((c) => c.handle));
-  const visibleWatched = watchedChannels.filter((c) => !followedHandles.has(c.handle));
+  const followedHandles = useMemo(
+    () => new Set(followedChannels.map((c) => c.handle)),
+    [followedChannels]
+  );
+  const visibleWatched = useMemo(
+    () => watchedChannels.filter((c) => !followedHandles.has(c.handle)),
+    [watchedChannels, followedHandles]
+  );
 
   // FOLLOWED is API-sorted (most viewers → offline); paginate it 10 at a time.
   const [followedShown, setFollowedShown] = useState(10);
-  const followedVisible = followedChannels.slice(0, followedShown);
+  const followedVisible = useMemo(
+    () => followedChannels.slice(0, followedShown),
+    [followedChannels, followedShown]
+  );
   const followedMore = followedChannels.length - followedShown;
+
+  // Stable handlers so the memo'd channel buttons keep the same props across the
+  // NavRail re-renders that the chat context triggers on every message.
+  const selectOwnTwitch = useCallback(() => {
+    if (ownChannel) selectChannel(ownChannel);
+  }, [ownChannel, selectChannel]);
+  const selectOwnKick = useCallback(() => {
+    if (ownKick) selectKickOnly(ownKick.slug);
+  }, [ownKick, selectKickOnly]);
+  const handleRemoveWatched = useCallback(
+    (result: SearchResult) => {
+      const isActive =
+        (!!result.twitch && activeChannel?.id === result.twitch.id) ||
+        (!!result.kick && activeKickOnly === result.kick.slug.toLowerCase());
+      if (isActive) {
+        const idx = watchedChannels.findIndex((c) => c.handle === result.handle);
+        const prev = idx > 0 ? watchedChannels[idx - 1] : null;
+        if (prev) selectSearchResult(prev);
+        else clearSelection();
+      }
+      removeWatchedChannel(result.handle);
+    },
+    [activeChannel, activeKickOnly, watchedChannels, selectSearchResult, clearSelection, removeWatchedChannel]
+  );
 
   // Three user-cyclable modes: expanded (labels + resizable), rail (icon-only),
   // hidden. On mobile the rail is an overlay drawer that always shows full labels.
@@ -478,7 +514,7 @@ export function NavRail() {
                     viewers={ownChannel.viewerCount}
                     active={ownTwitchActive}
                     collapsed={collapsed}
-                    onClick={() => selectChannel(ownChannel)}
+                    onClick={selectOwnTwitch}
                   />
                 )}
                 {ownKick && (
@@ -490,7 +526,7 @@ export function NavRail() {
                     viewers={ownKick.viewers}
                     active={ownKickActive}
                     collapsed={collapsed}
-                    onClick={() => selectKickOnly(ownKick.slug)}
+                    onClick={selectOwnKick}
                   />
                 )}
               </Flex>
@@ -512,7 +548,7 @@ export function NavRail() {
                       result={result}
                       active={active}
                       collapsed={collapsed}
-                      onSelect={() => selectSearchResult(result)}
+                      onSelect={selectSearchResult}
                     />
                   );
                 })}
@@ -547,16 +583,8 @@ export function NavRail() {
                       result={result}
                       active={active}
                       collapsed={collapsed}
-                      onSelect={() => selectSearchResult(result)}
-                      onRemove={() => {
-                        if (active) {
-                          const idx = watchedChannels.findIndex((c) => c.handle === result.handle);
-                          const prev = idx > 0 ? watchedChannels[idx - 1] : null;
-                          if (prev) selectSearchResult(prev);
-                          else clearSelection();
-                        }
-                        removeWatchedChannel(result.handle);
-                      }}
+                      onSelect={selectSearchResult}
+                      onRemove={handleRemoveWatched}
                     />
                   );
                 })}
@@ -632,6 +660,9 @@ export function NavRail() {
     <Flex
       as="nav"
       position="relative"
+      // Raise the rail above the chat when collapsed so the hover popouts, which
+      // overflow into the chat area, paint on top of the chat content.
+      zIndex={collapsed ? 25 : undefined}
       flex="none"
       w={`${dockedWidth}px`}
       direction="column"

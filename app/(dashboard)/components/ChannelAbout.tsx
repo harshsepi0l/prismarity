@@ -44,7 +44,7 @@ function ParticipantChip({ name, avatar, verified }: { name: string; avatar: str
         </Flex>
       )}
       <Text fontSize="12px" fontWeight="600" color="text">{name}</Text>
-      {verified && <VerifiedBadge size={12} title="Verified partner" />}
+      {verified && <VerifiedBadge platform="twitch" size={12} title="Verified partner" />}
     </Flex>
   );
 }
@@ -77,7 +77,9 @@ function PlatformSection({ p, href }: { p: PlatformLive; href: string | null }) 
         <Text fontSize="12px" fontWeight="600" color="text" flex="none">
           {label}
         </Text>
-        {p.verified && <VerifiedBadge size={12} color={color} title={`Verified on ${label}`} />}
+        {p.verified && (p.platform === "twitch" || p.platform === "kick") && (
+          <VerifiedBadge platform={p.platform} size={12} title={`Verified on ${label}`} />
+        )}
         {p.isLive ? (
           <Flex align="center" gap="4px" flex="none">
             <Box w="5px" h="5px" borderRadius="full" bg="#FF5C5C" animation="pris-pulse 1.4s ease-in-out infinite" />

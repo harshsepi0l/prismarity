@@ -6,6 +6,7 @@ import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { PlatformIcon } from "./PlatformIcon";
 import { clearSessionScopedStorage } from "@/lib/clientStorage";
 import { useChat } from "../_ctx/chat";
+import { useLayout } from "../_ctx/layout";
 
 const C = {
   bg: "#0E1118",
@@ -147,6 +148,17 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const [category, setCategory] = useState<Category>("accounts");
   const [disconnecting, setDisconnecting] = useState<"twitch" | "kick" | null>(null);
   const { beaconMode, setBeaconMode } = useChat();
+  const { isCompact } = useLayout();
+  // Desktop: anchored dropdown under the prism. Mobile/tablet: centered modal.
+  const asDropdown = !isCompact;
+
+  // Flip on the next frame so the panel animates open (scale/slide/fade). The
+  // dropdown grows from its top-left corner — i.e. out of the prism icon.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -211,17 +223,21 @@ export function SettingsDialog({ auth, onClose }: Props) {
         inset="0"
         zIndex={200}
         onClick={onClose}
-        style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(3px)" }}
+        style={
+          asDropdown
+            ? { background: "transparent" }
+            : { background: "rgba(0,0,0,0.6)", backdropFilter: "blur(3px)" }
+        }
       />
 
       <Box
         position="fixed"
-        top="50%"
-        left="50%"
-        w="720px"
+        top={asDropdown ? "52px" : "50%"}
+        left={asDropdown ? "12px" : "50%"}
+        w={asDropdown ? "440px" : "720px"}
         maxW="calc(100vw - 24px)"
-        h="480px"
-        maxH="calc(100vh - 24px)"
+        h={asDropdown ? "440px" : "480px"}
+        maxH={asDropdown ? "calc(100vh - 72px)" : "calc(100vh - 24px)"}
         borderRadius="12px"
         display="flex"
         flexDirection="column"
@@ -229,10 +245,21 @@ export function SettingsDialog({ auth, onClose }: Props) {
         zIndex={201}
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
         style={{
-          transform: "translate(-50%, -50%)",
+          transform: asDropdown
+            ? mounted
+              ? "none"
+              : "scale(0.95) translateY(-8px)"
+            : mounted
+              ? "translate(-50%, -50%)"
+              : "translate(-50%, -50%) scale(0.96)",
+          transformOrigin: asDropdown ? "top left" : "center",
+          opacity: mounted ? 1 : 0,
+          transition: "transform 0.16s cubic-bezier(0.2,0.8,0.2,1), opacity 0.16s ease",
           background: C.bg,
           border: `1px solid ${C.line}`,
-          boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+          boxShadow: asDropdown
+            ? "0 18px 50px rgba(0,0,0,0.55)"
+            : "0 32px 80px rgba(0,0,0,0.6)",
         }}
       >
         {/* Header */}
@@ -307,7 +334,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
           </Flex>
 
           {/* Content */}
-          <Box flex="1" overflowY="auto" p="28px" style={{ background: C.bg }}>
+          <Box flex="1" minW="0" overflowY="auto" p={asDropdown ? "18px" : "28px"} style={{ background: C.bg }}>
 
             {category === "accounts" && (
               <Box>
