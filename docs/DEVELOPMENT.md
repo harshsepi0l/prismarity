@@ -124,7 +124,7 @@ public/                      # Static assets
 
 Chakra UI is configured in `app/theme.ts` (`createSystem` + `defineConfig`) with the design
 tokens (`bg`, `panel`, `raised`, `line`, `text`, `muted`, `faint`, plus `twitch`/`youtube`/`kick`)
-and three fonts (Space Grotesk headings, IBM Plex Sans body, IBM Plex Mono for numbers/labels).
+and two fonts (Inter for all UI — headings, body, and the chat feed — plus IBM Plex Mono for numbers/labels).
 `app/provider.tsx` wraps the app in `ChakraProvider`.
 
 ## Deployment

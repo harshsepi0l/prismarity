@@ -88,7 +88,6 @@ export default function Composer() {
     setError(null);
     setErrorPlatform(null);
     setPickerOpen(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey]);
 
   // Both platforms are reactive-only: a failed send is the only reliable signal

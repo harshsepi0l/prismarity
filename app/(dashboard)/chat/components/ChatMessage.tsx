@@ -175,7 +175,6 @@ export default memo(function ChatMessage({
     <Box
       onMouseEnter={() => onHoverChange?.(true)}
       onMouseLeave={() => onHoverChange?.(false)}
-      fontFamily="chat"
       borderLeftWidth="2px"
       borderColor={platformColor}
       pl="14px"

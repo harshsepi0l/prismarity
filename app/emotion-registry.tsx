@@ -52,7 +52,6 @@ export function EmotionRegistry({ children }: { children: React.ReactNode }) {
       <style
         key={cache.key}
         data-emotion={`${cache.key} ${names.join(" ")}`}
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: styles }}
       />
     );

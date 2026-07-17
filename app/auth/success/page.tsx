@@ -27,7 +27,7 @@ export default function AuthSuccess() {
         justifyContent: "center",
         background: "#0E1118",
         color: "#8B93A7",
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: "var(--font-inter), system-ui, sans-serif",
         fontSize: "14px",
       }}
     >
