@@ -62,8 +62,10 @@ const config = defineConfig({
         kick:    { value: "#5BE37D" },
       },
       fonts: {
-        heading: { value: "var(--font-space-grotesk), sans-serif" },
-        body:    { value: "var(--font-ibm-plex-sans), sans-serif" },
+        heading: { value: "var(--font-inter), sans-serif" },
+        body:    { value: "var(--font-inter), sans-serif" },
+        // Chat feed keeps IBM Plex Sans so message density is unchanged.
+        chat:    { value: "var(--font-ibm-plex-sans), sans-serif" },
         mono:    { value: "var(--font-ibm-plex-mono), monospace" },
       },
     },
