@@ -26,7 +26,7 @@ export default async function DashboardLayout({
   return (
     <LayoutProvider>
       <SessionProvider connectedPlatforms={connectedPlatforms}>
-        <ChatProvider kickSlug={kick?.login ?? null}>
+        <ChatProvider kickSlug={kick?.login ?? null} twitchConnected={!!twitch}>
           <EmoteProvider>
             <BadgeProvider>
               <StatsProvider>

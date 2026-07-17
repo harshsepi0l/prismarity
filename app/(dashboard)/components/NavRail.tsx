@@ -240,19 +240,28 @@ function OwnChannelButton({
   );
 
   if (collapsed) {
+    // Same hover-expand pill as watched channels: icon-only until hovered, then
+    // slides open to reveal the name (and viewers when live).
     return (
       <Box w="100%" h="34px" position="relative">
         <chakra.button
           type="button" onClick={onClick}
           position="absolute" top="0" left="calc(50% - 17px)"
-          display="flex" alignItems="center" justifyContent="center"
-          w="34px" h="34px" borderRadius="8px"
-          bg={active ? "raised" : "transparent"}
+          display="flex" alignItems="center" gap="8px"
+          pl="4px" pr="12px" h="34px"
+          borderRadius="20px" maxW="34px" overflow="hidden" whiteSpace="nowrap"
+          bg={active ? "raised" : "transparent"} color={active ? "text" : "muted"}
           cursor="pointer" title={name}
-          transition="background .12s"
-          _hover={{ bg: "raised" }}
+          transition="max-width 0.4s ease, background .12s, color .12s"
+          _hover={{ bg: "raised", color: "text", maxW: "300px" }}
         >
           {AvatarEl}
+          <Text flex="none" fontSize="12px">{name}</Text>
+          {isLive && viewers != null && (
+            <Text flex="none" fontFamily="mono" fontSize="10px" color="muted">
+              {viewers.toLocaleString()}
+            </Text>
+          )}
         </chakra.button>
       </Box>
     );
@@ -363,10 +372,9 @@ function WatchedChannelButton({
           w="16px" h="16px" borderRadius="3px"
           fontSize="10px" fontWeight="700"
           color="faint" cursor="pointer"
-          opacity="0"
+          opacity="0.45"
           transition="opacity .12s, color .12s, background .12s"
-          _groupHover={{ opacity: 1 }}
-          _hover={{ color: "text", bg: "raised" }}
+          _hover={{ opacity: 1, color: "text", bg: "raised" }}
         >✕</chakra.button>
       </Box>
     );

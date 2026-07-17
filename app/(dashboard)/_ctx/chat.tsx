@@ -70,9 +70,11 @@ const ChatContext = createContext<ChatStore | null>(null);
 
 export function ChatProvider({
   kickSlug = null,
+  twitchConnected = false,
   children,
 }: {
   kickSlug?: string | null; // the logged-in user's own Kick slug (if connected)
+  twitchConnected?: boolean; // whether a Twitch account is connected this session
   children: React.ReactNode;
 }) {
   const {
@@ -111,6 +113,49 @@ export function ChatProvider({
       return next;
     });
   }, []);
+
+  // Watched channels' live status is frozen at add-time in localStorage; re-poll
+  // it (on load + every 60s) so channels that went offline stop showing as live.
+  const watchedHandles = watchedChannels.map((c) => c.handle).join(",");
+  useEffect(() => {
+    if (!watchedHandles) return;
+    let cancelled = false;
+    async function refresh() {
+      const handles = watchedHandles.split(",").filter(Boolean);
+      const fresh = await Promise.all(
+        handles.map(async (h) => {
+          try {
+            const res = await fetch(`/api/search?q=${encodeURIComponent(h)}`);
+            if (!res.ok) return null;
+            const { results } = (await res.json()) as { results: SearchResult[] };
+            return results.find((r) => r.handle === h) ?? null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (cancelled) return;
+      const byHandle = new Map(
+        fresh.filter((r): r is SearchResult => !!r).map((r) => [r.handle, r])
+      );
+      setWatchedChannels((prev) => {
+        let changed = false;
+        const next = prev.map((c) => {
+          const f = byHandle.get(c.handle);
+          if (!f) return c;
+          changed = true;
+          return { ...c, twitch: f.twitch, kick: f.kick, profileImageUrl: f.profileImageUrl ?? c.profileImageUrl };
+        });
+        return changed ? next : prev;
+      });
+    }
+    refresh();
+    const id = setInterval(refresh, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [watchedHandles]);
 
   const [ownChannel, setOwnChannel] = useState<FollowedChannel | null>(null);
   const [ownKickStat, setOwnKickStat] = useState<{ isLive: boolean; viewers: number; profileImageUrl: string | null } | null>(null);
@@ -165,7 +210,14 @@ export function ChatProvider({
   }, [beaconMode]);
 
   // Pin your own Twitch channel (creator), refreshing live status periodically.
+  // Keyed on twitchConnected so it re-fetches the moment the connection appears
+  // after login (router.refresh updates the prop) — no manual reload needed.
   useEffect(() => {
+    if (!twitchConnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOwnChannel(null);
+      return;
+    }
     let cancelled = false;
     async function load() {
       try {
@@ -188,7 +240,7 @@ export function ChatProvider({
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [twitchConnected]);
 
   // Live status for your own Kick channel.
   useEffect(() => {

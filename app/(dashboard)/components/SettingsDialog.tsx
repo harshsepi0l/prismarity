@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { PlatformIcon } from "./PlatformIcon";
+import { clearSessionScopedStorage } from "@/lib/clientStorage";
 import { useChat } from "../_ctx/chat";
 
 const C = {
@@ -173,11 +174,24 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const disconnect = useCallback(async (platform: "twitch" | "kick") => {
     setDisconnecting(platform);
     try {
-      await fetch("/api/auth/disconnect", {
+      const res = await fetch("/api/auth/disconnect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platform }),
       });
+      let loggedOut = false;
+      try {
+        loggedOut = !!((await res.json()) as { loggedOut?: boolean }).loggedOut;
+      } catch {
+        /* ignore malformed body */
+      }
+      if (loggedOut) {
+        // Full logout: drop the session's watched channels + chat prefs and
+        // hard-reload so no in-memory state carries into the logged-out view.
+        clearSessionScopedStorage();
+        window.location.assign("/chat");
+        return;
+      }
       router.refresh();
     } finally {
       setDisconnecting(null);
@@ -386,6 +400,16 @@ export function SettingsDialog({ auth, onClose }: Props) {
                 <Text fontSize="12px" lineHeight="2" style={{ color: C.faint }}>
                   Authentication uses OAuth 2.0 with PKCE. Tokens are encrypted at rest using AES-256-GCM.
                   No credentials are ever sent to third-party servers.
+                </Text>
+                <Box my="20px" style={{ height: "1px", background: C.line }} />
+                <Text fontSize="11px" fontWeight="700" mb="8px" style={{ color: C.muted, letterSpacing: "0.06em" }}>
+                  PLATFORM NOTES
+                </Text>
+                <Text fontSize="12px" lineHeight="2" style={{ color: C.faint }}>
+                  Twitch and Kick expose different data. Twitch provides your followed channels through
+                  its official API; Kick&apos;s public API does not, so your Kick follows can&apos;t be
+                  listed automatically — reach Kick channels through search instead. When a channel you
+                  follow on Twitch also exists on Kick, both are linked so you see the unified view.
                 </Text>
               </Box>
             )}
