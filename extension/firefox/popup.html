@@ -51,6 +51,36 @@
     }
     .twitch { background: #A66CFF22; color: #A66CFF; border: 1px solid #A66CFF44; }
     .kick   { background: #5BE37D22; color: #5BE37D; border: 1px solid #5BE37D44; }
+    .pair {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #1B2130;
+    }
+    .pair-label { font-size: 11px; font-weight: 600; color: #8B93A7; margin-bottom: 6px; }
+    .pair-row { display: flex; gap: 6px; }
+    .pair-input {
+      flex: 1;
+      min-width: 0;
+      background: #12161F;
+      border: 1px solid #232A38;
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: #D6DAE6;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    .pair-input:focus { outline: none; border-color: #38BDF8; }
+    .pair-save {
+      background: #1F2532;
+      border: 1px solid #232A38;
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #D6DAE6;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .pair-hint { font-size: 10px; color: #5C6479; margin-top: 6px; line-height: 1.5; }
     .footer { padding: 10px 16px 14px; }
     .footer-text { font-size: 10px; color: #5C6479; line-height: 1.6; }
     @keyframes pulse {
@@ -77,6 +107,15 @@
       <div class="dot" id="dot"></div>
       <span class="status-text" id="status-text">Checking…</span>
       <span class="platform-badge" id="platform-badge" style="display:none"></span>
+    </div>
+
+    <div class="pair">
+      <div class="pair-label">Pairing key</div>
+      <div class="pair-row">
+        <input class="pair-input" id="token-input" type="password" placeholder="Paste from Prismarity settings" autocomplete="off" spellcheck="false" />
+        <button class="pair-save" id="token-save">Save</button>
+      </div>
+      <div class="pair-hint" id="pair-hint">Links this extension to your account.</div>
     </div>
   </div>
 

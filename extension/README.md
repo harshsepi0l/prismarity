@@ -29,6 +29,19 @@ Zen is built on Firefox, so it uses the V2 `firefox/` folder, **not** `chrome/`.
 (Temporary add-ons are removed when Firefox restarts. To make it permanent you'd
 need to sign it through addons.mozilla.org.)
 
+## Pair with your account
+
+The extension must be paired before it will signal — this is what binds its
+updates to your account (and keeps anyone else from writing to your beacon).
+
+1. In Prismarity, open **Settings → Chat** and copy the **Pairing key** shown
+   under the Beacon extension section.
+2. Click the extension's toolbar icon, paste the key into **Pairing key**, and
+   hit **Save**.
+
+The key is a per-account secret — keep it private. Until it's saved, the popup
+shows "Not paired" and the extension won't send anything.
+
 ## Notes
 
 - The extension only talks to `http://localhost:3000`. If you run Prismarity on a

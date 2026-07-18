@@ -29,6 +29,15 @@ function parseStream(url) {
 
 let lastSent = "";
 
+// Mirror the latest detection into storage so the popup can render status
+// without hitting the now-authenticated GET /api/beacon (which the popup, being
+// cross-origin, can't read).
+function setStatus(patch) {
+  chrome.storage.local.get(["status"], ({ status }) => {
+    chrome.storage.local.set({ status: { ...(status || {}), ...patch } });
+  });
+}
+
 // Callback-based chrome.* calls work in both Chrome and Firefox/Gecko (Zen).
 function signal(tabId) {
   chrome.tabs.get(tabId, (tab) => {
@@ -38,12 +47,24 @@ function signal(tabId) {
     const key = `${stream.platform}:${stream.channel}`;
     if (key === lastSent) return;
     lastSent = key;
-    fetch(PRISMARITY, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(stream),
-    }).catch(() => {
-      // Prismarity not running — silently ignore.
+
+    chrome.storage.local.get(["token"], ({ token }) => {
+      if (!token) {
+        // Detected a stream but the extension isn't paired yet — surface that in
+        // the popup and don't bother the server with an unauthenticated write.
+        setStatus({ ...stream, paired: false, sentOk: false });
+        return;
+      }
+      fetch(PRISMARITY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Beacon-Token": token },
+        body: JSON.stringify(stream),
+      }).then((res) => {
+        setStatus({ ...stream, paired: true, sentOk: res.ok });
+      }).catch(() => {
+        // Prismarity not running — silently ignore.
+        setStatus({ ...stream, paired: true, sentOk: false });
+      });
     });
   });
 }
@@ -66,6 +87,14 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   checkActiveTab(windowId);
 });
 
+// A freshly pasted pairing key should re-signal the current stream immediately,
+// not wait for the next tab switch.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.token) {
+    lastSent = "";
+    checkActiveTab();
+  }
+});
+
 // Catch the stream you're already watching when the extension loads/wakes.
 checkActiveTab();
-

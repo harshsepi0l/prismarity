@@ -174,6 +174,26 @@ export function SettingsDialog({ auth, onClose }: Props) {
     return () => { clearTimeout(id); setStalled(false); };
   }, [beaconMode, signalStatus]);
 
+  // Beacon pairing token, fetched from the server (derived from SESSION_SECRET,
+  // so it can't be computed client-side). Paste-once into the extension popup.
+  const [pairToken, setPairToken] = useState<string | null>(null);
+  const [pairCopied, setPairCopied] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/beacon/pair")
+      .then((r) => (r.ok ? r.json() : { token: null }))
+      .then((d: { token?: string | null }) => { if (alive) setPairToken(d.token ?? null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const copyPairToken = useCallback(() => {
+    if (!pairToken) return;
+    navigator.clipboard?.writeText(pairToken).then(() => {
+      setPairCopied(true);
+      setTimeout(() => setPairCopied(false), 1500);
+    }).catch(() => {});
+  }, [pairToken]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
@@ -452,6 +472,40 @@ export function SettingsDialog({ auth, onClose }: Props) {
                     Install the companion extension from the <code style={{ color: C.muted }}>extension/</code> folder in the project.
                     It watches your active tab for Twitch and Kick streams and signals Prismarity automatically.
                   </Text>
+
+                  {/* Pairing key — paste into the extension popup once so its
+                      signals are bound to this account. */}
+                  <Text fontSize="11px" fontWeight="600" mt="12px" mb="4px" style={{ color: C.muted }}>
+                    Pairing key
+                  </Text>
+                  <Text fontSize="11px" lineHeight="1.6" mb="8px" style={{ color: C.faint }}>
+                    Paste this into the extension popup to link it to your account. Keep it private.
+                  </Text>
+                  <Flex align="center" gap="8px">
+                    <Box
+                      flex="1" borderRadius="6px" px="10px" py="7px"
+                      fontFamily="monospace" fontSize="11px"
+                      overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap"
+                      style={{ background: C.field, border: `1px solid ${C.fieldLine}`, color: C.muted }}
+                      title={pairToken ?? undefined}
+                    >
+                      {pairToken ?? "unavailable — sign in first"}
+                    </Box>
+                    <chakra.button
+                      onClick={copyPairToken}
+                      disabled={!pairToken}
+                      borderRadius="6px" px="12px" py="7px"
+                      fontSize="11px" fontWeight="600"
+                      cursor={pairToken ? "pointer" : "not-allowed"}
+                      style={{
+                        background: C.raised,
+                        border: `1px solid ${C.fieldLine}`,
+                        color: pairToken ? C.text : C.faint,
+                      }}
+                    >
+                      {pairCopied ? "Copied" : "Copy"}
+                    </chakra.button>
+                  </Flex>
                 </Box>
               </Box>
             )}

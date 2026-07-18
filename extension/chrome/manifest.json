@@ -3,7 +3,7 @@
   "name": "Prismarity Beacon",
   "version": "1.0.0",
   "description": "Auto-syncs Twitch and Kick streams to your Prismarity dashboard.",
-  "permissions": ["tabs"],
+  "permissions": ["tabs", "storage"],
   "host_permissions": [
     "http://localhost:3000/*"
   ],
