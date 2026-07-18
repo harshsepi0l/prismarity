@@ -48,8 +48,9 @@ function signal(tabId) {
   });
 }
 
-function checkActiveTab() {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+function checkActiveTab(windowId) {
+  const query = windowId ? { active: true, windowId } : { active: true, currentWindow: true };
+  chrome.tabs.query(query, (tabs) => {
     if (tabs && tabs[0]) signal(tabs[0].id);
   });
 }
@@ -57,6 +58,12 @@ function checkActiveTab() {
 chrome.tabs.onActivated.addListener(({ tabId }) => signal(tabId));
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status === "complete") signal(tabId);
+});
+
+// Follow window switches too — two streams in separate windows count as a swap.
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return; // focus left the browser entirely
+  checkActiveTab(windowId);
 });
 
 // Catch the stream you're already watching when the extension loads/wakes.
