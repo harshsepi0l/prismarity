@@ -88,7 +88,10 @@ export default function ParticipantsButton({
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!twitchLogin) { setModvip({ mods: [], vips: [] }); return; }
+      // Clear the previous channel's roster immediately so it can't show under
+      // the new channel during the fetch gap.
+      setModvip({ mods: [], vips: [] });
+      if (!twitchLogin) return;
       try {
         const res = await fetch(`/api/twitch/modvip?login=${encodeURIComponent(twitchLogin)}`);
         if (!res.ok) return;

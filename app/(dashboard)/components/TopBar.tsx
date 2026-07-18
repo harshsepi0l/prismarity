@@ -8,7 +8,7 @@ import { ChannelAbout } from "./ChannelAbout";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import { BeaconSignal } from "./BeaconSignal";
 import { useLayout } from "../_ctx/layout";
-import { useChat } from "../_ctx/chat";
+import { useChat, useChatSignal } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
 
 export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null };
@@ -37,7 +37,8 @@ function SplitIcon() {
 // in here: the signal art scans while beacon is armed with no channel (or while
 // a beacon-selected channel is still connecting) and holds strong once live.
 function ActiveChannelPill() {
-  const { activeChannel, activeKick, activeKickOnly, beaconMode, signalStatus } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, beaconMode } = useChat();
+  const signalStatus = useChatSignal();
   const { platforms, collab } = useStats();
   const { isMobile } = useLayout();
   const [aboutOpen, setAboutOpen] = useState(false);

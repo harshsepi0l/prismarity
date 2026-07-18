@@ -18,7 +18,8 @@ interface IvrUser {
 function map(list: IvrUser[] | undefined) {
   return (list ?? [])
     .filter((u) => u.displayName || u.login)
-    .map((u) => ({ user: u.displayName ?? u.login!, id: u.id }));
+    // `||` (not `??`) so an empty-string displayName falls back to login too.
+    .map((u) => ({ user: u.displayName || u.login!, id: u.id }));
 }
 
 export async function GET(req: NextRequest) {

@@ -6,7 +6,7 @@ import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { PlatformIcon } from "./PlatformIcon";
 import { BeaconSignal } from "./BeaconSignal";
 import { clearSessionScopedStorage } from "@/lib/clientStorage";
-import { useChat } from "../_ctx/chat";
+import { useChat, useChatSignal } from "../_ctx/chat";
 import { useLayout } from "../_ctx/layout";
 
 const C = {
@@ -148,7 +148,8 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const router = useRouter();
   const [category, setCategory] = useState<Category>("accounts");
   const [disconnecting, setDisconnecting] = useState<"twitch" | "kick" | null>(null);
-  const { beaconMode, setBeaconMode, signalStatus } = useChat();
+  const { beaconMode, setBeaconMode } = useChat();
+  const signalStatus = useChatSignal();
   const { isCompact } = useLayout();
   // Desktop: anchored dropdown under the prism. Mobile/tablet: centered modal.
   const asDropdown = !isCompact;
@@ -161,11 +162,13 @@ export function SettingsDialog({ auth, onClose }: Props) {
     return () => cancelAnimationFrame(id);
   }, []);
 
-  // Beacon on but no signal after a grace period → most likely the extension
-  // isn't installed (or no stream is open). Drives the edge-case status line.
+  // Beacon on but still no stream detected after a grace period → most likely
+  // the extension isn't installed (or nothing's open). Only arm while truly
+  // idle — a detected stream that's mid-connect (or errored) isn't the
+  // extension's fault, so it must not trip this hint.
   const [stalled, setStalled] = useState(false);
   useEffect(() => {
-    if (!beaconMode || signalStatus === "connected") return;
+    if (!beaconMode || signalStatus !== "idle") return;
     const id = setTimeout(() => setStalled(true), 6000);
     // Reset on the way out (beacon toggled off, or a signal arrived).
     return () => { clearTimeout(id); setStalled(false); };

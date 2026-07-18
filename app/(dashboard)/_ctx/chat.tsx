@@ -93,13 +93,14 @@ interface ChatStore {
   getAllParticipants: (platforms: Platform[]) => MentionCandidate[];
   beaconMode: boolean;
   setBeaconMode: (on: boolean) => void;
-  // Collapsed connection state for the active selection — drives the beacon
-  // signal art (scanning while connecting, strong once connected).
-  signalStatus: ConnectionStatus;
 }
 
 const ChatContext = createContext<ChatStore | null>(null);
 const ChatMessagesContext = createContext<ChatMessages | null>(null);
+// Connection state for the beacon signal art lives in its own context so its
+// per-connect transitions don't re-render every useChat consumer (NavRail,
+// Settings, roster…) — only the beacon art subscribes here.
+const ChatSignalContext = createContext<ConnectionStatus>("idle");
 
 export function ChatProvider({
   kickSlug = null,
@@ -629,14 +630,13 @@ export function ChatProvider({
       getAllParticipants,
       beaconMode,
       setBeaconMode,
-      signalStatus,
     }),
     [
       ownChannel, ownKick, activeChannel, activeKickOnly, activeRole, activeKick,
       kickConnected, watchedChannels, followedChannels, cheerLeaders, giftLeaders,
       selectChannel, selectKickOnly, selectSearchResult, clearSelection,
       addWatchedChannel, removeWatchedChannel, addSelfMessage, getMentionCandidates,
-      getAllParticipants, beaconMode, setBeaconMode, signalStatus,
+      getAllParticipants, beaconMode, setBeaconMode,
     ]
   );
 
@@ -647,11 +647,20 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider value={chatValue}>
-      <ChatMessagesContext.Provider value={messagesValue}>
-        {children}
-      </ChatMessagesContext.Provider>
+      <ChatSignalContext.Provider value={signalStatus}>
+        <ChatMessagesContext.Provider value={messagesValue}>
+          {children}
+        </ChatMessagesContext.Provider>
+      </ChatSignalContext.Provider>
     </ChatContext.Provider>
   );
+}
+
+// Connection state for the active selection, driving the beacon signal art
+// (idle/connecting → scanning, connected → strong). Separate from useChat so
+// its transitions don't re-render channel/selection consumers.
+export function useChatSignal(): ConnectionStatus {
+  return useContext(ChatSignalContext);
 }
 
 export function useChat(): ChatStore {
