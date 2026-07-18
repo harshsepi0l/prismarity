@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { PlatformIcon } from "./PlatformIcon";
+import { BeaconSignal } from "./BeaconSignal";
 import { clearSessionScopedStorage } from "@/lib/clientStorage";
 import { useChat } from "../_ctx/chat";
 import { useLayout } from "../_ctx/layout";
@@ -147,7 +148,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const router = useRouter();
   const [category, setCategory] = useState<Category>("accounts");
   const [disconnecting, setDisconnecting] = useState<"twitch" | "kick" | null>(null);
-  const { beaconMode, setBeaconMode } = useChat();
+  const { beaconMode, setBeaconMode, signalStatus } = useChat();
   const { isCompact } = useLayout();
   // Desktop: anchored dropdown under the prism. Mobile/tablet: centered modal.
   const asDropdown = !isCompact;
@@ -159,6 +160,16 @@ export function SettingsDialog({ auth, onClose }: Props) {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
+
+  // Beacon on but no signal after a grace period → most likely the extension
+  // isn't installed (or no stream is open). Drives the edge-case status line.
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    if (!beaconMode || signalStatus === "connected") return;
+    const id = setTimeout(() => setStalled(true), 6000);
+    // Reset on the way out (beacon toggled off, or a signal arrived).
+    return () => { clearTimeout(id); setStalled(false); };
+  }, [beaconMode, signalStatus]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -382,12 +393,23 @@ export function SettingsDialog({ auth, onClose }: Props) {
               <Box>
                 {/* ── Beacon Mode ───────────────────────────── */}
                 <Flex align="center" gap="12px" mb="10px">
-                  <BeaconIcon size={22} color={beaconMode ? "#A66CFF" : C.muted} />
+                  <Box w="22px" flex="none" display="flex" justifyContent="center">
+                    <BeaconSignal size={20} state={beaconMode && signalStatus !== "connected" ? "searching" : "strong"} />
+                  </Box>
                   <Box flex="1">
                     <Text fontSize="14px" fontWeight="600" style={{ color: C.text }}>Beacon Mode</Text>
                     <Text fontSize="12px" style={{ color: C.faint, marginTop: 2 }}>
                       Auto-syncs to whatever stream you open in your browser via the Prismarity Beacon extension.
                     </Text>
+                    {beaconMode && (
+                      <Text fontSize="11px" fontWeight="500" style={{ color: "rgba(56,189,248,0.85)", marginTop: 5 }}>
+                        {signalStatus === "connected"
+                          ? "Signal strong — following your beacon"
+                          : stalled
+                          ? "No signal — is the Beacon extension installed?"
+                          : "Waiting for signal…"}
+                      </Text>
+                    )}
                   </Box>
                   {/* Toggle pill */}
                   <chakra.button
@@ -399,7 +421,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
                     cursor="pointer"
                     transition="background .2s"
                     position="relative"
-                    style={{ background: beaconMode ? "#A66CFF" : C.raised, border: `1px solid ${beaconMode ? "#A66CFF" : C.fieldLine}` }}
+                    style={{ background: beaconMode ? "#38BDF8" : C.raised, border: `1px solid ${beaconMode ? "#38BDF8" : C.fieldLine}` }}
                   >
                     <Box
                       position="absolute"

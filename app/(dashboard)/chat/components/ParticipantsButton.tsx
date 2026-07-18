@@ -4,13 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Flex, Input, Text, chakra } from "@chakra-ui/react";
 import { useChat, type MentionCandidate } from "../../_ctx/chat";
 import { PlatformIcon, PLATFORM_COLOR, PLATFORM_LABEL } from "../../components/PlatformIcon";
+import { ROLE_SECTIONS, isKnownBot, type ParticipantRole } from "../participantRole";
 import type { Platform, UserSelection } from "../../types";
 
-type Filter = "all" | "twitch" | "kick";
+interface ModVip {
+  mods: { user: string; id?: string }[];
+  vips: { user: string; id?: string }[];
+}
+
+const ROLE_RANK: Record<ParticipantRole, number> = {
+  viewer: 1, vip: 2, moderator: 3, bot: 4, broadcaster: 5,
+};
 
 function PeopleIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.3 0-8 1.7-8 5v2h10.2A5.9 5.9 0 0 1 11 20c0-2 .9-3.8 2.3-5.1C12 13.3 10.4 13 9 13Zm8.5 1a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0 2c-2.6 0-5.5 1.4-5.5 4v1h11v-1c0-2.6-2.9-4-5.5-4Z" />
     </svg>
   );
@@ -33,9 +41,11 @@ function Chevron({ open }: { open: boolean }) {
 }
 
 // The participants roster, anchored to the right of the chat WATCHING header.
-// Shows chatters SEEN THIS SESSION (a real viewer roster isn't obtainable for
-// channels you don't moderate), filterable by platform, searchable. Reads the
-// ref-backed registry via a ~2s snapshot so it never re-renders per message.
+// Broadcaster, moderators and VIPs are REAL rosters (broadcaster from the active
+// channel; Twitch mods/VIPs via ivr.fi). Viewers are chatters seen this session
+// (no full viewer roster is obtainable). Chat bots are matched by a known list.
+// Reads the message-derived registry via a ~2s snapshot so it never re-renders
+// per message. One platform is shown at a time — pick which with the pills.
 export default function ParticipantsButton({
   available,
   onSelectUser,
@@ -43,11 +53,12 @@ export default function ParticipantsButton({
   available: Platform[];
   onSelectUser?: (selection: UserSelection) => void;
 }) {
-  const { getAllParticipants } = useChat();
+  const { getAllParticipants, activeChannel, activeKick, activeKickOnly } = useChat();
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [pick, setPick] = useState<"twitch" | "kick">("twitch");
   const [query, setQuery] = useState("");
   const [people, setPeople] = useState<MentionCandidate[]>([]);
+  const [modvip, setModvip] = useState<ModVip>({ mods: [], vips: [] });
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Only twitch/kick have a chatter identity to roster.
@@ -57,9 +68,12 @@ export default function ParticipantsButton({
   );
   const platformsKey = platforms.join(",");
 
-  // Snapshot the registry on an interval (indirection through `tick` keeps the
-  // setState out of the effect body proper). Polls whether open or closed so the
-  // header count stays live.
+  // The platform currently shown — the user's pick if it's available, else the
+  // first available platform.
+  const filter: "twitch" | "kick" = platforms.includes(pick) ? pick : (platforms[0] ?? "twitch");
+
+  // Snapshot the message-derived registry on an interval (indirection through
+  // `tick` keeps the setState out of the effect body proper).
   useEffect(() => {
     const list = platformsKey ? platformsKey.split(",") as ("twitch" | "kick")[] : [];
     const tick = () => setPeople(getAllParticipants(list));
@@ -67,6 +81,26 @@ export default function ParticipantsButton({
     const id = setInterval(tick, 2000);
     return () => clearInterval(id);
   }, [platformsKey, getAllParticipants]);
+
+  // Real Twitch mod/VIP rosters for the active channel (ivr.fi), refetched on
+  // channel switch. Kick has no equivalent source.
+  const twitchLogin = platforms.includes("twitch") ? (activeChannel?.login ?? null) : null;
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!twitchLogin) { setModvip({ mods: [], vips: [] }); return; }
+      try {
+        const res = await fetch(`/api/twitch/modvip?login=${encodeURIComponent(twitchLogin)}`);
+        if (!res.ok) return;
+        const j = (await res.json()) as ModVip;
+        if (!cancelled) setModvip({ mods: j.mods ?? [], vips: j.vips ?? [] });
+      } catch {
+        /* ignore — roster degrades to broadcaster + observed chatters */
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [twitchLogin]);
 
   // Close on outside click / Escape while open.
   useEffect(() => {
@@ -83,25 +117,51 @@ export default function ParticipantsButton({
     };
   }, [open]);
 
-  const counts = useMemo(() => {
-    let twitch = 0, kick = 0;
-    for (const p of people) {
-      if (p.platform === "twitch") twitch++;
-      else kick++;
-    }
-    return { all: people.length, twitch, kick };
-  }, [people]);
+  // Merge everything into one roster: observed chatters (registry) + real Twitch
+  // mods/VIPs + the known broadcaster. Higher-ranked role wins per person; the
+  // richer identity (chat color / id) is kept when we have it.
+  const roster = useMemo(() => {
+    const map = new Map<string, MentionCandidate>();
+    const put = (cand: MentionCandidate) => {
+      const key = `${cand.platform}:${cand.user.toLowerCase()}`;
+      const ex = map.get(key);
+      if (!ex) { map.set(key, cand); return; }
+      const role = ROLE_RANK[cand.role ?? "viewer"] > ROLE_RANK[ex.role ?? "viewer"] ? cand.role : ex.role;
+      map.set(key, { ...ex, userId: ex.userId ?? cand.userId, color: ex.color ?? cand.color, role });
+    };
+
+    for (const p of people) put(p);
+
+    for (const v of modvip.vips)
+      put({ user: v.user, platform: "twitch", color: null, userId: v.id, role: isKnownBot(v.user) ? "bot" : "vip" });
+    for (const m of modvip.mods)
+      put({ user: m.user, platform: "twitch", color: null, userId: m.id, role: isKnownBot(m.user) ? "bot" : "moderator" });
+
+    if (platforms.includes("twitch") && activeChannel)
+      put({ user: activeChannel.displayName, platform: "twitch", color: null, userId: activeChannel.id, role: "broadcaster" });
+    const kickSlug = activeKick?.slug ?? activeKickOnly;
+    if (platforms.includes("kick") && kickSlug)
+      put({ user: kickSlug, platform: "kick", color: null, role: "broadcaster" });
+
+    return [...map.values()];
+  }, [people, modvip, platforms, activeChannel, activeKick, activeKickOnly]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return people.filter(
-      (p) => (filter === "all" || p.platform === filter) && (!q || p.user.toLowerCase().includes(q))
-    );
-  }, [people, filter, query]);
+    return roster.filter((p) => p.platform === filter && (!q || p.user.toLowerCase().includes(q)));
+  }, [roster, filter, query]);
 
-  // Only offer per-platform filter pills when both platforms are in play.
+  // Group the filtered roster into Twitch "Community"-style role buckets.
+  const grouped = useMemo(() => {
+    const by: Record<ParticipantRole, MentionCandidate[]> = {
+      broadcaster: [], moderator: [], vip: [], bot: [], viewer: [],
+    };
+    for (const p of filtered) by[p.role ?? "viewer"].push(p);
+    return by;
+  }, [filtered]);
+
+  // Pills let you cycle which platform's community you're viewing.
   const showFilters = platforms.length > 1;
-  const scopeLabel = filter === "all" ? "" : `${PLATFORM_LABEL[filter]} · `;
 
   return (
     <Box position="relative" ref={rootRef} flex="none">
@@ -110,13 +170,12 @@ export default function ParticipantsButton({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label="Participants"
-        title="Chatters seen this session"
+        title="Community"
         display="inline-flex"
         alignItems="center"
-        gap="7px"
-        pl="9px"
-        pr="10px"
-        py="4px"
+        gap="6px"
+        px="9px"
+        py="5px"
         borderRadius="full"
         borderWidth="1px"
         borderColor="fieldLine"
@@ -127,9 +186,6 @@ export default function ParticipantsButton({
         _hover={{ color: "text", borderColor: "#2f3850" }}
       >
         <PeopleIcon />
-        <Text fontFamily="mono" fontSize="12px" fontWeight="600" style={{ fontVariantNumeric: "tabular-nums" }}>
-          {counts.all}
-        </Text>
         <Chevron open={open} />
       </chakra.button>
 
@@ -139,7 +195,7 @@ export default function ParticipantsButton({
           top="calc(100% + 8px)"
           right="0"
           w="268px"
-          maxH="420px"
+          maxH="440px"
           bg="panel"
           borderWidth="1px"
           borderColor="line"
@@ -152,34 +208,33 @@ export default function ParticipantsButton({
         >
           <Flex justify="space-between" align="baseline" px="12px" pt="10px" pb="8px">
             <Text fontFamily="mono" fontSize="10px" letterSpacing="0.12em" color="muted">
-              PARTICIPANTS
+              COMMUNITY
             </Text>
-            <Text fontFamily="mono" fontSize="9px" letterSpacing="0.04em" color="faint">
-              seen this session
+            <Text fontFamily="mono" fontSize="9px" letterSpacing="0.08em" color="faint">
+              {PLATFORM_LABEL[filter].toUpperCase()}
             </Text>
           </Flex>
 
           {showFilters && (
             <Flex gap="6px" px="12px" pb="8px">
-              {(["all", ...platforms] as Filter[]).map((f) => {
-                const active = filter === f;
-                const color = f === "all" ? null : PLATFORM_COLOR[f];
-                const count = counts[f];
+              {platforms.map((p) => {
+                const active = filter === p;
+                const color = PLATFORM_COLOR[p];
                 return (
                   <chakra.button
-                    key={f}
+                    key={p}
                     type="button"
-                    onClick={() => setFilter(f)}
+                    onClick={() => setPick(p)}
                     aria-pressed={active}
                     display="inline-flex"
                     alignItems="center"
                     gap="6px"
-                    px="9px"
+                    px="10px"
                     py="4px"
                     borderRadius="full"
                     borderWidth="1px"
-                    borderColor={active ? (color ? `${color}73` : "#2f3850") : "fieldLine"}
-                    bg={active ? (color ? `${color}1F` : "raised") : "transparent"}
+                    borderColor={active ? `${color}73` : "fieldLine"}
+                    bg={active ? `${color}1F` : "transparent"}
                     color={active ? "text" : "faint"}
                     cursor="pointer"
                     fontSize="11px"
@@ -187,11 +242,8 @@ export default function ParticipantsButton({
                     transition="background .12s, color .12s, border-color .12s"
                     _hover={{ color: "text" }}
                   >
-                    {color && <Box w="7px" h="7px" borderRadius="full" bg={color} flex="none" />}
-                    {f === "all" ? "All" : PLATFORM_LABEL[f]}
-                    <Text as="span" fontFamily="mono" opacity={0.8} style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {count}
-                    </Text>
+                    <Box w="7px" h="7px" borderRadius="full" bg={color} flex="none" />
+                    {PLATFORM_LABEL[p]}
                   </chakra.button>
                 );
               })}
@@ -202,7 +254,7 @@ export default function ParticipantsButton({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter chatters…"
+              placeholder="Find someone…"
               h="30px"
               fontSize="12px"
               bg="field"
@@ -217,34 +269,50 @@ export default function ParticipantsButton({
           <Box overflowY="auto" px="6px" py="2px" borderTopWidth="1px" borderColor="line">
             {filtered.length === 0 ? (
               <Text fontSize="12px" color="faint" textAlign="center" py="18px">
-                {query ? "No chatters match that." : "No one has chatted yet this session."}
+                {query ? "No one matches that." : "No one here yet."}
               </Text>
             ) : (
-              filtered.map((p) => (
-                <chakra.button
-                  key={`${p.platform}:${p.user}`}
-                  type="button"
-                  onClick={() => {
-                    onSelectUser?.({ platform: p.platform, user: p.user, userId: p.userId });
-                    setOpen(false);
-                  }}
-                  display="flex"
-                  alignItems="center"
-                  gap="8px"
-                  w="100%"
-                  px="8px"
-                  py="6px"
-                  borderRadius="6px"
-                  cursor="pointer"
-                  transition="background .1s"
-                  _hover={{ bg: "raised" }}
-                >
-                  <PlatformIcon platform={p.platform} color={PLATFORM_COLOR[p.platform]} size={12} />
-                  <Text fontSize="13px" fontWeight="600" color={p.color || PLATFORM_COLOR[p.platform]} truncate>
-                    {p.user}
-                  </Text>
-                </chakra.button>
-              ))
+              ROLE_SECTIONS.map(({ role, label }) => {
+                const rows = grouped[role];
+                if (rows.length === 0) return null;
+                return (
+                  <Box key={role} pb="2px">
+                    <Flex align="center" justify="space-between" px="8px" pt="9px" pb="3px">
+                      <Text fontFamily="mono" fontSize="9px" letterSpacing="0.1em" color="faint">
+                        {label}
+                      </Text>
+                      <Text fontFamily="mono" fontSize="9px" color="faint" style={{ fontVariantNumeric: "tabular-nums" }}>
+                        {rows.length}
+                      </Text>
+                    </Flex>
+                    {rows.map((p) => (
+                      <chakra.button
+                        key={`${p.platform}:${p.user}`}
+                        type="button"
+                        onClick={() => {
+                          onSelectUser?.({ platform: p.platform, user: p.user, userId: p.userId });
+                          setOpen(false);
+                        }}
+                        display="flex"
+                        alignItems="center"
+                        gap="8px"
+                        w="100%"
+                        px="8px"
+                        py="6px"
+                        borderRadius="6px"
+                        cursor="pointer"
+                        transition="background .1s"
+                        _hover={{ bg: "raised" }}
+                      >
+                        <PlatformIcon platform={p.platform} color={PLATFORM_COLOR[p.platform]} size={12} />
+                        <Text fontSize="13px" fontWeight="600" color={p.color || PLATFORM_COLOR[p.platform]} truncate>
+                          {p.user}
+                        </Text>
+                      </chakra.button>
+                    ))}
+                  </Box>
+                );
+              })
             )}
           </Box>
 
@@ -253,7 +321,7 @@ export default function ParticipantsButton({
             borderTopWidth="1px" borderColor="line"
             fontFamily="mono" fontSize="9px" letterSpacing="0.04em" color="faint"
           >
-            {`${scopeLabel}${filtered.length} chatter${filtered.length === 1 ? "" : "s"} seen this session`}
+            Viewers = seen in chat this session
           </Text>
         </Box>
       )}

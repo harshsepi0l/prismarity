@@ -6,6 +6,7 @@ import { SettingsDialog } from "./SettingsDialog";
 import { CommandSearch } from "./CommandSearch";
 import { ChannelAbout } from "./ChannelAbout";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
+import { BeaconSignal } from "./BeaconSignal";
 import { useLayout } from "../_ctx/layout";
 import { useChat } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
@@ -33,34 +34,13 @@ function SplitIcon() {
 
 // Center pill — the stream you're tuned into: avatar, name, LIVE state,
 // viewers and stream title, live from the stats context. Beacon state folds
-// in here: waiting animation when beacon is on with no channel, a steady
-// beacon dot when the current selection is beacon-driven.
+// in here: the signal art scans while beacon is armed with no channel (or while
+// a beacon-selected channel is still connecting) and holds strong once live.
 function ActiveChannelPill() {
-  const { activeChannel, activeKick, activeKickOnly, beaconMode } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, beaconMode, signalStatus } = useChat();
   const { platforms, collab } = useStats();
   const { isMobile } = useLayout();
-  const [beaconSignal, setBeaconSignal] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-
-  useEffect(() => {
-    if (!beaconMode) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setBeaconSignal(false);
-      return;
-    }
-    let cancelled = false;
-    async function poll() {
-      try {
-        const res = await fetch("/api/beacon");
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { platform?: string; channel?: string };
-        if (!cancelled) setBeaconSignal(!!data.platform && !!data.channel);
-      } catch { /* silent */ }
-    }
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [beaconMode]);
 
   const hasSelection = !!activeChannel || !!activeKickOnly;
 
@@ -75,20 +55,11 @@ function ActiveChannelPill() {
     // Beacon armed, waiting for the extension to report a stream.
     return (
       <Flex
-        align="center" gap="8px" px="12px" h="28px"
+        align="center" gap="9px" px="12px" h="28px"
         borderRadius="7px" borderWidth="1px"
         style={{ borderColor: "rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}
       >
-        <Box position="relative" w="7px" h="7px" flex="none">
-          <Box
-            position="absolute" inset="0" borderRadius="full"
-            style={{ background: "rgba(56,189,248,0.9)", animation: "beacon-pulse 1.6s ease-in-out infinite" }}
-          />
-          <Box
-            position="absolute" inset="-3px" borderRadius="full"
-            style={{ background: "rgba(56,189,248,0.25)", animation: "beacon-ring 1.6s ease-out infinite" }}
-          />
-        </Box>
+        <BeaconSignal state="searching" />
         <Text fontSize="12px" fontWeight="500" style={{ color: "rgba(56,189,248,0.75)" }}>
           Waiting for signal...
         </Text>
@@ -122,12 +93,13 @@ function ActiveChannelPill() {
     >
       {/* Inner content clips so a long name/title can never overlap the badges. */}
       <Flex align="center" gap="9px" minW="0" overflow="hidden" flex="1">
-      {beaconMode && beaconSignal && (
+      {beaconMode && (
         <Box
-          w="6px" h="6px" borderRadius="full" flex="none"
-          title="Following your beacon"
-          style={{ background: "rgba(56,189,248,0.9)" }}
-        />
+          flex="none" display="inline-flex"
+          title={signalStatus === "connected" ? "Following your beacon" : "Tuning in…"}
+        >
+          <BeaconSignal state={signalStatus === "connected" ? "strong" : "searching"} />
+        </Box>
       )}
 
       {/* Profile pic */}

@@ -41,6 +41,12 @@ const config = defineConfig({
         "0%": { opacity: 0.6, transform: "scale(1)" },
         "100%": { opacity: 0, transform: "scale(2.8)" },
       },
+      // Beacon signal art — the classic Wi-Fi "connecting" sweep. The centre dot
+      // lights first, then the inner arc, then the outer arc (bottom-to-top),
+      // all hold briefly, then reset together at 100% so it loops cleanly.
+      "signal-wifi-1": { "0%": { opacity: 0.25 }, "16%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
+      "signal-wifi-2": { "0%, 16%": { opacity: 0.25 }, "38%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
+      "signal-wifi-3": { "0%, 38%": { opacity: 0.25 }, "58%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
     },
     tokens: {
       colors: {

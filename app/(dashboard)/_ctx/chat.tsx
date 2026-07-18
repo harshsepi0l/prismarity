@@ -15,6 +15,7 @@ import type { Role } from "@/lib/auth/types";
 import { useTwitchChat, type CheerLeader, type GiftLeader } from "../chat/useTwitchChat";
 import { useKickChat } from "../chat/useKickChat";
 import { nextSeq } from "../chat/seq";
+import { participantRole, type ParticipantRole } from "../chat/participantRole";
 
 // Chat session state lives in the dashboard layout, ABOVE the routes, so the
 // live sockets and active selection survive navigating to Loyalty/VODs and back.
@@ -43,6 +44,9 @@ export interface MentionCandidate {
   color: string | null;
   // Platform user id, when known — lets the participants roster open the UserCard.
   userId?: string;
+  // Role bucket for the participants roster (Broadcaster/Mods/VIPs/Bots/Viewers),
+  // derived from the chatter's badges. Absent = viewer. Ignored by @mentions.
+  role?: ParticipantRole;
 }
 
 interface PendingKick {
@@ -89,6 +93,9 @@ interface ChatStore {
   getAllParticipants: (platforms: Platform[]) => MentionCandidate[];
   beaconMode: boolean;
   setBeaconMode: (on: boolean) => void;
+  // Collapsed connection state for the active selection — drives the beacon
+  // signal art (scanning while connecting, strong once connected).
+  signalStatus: ConnectionStatus;
 }
 
 const ChatContext = createContext<ChatStore | null>(null);
@@ -110,7 +117,7 @@ export function ChatProvider({
     cheerLeaders,
     giftLeaders,
   } = useTwitchChat();
-  const { messages: kickMessages, connect: connectKick } = useKickChat();
+  const { messages: kickMessages, status: kickStatus, connect: connectKick } = useKickChat();
 
   const kickConnected = !!kickSlug;
 
@@ -497,6 +504,20 @@ export function ChatProvider({
     connectKick(kickRoom);
   }, [kickRoom, connectKick]);
 
+  // Connection state driving the beacon signal art, collapsed across whichever
+  // platforms the current selection spans. A freshly-selected channel reads as
+  // "connecting" (its socket is still handshaking, or hasn't been told to yet)
+  // so the bars scan the instant you swap streamers, then settle once live.
+  const signalStatus: ConnectionStatus = useMemo(() => {
+    const parts: ConnectionStatus[] = [];
+    if (targetChannelId) parts.push(status);
+    if (kickRoom != null) parts.push(kickStatus);
+    if (parts.length === 0) return "idle";
+    if (parts.some((s) => s === "connecting" || s === "idle")) return "connecting";
+    if (parts.some((s) => s === "connected")) return "connected";
+    return "error";
+  }, [targetChannelId, kickRoom, status, kickStatus]);
+
   // Merge both feeds by client-arrival order (bounded). Ordering by `seq` — a
   // single monotonic counter stamped when each message reaches the browser —
   // rather than by `timestamp` is what stops Twitch and Kick messages (whose
@@ -535,7 +556,14 @@ export function ChatProvider({
       const seq = m.seq ?? 0;
       const prev = reg.get(key);
       if (!prev || seq >= prev.seq) {
-        reg.set(key, { user: m.user, platform: m.platform, color: m.color ?? null, userId: m.userId, seq });
+        reg.set(key, {
+          user: m.user,
+          platform: m.platform,
+          color: m.color ?? null,
+          userId: m.userId,
+          role: participantRole(m.user, m.badges),
+          seq,
+        });
       }
     }
     // Bound growth on very busy channels — keep the 500 most recent chatters.
@@ -559,7 +587,7 @@ export function ChatProvider({
         .filter((p) => allow.has(p.platform) && p.user.toLowerCase().startsWith(q))
         .sort((a, b) => b.seq - a.seq)
         .slice(0, limit)
-        .map(({ user, platform, color, userId }) => ({ user, platform, color, userId }));
+        .map(({ user, platform, color, userId, role }) => ({ user, platform, color, userId, role }));
     },
     []
   );
@@ -570,7 +598,7 @@ export function ChatProvider({
       return [...participantsRef.current.values()]
         .filter((p) => allow.has(p.platform))
         .sort((a, b) => b.seq - a.seq)
-        .map(({ user, platform, color, userId }) => ({ user, platform, color, userId }));
+        .map(({ user, platform, color, userId, role }) => ({ user, platform, color, userId, role }));
     },
     []
   );
@@ -601,13 +629,14 @@ export function ChatProvider({
       getAllParticipants,
       beaconMode,
       setBeaconMode,
+      signalStatus,
     }),
     [
       ownChannel, ownKick, activeChannel, activeKickOnly, activeRole, activeKick,
       kickConnected, watchedChannels, followedChannels, cheerLeaders, giftLeaders,
       selectChannel, selectKickOnly, selectSearchResult, clearSelection,
       addWatchedChannel, removeWatchedChannel, addSelfMessage, getMentionCandidates,
-      getAllParticipants, beaconMode, setBeaconMode,
+      getAllParticipants, beaconMode, setBeaconMode, signalStatus,
     ]
   );
 
