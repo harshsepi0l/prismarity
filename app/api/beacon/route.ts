@@ -25,7 +25,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = verifyBeaconToken(req.headers.get("x-beacon-token"));
+  const userId = await verifyBeaconToken(req.headers.get("x-beacon-token"));
   if (!userId) {
     return NextResponse.json({ ok: false }, { status: 401, headers: WRITE_CORS });
   }

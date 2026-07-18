@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import { timingSafeEqual } from "crypto";
+import { getBeaconSecret } from "@/lib/auth/store";
 
 interface BeaconState {
   platform: "twitch" | "kick";
@@ -14,31 +15,26 @@ const _state = new Map<string, BeaconState>();
 export function setBeacon(userId: string, s: BeaconState) { _state.set(userId, s); }
 export function getBeacon(userId: string) { return _state.get(userId) ?? null; }
 
-// Pairing token: `${userId}.${HMAC(SESSION_SECRET, "beacon:"+userId)}`. Same
-// HMAC scheme as the session cookie (lib/auth/session.ts) but domain-separated
-// with a "beacon:" prefix so a session cookie can't be replayed as a beacon
-// token and vice versa. The user copies this into the extension popup once; the
-// extension can't send the httpOnly session cookie from its cross-origin POST,
-// so this token is how a write is bound to an account.
-function payload(userId: string): string {
-  return createHmac("sha256", process.env.SESSION_SECRET ?? "")
-    .update(`beacon:${userId}`)
-    .digest("base64url");
+// Pairing token: `${userId}.${beaconSecret}`, where beaconSecret is a random
+// per-user value persisted in the user record (lib/auth/store). The user copies
+// this into the extension popup once; the extension can't send the httpOnly
+// session cookie from its cross-origin POST, so this token is how a write is
+// bound to an account. Rotating the secret invalidates every prior token.
+export function buildBeaconToken(userId: string, secret: string): string {
+  return `${userId}.${secret}`;
 }
 
-export function beaconToken(userId: string): string {
-  return `${userId}.${payload(userId)}`;
-}
-
-// Returns the userId a token authenticates, or null if it's missing/forged.
-export function verifyBeaconToken(token: string | null | undefined): string | null {
+// Returns the userId a token authenticates, or null if it's missing/forged/stale.
+export async function verifyBeaconToken(token: string | null | undefined): Promise<string | null> {
   if (!token) return null;
-  const dot = token.lastIndexOf(".");
-  if (dot < 0) return null;
+  const dot = token.indexOf(".");
+  if (dot <= 0) return null;
   const userId = token.slice(0, dot);
-  const expected = beaconToken(userId);
-  const a = Buffer.from(token);
-  const b = Buffer.from(expected);
+  const provided = token.slice(dot + 1);
+  const secret = await getBeaconSecret(userId);
+  if (!secret) return null;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   return userId;
 }

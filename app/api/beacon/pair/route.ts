@@ -1,14 +1,26 @@
 import { NextResponse } from "next/server";
-import { beaconToken } from "@/lib/beacon";
+import { buildBeaconToken } from "@/lib/beacon";
 import { getCurrentUser } from "@/lib/auth/session";
+import { ensureBeaconSecret, rotateBeaconSecret } from "@/lib/auth/store";
 
 export const runtime = "nodejs";
 
-// Hands the logged-in user their beacon pairing token so the Settings panel can
-// display it for copy-paste into the extension. Requires a session — the token
-// is derived from SESSION_SECRET server-side and never computed on the client.
+// GET hands the logged-in user their current beacon pairing token (minting the
+// backing secret on first use). POST rotates the secret, invalidating any token
+// an extension still holds — the user must re-paste the new key. Both require a
+// session; the token is never derivable on the client.
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ token: null }, { status: 401 });
-  return NextResponse.json({ token: beaconToken(user.id) });
+  const secret = await ensureBeaconSecret(user.id);
+  if (!secret) return NextResponse.json({ token: null }, { status: 401 });
+  return NextResponse.json({ token: buildBeaconToken(user.id, secret) });
+}
+
+export async function POST() {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ token: null }, { status: 401 });
+  const secret = await rotateBeaconSecret(user.id);
+  if (!secret) return NextResponse.json({ token: null }, { status: 401 });
+  return NextResponse.json({ token: buildBeaconToken(user.id, secret) });
 }

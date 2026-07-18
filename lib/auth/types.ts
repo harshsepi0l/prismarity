@@ -24,4 +24,8 @@ export interface User {
   id: string;
   createdAt: number;
   connections: Connection[];
+  // Random per-user secret backing the beacon pairing token. Regenerated on
+  // rotation, which invalidates any extension still holding the old token.
+  // Created lazily the first time the pairing key is viewed.
+  beaconSecret?: string;
 }

@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 import type { Connection, Platform, User } from "./types";
 
 // Simple server-side persistence for now: a JSON file under .data/ (gitignored).
@@ -29,6 +29,37 @@ async function write(db: DB): Promise<void> {
 export async function getUserById(id: string): Promise<User | null> {
   const db = await read();
   return db.users[id] ?? null;
+}
+
+// Returns the user's current beacon secret without minting one. Used by token
+// verification — a missing user or unset secret means no valid token exists.
+export async function getBeaconSecret(userId: string): Promise<string | null> {
+  const db = await read();
+  return db.users[userId]?.beaconSecret ?? null;
+}
+
+// Returns the user's beacon secret, minting one on first use. Returns null if
+// the user doesn't exist.
+export async function ensureBeaconSecret(userId: string): Promise<string | null> {
+  const db = await read();
+  const user = db.users[userId];
+  if (!user) return null;
+  if (!user.beaconSecret) {
+    user.beaconSecret = randomBytes(24).toString("base64url");
+    await write(db);
+  }
+  return user.beaconSecret;
+}
+
+// Rotates the user's beacon secret, invalidating any previously issued token.
+// Returns the new secret, or null if the user doesn't exist.
+export async function rotateBeaconSecret(userId: string): Promise<string | null> {
+  const db = await read();
+  const user = db.users[userId];
+  if (!user) return null;
+  user.beaconSecret = randomBytes(24).toString("base64url");
+  await write(db);
+  return user.beaconSecret;
 }
 
 // Upsert a connection, keyed by (platform, platformUserId). Reuses the existing

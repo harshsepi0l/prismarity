@@ -178,6 +178,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
   // so it can't be computed client-side). Paste-once into the extension popup.
   const [pairToken, setPairToken] = useState<string | null>(null);
   const [pairCopied, setPairCopied] = useState(false);
+  const [pairRevealed, setPairRevealed] = useState(false);
   useEffect(() => {
     let alive = true;
     fetch("/api/beacon/pair")
@@ -193,6 +194,20 @@ export function SettingsDialog({ auth, onClose }: Props) {
       setTimeout(() => setPairCopied(false), 1500);
     }).catch(() => {});
   }, [pairToken]);
+  const [pairRotating, setPairRotating] = useState(false);
+  const rotatePairToken = useCallback(() => {
+    if (pairRotating) return;
+    if (!window.confirm("Regenerate the pairing key? Your extension will stop syncing until you paste the new key into it.")) return;
+    setPairRotating(true);
+    fetch("/api/beacon/pair", { method: "POST" })
+      .then((r) => (r.ok ? r.json() : { token: null }))
+      .then((d: { token?: string | null }) => {
+        setPairToken(d.token ?? null);
+        setPairRevealed(true); // reveal the fresh key so it can be re-pasted
+      })
+      .catch(() => {})
+      .finally(() => setPairRotating(false));
+  }, [pairRotating]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -487,10 +502,31 @@ export function SettingsDialog({ auth, onClose }: Props) {
                       fontFamily="monospace" fontSize="11px"
                       overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap"
                       style={{ background: C.field, border: `1px solid ${C.fieldLine}`, color: C.muted }}
-                      title={pairToken ?? undefined}
+                      // Only expose the value on hover once explicitly revealed —
+                      // never leak it via tooltip while masked (screen-share safe).
+                      title={pairRevealed ? pairToken ?? undefined : undefined}
                     >
-                      {pairToken ?? "unavailable — sign in first"}
+                      {!pairToken
+                        ? "unavailable — sign in first"
+                        : pairRevealed
+                        ? pairToken
+                        : "•".repeat(24)}
                     </Box>
+                    <chakra.button
+                      onClick={() => setPairRevealed((v) => !v)}
+                      disabled={!pairToken}
+                      borderRadius="6px" px="10px" py="7px"
+                      fontSize="11px" fontWeight="600"
+                      cursor={pairToken ? "pointer" : "not-allowed"}
+                      aria-label={pairRevealed ? "Hide pairing key" : "Show pairing key"}
+                      style={{
+                        background: C.raised,
+                        border: `1px solid ${C.fieldLine}`,
+                        color: pairToken ? C.text : C.faint,
+                      }}
+                    >
+                      {pairRevealed ? "Hide" : "Show"}
+                    </chakra.button>
                     <chakra.button
                       onClick={copyPairToken}
                       disabled={!pairToken}
@@ -506,6 +542,16 @@ export function SettingsDialog({ auth, onClose }: Props) {
                       {pairCopied ? "Copied" : "Copy"}
                     </chakra.button>
                   </Flex>
+                  <chakra.button
+                    onClick={rotatePairToken}
+                    disabled={!pairToken || pairRotating}
+                    mt="8px"
+                    fontSize="10px" fontWeight="600"
+                    cursor={pairToken && !pairRotating ? "pointer" : "not-allowed"}
+                    style={{ background: "transparent", border: "none", color: C.faint, textDecoration: "underline" }}
+                  >
+                    {pairRotating ? "Regenerating…" : "Regenerate key"}
+                  </chakra.button>
                 </Box>
               </Box>
             )}
