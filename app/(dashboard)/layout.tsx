@@ -17,9 +17,11 @@ export default async function DashboardLayout({
   const user = await getCurrentUser();
   const twitch = user?.connections.find((c) => c.platform === "twitch");
   const kick = user?.connections.find((c) => c.platform === "kick");
+  const youtube = user?.connections.find((c) => c.platform === "youtube");
   const auth = {
     twitch: twitch ? { displayName: twitch.displayName } : null,
     kick: kick ? { displayName: kick.displayName } : null,
+    youtube: youtube ? { displayName: youtube.displayName } : null,
   };
   const connectedPlatforms = user?.connections.map((c) => c.platform) ?? [];
 

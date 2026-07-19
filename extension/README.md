@@ -29,6 +29,13 @@ Zen is built on Firefox, so it uses the V2 `firefox/` folder, **not** `chrome/`.
 (Temporary add-ons are removed when Firefox restarts. To make it permanent you'd
 need to sign it through addons.mozilla.org.)
 
+## Point it at your dashboard
+
+Click the extension's toolbar icon and set **Server URL** to wherever Prismarity
+is hosted — your Vercel URL (e.g. `https://your-app.vercel.app`) for the deployed
+app, or `http://localhost:3000` for local dev. Defaults to localhost until you
+change it. The `/api/beacon` path is added automatically.
+
 ## Pair with your account
 
 The extension must be paired before it will signal — this is what binds its
@@ -44,7 +51,6 @@ shows "Not paired" and the extension won't send anything.
 
 ## Notes
 
-- The extension only talks to `http://localhost:3000`. If you run Prismarity on a
-  different host/port, update the URL in `background.js`, `popup.js`, and the
-  manifest's permissions — in **both** folders.
-- When Prismarity isn't running, the extension fails silently — no errors.
+- The **Server URL** is stored per-browser; no code edits needed to switch hosts.
+  The manifest allows `https://*` so any deployed origin works.
+- When Prismarity isn't reachable, the extension fails silently — no errors.

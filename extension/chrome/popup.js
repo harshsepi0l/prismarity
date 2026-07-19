@@ -4,11 +4,22 @@ const badge = document.getElementById("platform-badge");
 const tokenInput = document.getElementById("token-input");
 const tokenSave = document.getElementById("token-save");
 const pairHint = document.getElementById("pair-hint");
+const originInput = document.getElementById("origin-input");
+const originSave = document.getElementById("origin-save");
+const originHint = document.getElementById("origin-hint");
+
+const DEFAULT_ORIGIN = "http://localhost:3000";
+
+function normalizeOrigin(raw) {
+  const v = (raw || "").trim().replace(/\/+$/, "").replace(/\/api\/beacon$/, "");
+  return v || DEFAULT_ORIGIN;
+}
 
 // The popup can't read GET /api/beacon (it's cookie-authed and cross-origin), so
 // status comes from what the background script mirrored into storage.
 function render() {
-  chrome.storage.local.get(["token", "status"], ({ token, status }) => {
+  chrome.storage.local.get(["token", "status", "origin"], ({ token, status, origin }) => {
+    originHint.textContent = `Sending to ${normalizeOrigin(origin)}`;
     if (!token) {
       pairHint.textContent = "Not paired — paste your key to link this extension.";
     } else {
@@ -47,6 +58,15 @@ tokenSave.addEventListener("click", () => {
 
 tokenInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") tokenSave.click();
+});
+
+originSave.addEventListener("click", () => {
+  const origin = normalizeOrigin(originInput.value);
+  chrome.storage.local.set({ origin }, () => render());
+});
+
+originInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") originSave.click();
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
