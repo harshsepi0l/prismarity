@@ -3,6 +3,7 @@ interface Settings {
   twitchClientSecretEnc: string;
   kickClientId: string;
   kickClientSecretEnc: string;
+  youtubeClientId: string;
   baseUrl: string;
 }
 
@@ -61,6 +62,7 @@ export async function getSettings(): Promise<Settings> {
     twitchClientSecretEnc: "",
     kickClientId: process.env.KICK_CLIENT_ID ?? "",
     kickClientSecretEnc: "",
+    youtubeClientId: process.env.YOUTUBE_CLIENT_ID ?? "",
     baseUrl: await resolveBaseUrl(),
   };
 }

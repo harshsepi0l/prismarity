@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   }
 
   const platform = (body as Record<string, unknown>).platform;
-  if (platform !== "twitch" && platform !== "kick") {
+  if (platform !== "twitch" && platform !== "kick" && platform !== "youtube") {
     return NextResponse.json({ error: "invalid_platform" }, { status: 400 });
   }
 

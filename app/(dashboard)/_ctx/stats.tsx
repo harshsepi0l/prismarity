@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ChannelStats, TwitchClip } from "@/lib/twitch/stats";
 import type { KickStats } from "@/lib/kick/stats";
+import type { YouTubeStats } from "@/lib/youtube/stats";
 import type { KickLeader } from "@/lib/kick/public";
 import { kickLeaderboardUrl, parseKickLeaderboard } from "@/lib/kick/public";
 import type { TwitchChatSettings } from "@/app/api/twitch/chat/route";
@@ -102,6 +103,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
 
   const [twitchServer, setTwitchServer] = useState<ChannelStats | null>(null);
   const [kickServer, setKickServer] = useState<KickStats | null>(null);
+  const [youtubeServer, setYoutubeServer] = useState<YouTubeStats | null>(null);
   const [twitchAvatar, setTwitchAvatar] = useState<string | null>(null);
   const [twitchVerified, setTwitchVerified] = useState(false);
   const [kickVerified, setKickVerified] = useState(false);
@@ -337,6 +339,37 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [kickSlug]);
 
+  // YouTube stats for the connected account's OWN channel (live status +
+  // subscriber count). Not tied to the tuned channel — there's no watch-any-
+  // channel flow for YouTube — so it's driven purely by whether YouTube is
+  // connected.
+  useEffect(() => {
+    let cancelled = false;
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!connectedPlatforms.has("youtube")) {
+      setYoutubeServer(null);
+      return;
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    async function load() {
+      try {
+        const res = await fetch("/api/youtube/stats", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { stats?: YouTubeStats | null };
+        if (cancelled || !json.stats) return;
+        setYoutubeServer(json.stats);
+      } catch {
+        /* ignore */
+      }
+    }
+    load();
+    const id = setInterval(load, 45_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [connectedPlatforms]);
+
   // Latest inputs for the off-render-path computation.
   const messagesRef = useRef(messages);
   const twitchStartedRef = useRef<string | null>(null);
@@ -427,6 +460,30 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       chatMode: km
         ? { followerOnly: km.followerOnly, followerMinutes: km.followerMinutes, subOnly: km.subOnly }
         : null,
+    });
+  }
+
+  // YouTube — the connected account's own channel. Standalone (not part of the
+  // tuned Twitch/Kick selection): shows only "live or not" and the subscriber
+  // count, which is surfaced as `followers` (YouTube subscribers are the free
+  // follow relationship). No viewer/chat data yet.
+  if (connectedPlatforms.has("youtube") && youtubeServer) {
+    platforms.push({
+      platform: "youtube",
+      channelName: youtubeServer.channelName,
+      profileImageUrl: youtubeServer.profileImageUrl,
+      included: activeFilters.has("youtube"),
+      isLive: youtubeServer.isLive,
+      viewers: 0,
+      peakViewers: 0,
+      uptimeMs: null,
+      title: "",
+      category: "",
+      followers: youtubeServer.subscribers,
+      subs: null,
+      chatters: null,
+      verified: false,
+      chatMode: null,
     });
   }
 
