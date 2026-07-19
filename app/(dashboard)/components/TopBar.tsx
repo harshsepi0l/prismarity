@@ -11,13 +11,7 @@ import { useLayout } from "../_ctx/layout";
 import { useChat, useChatSignal } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
 
-export type YouTubeAccount = { channelId: string; displayName: string };
-export type AuthInfo = {
-  twitch: { displayName: string } | null;
-  kick: { displayName: string } | null;
-  // YouTube can have several connected channels (one OAuth grant each).
-  youtube: YouTubeAccount[];
-};
+export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null; youtube: { displayName: string } | null };
 
 function CombinedIcon() {
   return (
@@ -502,7 +496,7 @@ export function TopBar({ auth }: TopBarProps) {
           </chakra.button>
           <ProfileButton
             onClick={() => setSettingsOpen(true)}
-            connected={{ twitch: !!auth.twitch, kick: !!auth.kick, youtube: auth.youtube.length > 0 }}
+            connected={{ twitch: !!auth.twitch, kick: !!auth.kick, youtube: !!auth.youtube }}
           />
           <Text
             hideBelow="sm"

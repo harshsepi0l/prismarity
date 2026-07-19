@@ -64,21 +64,38 @@ export async function GET(
   if (!verifier) return fail("no_verifier");
   if (!code) return fail("no_code");
 
+  // Track which step failed so the redirect's ?reason= is self-diagnosing
+  // instead of a single opaque "exchange":
+  //   token_exchange -> code→token POST rejected (bad client secret, redirect
+  //                     URI mismatch, reused/expired code)
+  //   identity       -> token OK but the profile/channel lookup failed — for
+  //                     YouTube this is typically a Google account with no
+  //                     channel (nothing for mine=true to return)
+  //   encrypt        -> tokens fetched but couldn't be sealed (bad/missing
+  //                     TOKEN_ENCRYPTION_KEY)
+  let step: "token_exchange" | "identity" | "encrypt" | "attach" = "token_exchange";
   try {
     let connection;
     if (twitchLib) {
       const token = await twitchLib.exchangeCode(code, verifier);
+      step = "identity";
       const identity = await twitchLib.fetchIdentity(token.access_token);
+      step = "encrypt";
       connection = twitchLib.toConnection(token, identity);
     } else if (kickLib) {
       const token = await kickLib.exchangeCode(code, verifier);
+      step = "identity";
       const identity = await kickLib.fetchIdentity(token.access_token);
+      step = "encrypt";
       connection = kickLib.toConnection(token, identity);
     } else {
       const token = await youtubeLib!.exchangeCode(code, verifier);
+      step = "identity";
       const identity = await youtubeLib!.fetchIdentity(token.access_token);
+      step = "encrypt";
       connection = youtubeLib!.toConnection(token, identity);
     }
+    step = "attach";
     const user = await attachConnection(connection);
     const dest = isPopup
       ? new URL("/auth/success", base)
@@ -88,10 +105,13 @@ export async function GET(
     res.cookies.set(SESSION_COOKIE, encodeSession(user), sessionCookieOptions);
     return res;
   } catch (e) {
-    console.error(
-      `[auth] ${platform} exchange error:`,
-      e instanceof Error ? e.stack : e
-    );
-    return fail("exchange");
+    // YouTube "no channel on this account" is common enough to name explicitly.
+    const msg = e instanceof Error ? e.message : String(e);
+    const reason =
+      step === "identity" && platform === "youtube" && /identity missing/.test(msg)
+        ? "youtube_no_channel"
+        : step;
+    console.error(`[auth] ${platform} ${step} error:`, e instanceof Error ? e.stack : e);
+    return fail(reason);
   }
 }

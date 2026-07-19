@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getAllYouTubeStats } from "@/lib/youtube/stats";
+import { getYouTubeOwnStats } from "@/lib/youtube/stats";
 
 export const runtime = "nodejs";
 
-// Live status + subscriber count for EVERY YouTube channel the user has
-// connected. No channelId param — each channel is its own OAuth grant, so this
-// returns all of the user's own channels.
+// Live status + subscriber count for the connected account's own YouTube
+// channel. No channelId param — YouTube has no "watch any channel" flow here.
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ channels: [] });
-  const channels = await getAllYouTubeStats(user);
-  return NextResponse.json({ channels });
+  if (!user) return NextResponse.json({ stats: null });
+  const stats = await getYouTubeOwnStats(user);
+  return NextResponse.json({ stats });
 }

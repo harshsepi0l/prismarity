@@ -67,8 +67,7 @@ interface Props {
   auth: {
     twitch: { displayName: string } | null;
     kick: { displayName: string } | null;
-    // YouTube can have several connected channels (one OAuth grant each).
-    youtube: { channelId: string; displayName: string }[];
+    youtube: { displayName: string } | null;
   };
   onClose: () => void;
 }
@@ -78,22 +77,16 @@ function PlatformSection({
   platform,
   color,
   displayName,
-  busy,
-  disabled,
+  disconnecting,
   onDisconnect,
   onConnect,
-  connectLabel,
 }: {
   platform: ConnectPlatform;
   color: string;
   displayName: string | null;
-  // This row's disconnect is in flight.
-  busy: boolean;
-  // Any disconnect (this or another) is in flight — buttons lock together.
-  disabled: boolean;
-  onDisconnect: () => void;
+  disconnecting: ConnectPlatform | null;
+  onDisconnect: (p: ConnectPlatform) => void;
   onConnect: () => void;
-  connectLabel?: string;
 }) {
   const label =
     platform === "twitch" ? "Twitch" : platform === "kick" ? "Kick" : "YouTube";
@@ -116,14 +109,14 @@ function PlatformSection({
           </Text>
           <chakra.button
             type="button"
-            onClick={onDisconnect}
-            disabled={disabled}
+            onClick={() => onDisconnect(platform)}
+            disabled={disconnecting !== null}
             ml="auto"
             px="9px"
             py="4px"
             borderRadius="5px"
             fontSize="11px"
-            cursor={disabled ? "default" : "pointer"}
+            cursor={disconnecting !== null ? "default" : "pointer"}
             style={{
               color: C.faint,
               border: `1px solid ${C.fieldLine}`,
@@ -131,7 +124,7 @@ function PlatformSection({
               transition: "all .15s",
             }}
           >
-            {busy ? "…" : "Disconnect"}
+            {disconnecting === platform ? "…" : "Disconnect"}
           </chakra.button>
         </Flex>
       ) : (
@@ -153,7 +146,7 @@ function PlatformSection({
           style={{ background: color, color: "#0E1118" }}
         >
           <PlatformIcon platform={platform} color="#0E1118" size={14} />
-          {connectLabel ?? `Connect with ${label}`}
+          Connect with {label}
         </chakra.button>
       )}
     </Box>
@@ -163,9 +156,7 @@ function PlatformSection({
 export function SettingsDialog({ auth, onClose }: Props) {
   const router = useRouter();
   const [category, setCategory] = useState<Category>("accounts");
-  // A per-row disconnect key: the platform for Twitch/Kick, or
-  // `youtube:<channelId>` for a specific YouTube channel.
-  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<ConnectPlatform | null>(null);
   const { beaconMode, setBeaconMode } = useChat();
   const signalStatus = useChatSignal();
   const { isCompact } = useLayout();
@@ -256,13 +247,13 @@ export function SettingsDialog({ auth, onClose }: Props) {
     window.addEventListener("message", handler);
   }, [router]);
 
-  const disconnect = useCallback(async (platform: ConnectPlatform, channelId?: string) => {
-    setDisconnecting(channelId ? `${platform}:${channelId}` : platform);
+  const disconnect = useCallback(async (platform: ConnectPlatform) => {
+    setDisconnecting(platform);
     try {
       const res = await fetch("/api/auth/disconnect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(channelId ? { platform, channelId } : { platform }),
+        body: JSON.stringify({ platform }),
       });
       let loggedOut = false;
       try {
@@ -419,9 +410,8 @@ export function SettingsDialog({ auth, onClose }: Props) {
                   platform="twitch"
                   color={C.twitch}
                   displayName={auth.twitch?.displayName ?? null}
-                  busy={disconnecting === "twitch"}
-                  disabled={disconnecting !== null}
-                  onDisconnect={() => disconnect("twitch")}
+                  disconnecting={disconnecting}
+                  onDisconnect={disconnect}
                   onConnect={() => openPopup("twitch")}
                 />
 
@@ -431,39 +421,20 @@ export function SettingsDialog({ auth, onClose }: Props) {
                   platform="kick"
                   color={C.kick}
                   displayName={auth.kick?.displayName ?? null}
-                  busy={disconnecting === "kick"}
-                  disabled={disconnecting !== null}
-                  onDisconnect={() => disconnect("kick")}
+                  disconnecting={disconnecting}
+                  onDisconnect={disconnect}
                   onConnect={() => openPopup("kick")}
                 />
 
                 <Box my="12px" />
 
-                {/* YouTube — one row per connected channel (a user may own
-                    several via Brand Accounts), then an add-another button. */}
-                {auth.youtube.map((acc) => (
-                  <PlatformSection
-                    key={acc.channelId}
-                    platform="youtube"
-                    color={C.youtube}
-                    displayName={acc.displayName}
-                    busy={disconnecting === `youtube:${acc.channelId}`}
-                    disabled={disconnecting !== null}
-                    onDisconnect={() => disconnect("youtube", acc.channelId)}
-                    onConnect={() => {}}
-                  />
-                ))}
                 <PlatformSection
                   platform="youtube"
                   color={C.youtube}
-                  displayName={null}
-                  busy={false}
-                  disabled={disconnecting !== null}
-                  onDisconnect={() => {}}
+                  displayName={auth.youtube?.displayName ?? null}
+                  disconnecting={disconnecting}
+                  onDisconnect={disconnect}
                   onConnect={() => openPopup("youtube")}
-                  connectLabel={
-                    auth.youtube.length > 0 ? "Connect another channel" : "Connect with YouTube"
-                  }
                 />
               </Box>
             )}

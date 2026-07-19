@@ -16,9 +16,6 @@ import { useSession } from "./session";
 // chips — toggling a platform off drops it from the combined roll-up.
 export interface PlatformLive {
   platform: Platform;
-  // Distinguishes rows of the same platform — YouTube can have several
-  // connected channels. Absent for the singular Twitch/Kick rows.
-  channelId?: string;
   channelName: string;
   profileImageUrl: string | null;
   included: boolean;
@@ -106,7 +103,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
 
   const [twitchServer, setTwitchServer] = useState<ChannelStats | null>(null);
   const [kickServer, setKickServer] = useState<KickStats | null>(null);
-  const [youtubeServers, setYoutubeServers] = useState<YouTubeStats[]>([]);
+  const [youtubeServer, setYoutubeServer] = useState<YouTubeStats | null>(null);
   const [twitchAvatar, setTwitchAvatar] = useState<string | null>(null);
   const [twitchVerified, setTwitchVerified] = useState(false);
   const [kickVerified, setKickVerified] = useState(false);
@@ -350,7 +347,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     /* eslint-disable react-hooks/set-state-in-effect */
     if (!connectedPlatforms.has("youtube")) {
-      setYoutubeServers([]);
+      setYoutubeServer(null);
       return;
     }
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -358,9 +355,9 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch("/api/youtube/stats", { cache: "no-store" });
         if (!res.ok) return;
-        const json = (await res.json()) as { channels?: YouTubeStats[] };
-        if (cancelled || !json.channels) return;
-        setYoutubeServers(json.channels);
+        const json = (await res.json()) as { stats?: YouTubeStats | null };
+        if (cancelled || !json.stats) return;
+        setYoutubeServer(json.stats);
       } catch {
         /* ignore */
       }
@@ -470,27 +467,24 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   // tuned Twitch/Kick selection): shows only "live or not" and the subscriber
   // count, which is surfaced as `followers` (YouTube subscribers are the free
   // follow relationship). No viewer/chat data yet.
-  if (connectedPlatforms.has("youtube")) {
-    for (const yt of youtubeServers) {
-      platforms.push({
-        platform: "youtube",
-        channelId: yt.channelId,
-        channelName: yt.channelName,
-        profileImageUrl: yt.profileImageUrl,
-        included: activeFilters.has("youtube"),
-        isLive: yt.isLive,
-        viewers: 0,
-        peakViewers: 0,
-        uptimeMs: null,
-        title: "",
-        category: "",
-        followers: yt.subscribers,
-        subs: null,
-        chatters: null,
-        verified: false,
-        chatMode: null,
-      });
-    }
+  if (connectedPlatforms.has("youtube") && youtubeServer) {
+    platforms.push({
+      platform: "youtube",
+      channelName: youtubeServer.channelName,
+      profileImageUrl: youtubeServer.profileImageUrl,
+      included: activeFilters.has("youtube"),
+      isLive: youtubeServer.isLive,
+      viewers: 0,
+      peakViewers: 0,
+      uptimeMs: null,
+      title: "",
+      category: "",
+      followers: youtubeServer.subscribers,
+      subs: null,
+      chatters: null,
+      verified: false,
+      chatMode: null,
+    });
   }
 
   // Combined roll-up over included platforms.
