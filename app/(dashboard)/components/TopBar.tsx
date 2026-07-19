@@ -11,7 +11,7 @@ import { useLayout } from "../_ctx/layout";
 import { useChat, useChatSignal } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
 
-export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null };
+export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null; youtube: { displayName: string } | null };
 
 function CombinedIcon() {
   return (
@@ -241,8 +241,7 @@ function ActiveChannelPill() {
 // ── Pixel-sprite logo geometry (computed once at module load) ──
 const PX = 8; // grid cell — chunky low-res blocks
 const PX_GAP = 0.8; // hairline between pixels
-const psnap = (v: number) => Math.round(v / PX) * PX;
-// Chunky pixel "P" (3×4 grid): bowl on top, stem down.
+// Chunky pixel "P" (3×4 grid): bowl on top, stem down — the atom's nucleus.
 const P_MATRIX = ["111", "101", "111", "100"];
 const P_W = P_MATRIX[0].length;
 const P_H = P_MATRIX.length;
@@ -254,15 +253,23 @@ P_MATRIX.forEach((row, y) =>
     if (v === "1") P_PIXELS.push([P_OX + x * PX, P_OY + y * PX]);
   })
 );
-// One tilted orbit, rasterised onto the same grid → a stepped pixel ring.
-const O_CX = 60, O_CY = 60, O_RX = 30, O_RY = 11, O_ROT = -18;
-const RING_PIXELS: [number, number][] = (() => {
-  const rad = (O_ROT * Math.PI) / 180, cs = Math.cos(rad), sn = Math.sin(rad);
+// Grid-snap helper — rasterises an orbit onto the same pixel grid as the letter.
+const psnap = (v: number) => Math.round(v / PX) * PX;
+
+// Three orbits tilted like an atom: Twitch on the "\" diagonal, Kick on the "/"
+// diagonal, YouTube vertical (top↔bottom). One shared ellipse (O_RX × O_RY) is
+// rasterised at each tilt into a stepped pixel ring; a comet snaps along it.
+const O_RX = 30, O_RY = 11;
+const ORBIT_PATH = `M${60 - O_RX},60 a${O_RX},${O_RY} 0 1,1 ${2 * O_RX},0 a${O_RX},${O_RY} 0 1,1 ${-2 * O_RX},0`;
+const YOUTUBE_COLOR = "#FF3D46";
+
+function rasterizeRing(rot: number): [number, number][] {
+  const rad = (rot * Math.PI) / 180, cs = Math.cos(rad), sn = Math.sin(rad);
   const seen = new Set<string>();
   const out: [number, number][] = [];
   for (let a = 0; a < 360; a += 3) {
     const t = (a * Math.PI) / 180, ex = O_RX * Math.cos(t), ey = O_RY * Math.sin(t);
-    const X = psnap(O_CX + ex * cs - ey * sn), Y = psnap(O_CY + ex * sn + ey * cs);
+    const X = psnap(60 + ex * cs - ey * sn), Y = psnap(60 + ex * sn + ey * cs);
     const k = `${X},${Y}`;
     if (!seen.has(k)) {
       seen.add(k);
@@ -270,30 +277,43 @@ const RING_PIXELS: [number, number][] = (() => {
     }
   }
   return out;
-})();
-const ORBIT_PATH = `M${O_CX - O_RX},${O_CY} a${O_RX},${O_RY} 0 1,1 ${2 * O_RX},0 a${O_RX},${O_RY} 0 1,1 ${-2 * O_RX},0`;
-const ORBIT_STEPS = RING_PIXELS.length;
+}
 
-// One orbiting electron: a bright pixel head plus a short stepped comet trail,
-// travelling the orbit path via CSS steps() so it snaps pixel-to-pixel. Dims and
-// pauses when its platform isn't connected.
+// rot: -45 = "/" diagonal, 45 = "\" diagonal, 90 = vertical. Each ring's own pixel
+// count is its steps() so the comet lands exactly on drawn cells. The delays are
+// tuned so all three particles converge at the top-CENTRE (on the vertical midline
+// above the P) once per lap — never bunching on one side.
+const ORBITS = [
+  { platform: "twitch" as const, color: PLATFORM_COLOR.twitch, rot: 45, delaySec: -0.88 },
+  { platform: "kick" as const, color: PLATFORM_COLOR.kick, rot: -45, delaySec: -1.62 },
+  { platform: "youtube" as const, color: YOUTUBE_COLOR, rot: 90, delaySec: 0 },
+].map((o) => {
+  const ring = rasterizeRing(o.rot);
+  return { ...o, ring, steps: ring.length };
+});
+
+// One orbiting particle: a bright pixel head plus a short stepped comet trail,
+// travelling its tilted orbit via CSS steps() so it snaps pixel-to-pixel. Dims
+// and pauses when its platform isn't connected.
 const TRAIL = 6; // head + 5 trailing pixels
 function Electron({
   color,
+  rot,
+  steps,
   durSec,
   delaySec,
   on,
 }: {
   color: string;
+  rot: number;
+  steps: number;
   durSec: number;
   delaySec: number;
   on: boolean;
 }) {
-  // One grid step of the animation — offset each trail pixel by this so it lands
-  // one cell BEHIND the head (otherwise every trail pixel stacks on the head).
-  const stepDur = durSec / ORBIT_STEPS;
+  const stepDur = durSec / steps;
   return (
-    <g transform={`rotate(${O_ROT} ${O_CX} ${O_CY})`}>
+    <g transform={`rotate(${rot} 60 60)`}>
       {Array.from({ length: TRAIL }).map((_, k) => {
         const head = k === 0;
         const s = head ? 1 : 0.78;
@@ -313,7 +333,7 @@ function Electron({
               offsetRotate: "0deg",
               animationName: "pel-orbit",
               animationDuration: `${durSec}s`,
-              animationTimingFunction: `steps(${ORBIT_STEPS}, end)`,
+              animationTimingFunction: `steps(${steps}, end)`,
               animationIterationCount: "infinite",
               animationDelay: `${(delaySec - k * stepDur).toFixed(3)}s`,
               animationPlayState: on ? "running" : "paused",
@@ -327,15 +347,16 @@ function Electron({
 }
 
 // Profile button — the Prismarity mark: a pixel-art "P" with two electrons
-// (Twitch violet, Kick green) orbiting it on a stepped pixel ring, each trailing
-// a short comet. An electron dims + pauses when its platform isn't connected.
+// (Twitch "\", Kick "/", YouTube vertical) orbiting it on stepped pixel rings,
+// each trailing a short comet. An electron dims + pauses when its platform isn't
+// connected; the YouTube orbit only appears once YouTube OAuth is connected.
 // Opens settings on click.
 function ProfileButton({
   onClick,
   connected,
 }: {
   onClick: () => void;
-  connected: { twitch: boolean; kick: boolean };
+  connected: { twitch: boolean; kick: boolean; youtube: boolean };
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -363,17 +384,32 @@ function ProfileButton({
       }}
     >
       <svg width="30" height="30" viewBox="24 24 72 72" fill="none" aria-hidden style={{ overflow: "visible" }}>
-        {/* stepped pixel orbit ring, behind the letter */}
-        {RING_PIXELS.map(([x, y], i) => (
-          <rect key={`r${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#7C889E" opacity={0.22} shapeRendering="crispEdges" />
-        ))}
-        {/* the pixel P */}
+        {/* faint stepped pixel rings, behind the letter (YouTube hidden until connected) */}
+        {ORBITS.map((o) =>
+          o.platform === "youtube" && !connected.youtube
+            ? null
+            : o.ring.map(([x, y], i) => (
+                <rect key={`r-${o.platform}-${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#7C889E" opacity={0.22} shapeRendering="crispEdges" />
+              ))
+        )}
+        {/* the pixel P nucleus */}
         {P_PIXELS.map(([x, y], i) => (
           <rect key={`p${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#E9ECF7" shapeRendering="crispEdges" />
         ))}
-        {/* the two electrons, on top so they always read */}
-        <Electron color={PLATFORM_COLOR.twitch} durSec={5} delaySec={0} on={connected.twitch} />
-        <Electron color={PLATFORM_COLOR.kick} durSec={5} delaySec={-2.5} on={connected.kick} />
+        {/* the orbiting particles, on top so they always read */}
+        {ORBITS.map((o) =>
+          o.platform === "youtube" && !connected.youtube ? null : (
+            <Electron
+              key={`e-${o.platform}`}
+              color={o.color}
+              rot={o.rot}
+              steps={o.steps}
+              durSec={5}
+              delaySec={o.delaySec}
+              on={connected[o.platform]}
+            />
+          )
+        )}
       </svg>
     </chakra.button>
   );
@@ -457,7 +493,7 @@ export function TopBar({ auth }: TopBarProps) {
           </chakra.button>
           <ProfileButton
             onClick={() => setSettingsOpen(true)}
-            connected={{ twitch: !!auth.twitch, kick: !!auth.kick }}
+            connected={{ twitch: !!auth.twitch, kick: !!auth.kick, youtube: !!auth.youtube }}
           />
           <Text
             hideBelow="sm"
