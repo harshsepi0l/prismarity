@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import type { Connection } from "./types";
 import { encrypt, decrypt } from "./crypto";
-import { getSettings, normalizeBaseUrl } from "@/lib/settings/store";
+import { getSettings, getBaseUrl } from "@/lib/settings/store";
 
 const AUTHORIZE_URL = "https://id.kick.com/oauth/authorize";
 const TOKEN_URL = "https://id.kick.com/oauth/token";
@@ -51,9 +51,7 @@ export async function getCredentials(): Promise<{
       // Decryption failed (e.g. rotated TOKEN_ENCRYPTION_KEY) — fall back to env.
     }
   }
-  const base = normalizeBaseUrl(
-    s.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
-  );
+  const base = await getBaseUrl();
   return { clientId, clientSecret, redirectUri: `${base}/api/auth/kick/callback` };
 }
 
