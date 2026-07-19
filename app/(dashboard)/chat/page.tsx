@@ -9,6 +9,7 @@ import ChatFeed from "./components/ChatFeed";
 import ChatEmptyState from "./components/ChatEmptyState";
 import SplitChatView from "./components/SplitChatView";
 import ChatReadBar from "./components/ChatReadBar";
+import PinnedBar from "./components/PinnedBar";
 import Composer from "./components/Composer";
 import SidePanel from "./components/SidePanel";
 import { UserCard } from "./components/UserCard";
@@ -19,18 +20,19 @@ const PLATFORM_ORDER: Platform[] = ["twitch", "kick", "youtube"];
 
 export default function ChatPage() {
   const { activeFilters, connectedPlatforms } = useSession();
-  const { activeRole, activeChannel, activeKick, activeKickOnly } = useChat();
+  const { activeRole, activeChannel, activeKick, activeKickOnly, liveByPlatform } = useChat();
   const { messages } = useChatMessages();
   const { chatLayout } = useLayout();
   const [selectedUser, setSelectedUser] = useState<UserSelection | null>(null);
 
-  // Platforms that have a chat for the current channel selection (regardless of
-  // whether you're currently watching them) — the read bar toggles among these.
+  // Platforms available to watch for the current selection: connected, has a
+  // channel here, AND the streamer is live there (per the match). We deliberately
+  // don't watch a platform where they're offline — see liveByPlatform.
   const availablePlatforms = PLATFORM_ORDER.filter(
     (p) =>
       connectedPlatforms.has(p) &&
-      ((p === "twitch" && !!activeChannel) ||
-        (p === "kick" && (!!activeKick || !!activeKickOnly)))
+      ((p === "twitch" && !!activeChannel && liveByPlatform.twitch) ||
+        (p === "kick" && (!!activeKick || !!activeKickOnly) && liveByPlatform.kick))
   );
 
   // The subset you're actually watching — drives which columns/messages show.
@@ -52,6 +54,7 @@ export default function ChatPage() {
     <Flex as="main" flex="1" minW="0">
       <Flex direction="column" flex="1" minW="0">
         <ChatReadBar available={availablePlatforms} onSelectUser={setSelectedUser} />
+        <PinnedBar />
         {showSplit ? (
           <SplitChatView
             messages={messages}

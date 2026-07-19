@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
-import { subscribeToChatMessages, subscribeToChatNotifications } from "@/lib/twitch/chat";
+import {
+  subscribeToChatMessages,
+  subscribeToChatNotifications,
+  subscribeToRaid,
+} from "@/lib/twitch/chat";
 
 export const runtime = "nodejs";
 
@@ -26,13 +30,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   }
 
-  const [messages, notifications] = await Promise.all([
+  // Chat message read is the critical path. Notifications (gift tally +
+  // announcements) and incoming raids are best-effort banner sources; their
+  // failure never blocks chat. (Pins + Hype Trains are read via GQL, not here.)
+  const [messages, notifications, raid] = await Promise.all([
     subscribeToChatMessages(user, channelId, sessionId),
     subscribeToChatNotifications(user, channelId, sessionId),
+    subscribeToRaid(user, channelId, sessionId),
   ]);
 
   if (!messages.ok) {
     return NextResponse.json(messages, { status: 400 });
   }
-  return NextResponse.json({ ok: true, notificationsOk: notifications.ok });
+  return NextResponse.json({
+    ok: true,
+    notificationsOk: notifications.ok,
+    raidOk: raid.ok,
+  });
 }

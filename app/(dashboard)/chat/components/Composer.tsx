@@ -16,18 +16,14 @@ import MentionAutocomplete from "./composer/MentionAutocomplete";
 import SendTargets from "./composer/SendTargets";
 
 export default function Composer() {
-  const { activeChannel, activeKick, activeKickOnly, getMentionCandidates } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, getMentionCandidates, liveByPlatform } = useChat();
   const emotes = useEmotes();
   const categories = useEmoteCategories();
   const { sendTargets, toggleSendTarget } = useSession();
-  const { platforms } = useStats();
+  const { platforms } = useStats(); // per-platform chat-mode (follower minutes)
 
   const { sending, error, errorPlatform, followCountdown, startFollowCountdown, send, clearError } =
     useChatSend();
-
-  // Live status per platform for the active selection.
-  const liveByPlatform: Partial<Record<Platform, boolean>> = {};
-  for (const p of platforms) liveByPlatform[p.platform] = p.isLive;
 
   // The name shown in placeholders/status — Twitch channel, else the Kick slug.
   const channelName = activeChannel?.displayName ?? activeKick?.slug ?? activeKickOnly ?? null;
@@ -37,16 +33,16 @@ export default function Composer() {
   const [textBeforeCursor, setTextBeforeCursor] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // The platforms you can actually send to for the active selection: Twitch when
-  // a channel is selected, Kick when one is linked. Independent of role — the
-  // channel you're viewing now spans both environments.
+  // The platforms you can send to for the active selection: Twitch when a channel
+  // is selected, Kick when one is linked — but only where the streamer is LIVE
+  // (per the match). We don't send to a platform where they're offline.
   const available: Platform[] = [];
-  if (activeChannel) available.push("twitch");
-  if (activeKick) available.push("kick");
+  if (activeChannel && liveByPlatform.twitch) available.push("twitch");
+  if (activeKick && liveByPlatform.kick) available.push("kick");
   // Armed targets among the available platforms; default is all-on.
   const deliverable = available.filter((p) => sendTargets.has(p));
-  // Armed targets whose channel is currently offline — the message would land in
-  // that platform's offline chat.
+  // (Offline platforms are excluded from `available` above, so nothing armed is
+  // ever offline — kept for the SendTargets warning contract.)
   const offlineTargets = deliverable.filter((p) => liveByPlatform[p] === false);
 
   // Identifies the active channel selection — used to reset transient composer

@@ -120,3 +120,49 @@ export async function subscribeToChatNotifications(
 ): Promise<SendResult> {
   return createChatSubscription(user, channelId, sessionId, "channel.chat.notification");
 }
+
+// Generic EventSub subscription against an already-open WebSocket session, for
+// event types whose condition shape differs from the chat subscriptions above.
+async function createSubscription(
+  user: User,
+  type: string,
+  version: string,
+  condition: Record<string, string>,
+  sessionId: string
+): Promise<SendResult> {
+  const headers = await helixHeaders(user);
+  if (!headers) return { ok: false, error: "no_token" };
+
+  const res = await fetch("https://api.twitch.tv/helix/eventsub/subscriptions", {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type,
+      version,
+      condition,
+      transport: { method: "websocket", session_id: sessionId },
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(`[twitch] eventsub subscribe (${type}) failed:`, res.status, body);
+    return {
+      ok: false,
+      error: res.status === 401 || res.status === 403 ? "unauthorized" : "subscribe_failed",
+    };
+  }
+  return { ok: true };
+}
+
+// Incoming raids to this channel (channel.raid). No scope / no broadcaster
+// authorization required, so it works for any channel you're watching.
+// (Hype Trains are NOT done here — they're read for any channel via GQL in
+// lib/twitch/banner.ts, which needs no scope and isn't own-channel-limited.)
+export async function subscribeToRaid(
+  user: User,
+  channelId: string,
+  sessionId: string
+): Promise<SendResult> {
+  return createSubscription(user, "channel.raid", "1", { to_broadcaster_user_id: channelId }, sessionId);
+}

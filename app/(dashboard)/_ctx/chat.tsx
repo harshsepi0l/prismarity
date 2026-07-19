@@ -9,13 +9,14 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ChatMessage, ConnectionStatus, Platform, SearchResult } from "../types";
+import type { ChatMessage, ConnectionStatus, Platform, SearchResult, PinItem, HypeTrain } from "../types";
 import type { FollowedChannel } from "@/lib/twitch/channels";
 import type { Role } from "@/lib/auth/types";
 import { useTwitchChat, type CheerLeader, type GiftLeader } from "../chat/useTwitchChat";
+import type { PinnedMessage } from "@/lib/twitch/pins";
 import { useKickChat } from "../chat/useKickChat";
 import { nextSeq } from "../chat/seq";
-import { participantRole, type ParticipantRole } from "../chat/participantRole";
+import { participantRole, isKnownBot, type ParticipantRole } from "../chat/participantRole";
 
 // Chat session state lives in the dashboard layout, ABOVE the routes, so the
 // live sockets and active selection survive navigating to Loyalty/VODs and back.
@@ -70,6 +71,9 @@ interface ChatStore {
   activeRole: Role;
   activeKick: ActiveKick | null;
   kickConnected: boolean;
+  // Whether the current selection is live per platform (from the search match).
+  // Drives the watch/send live-gate — offline platforms are not watched or sent to.
+  liveByPlatform: Partial<Record<Platform, boolean>>;
   // Channels added from search — persisted to localStorage.
   watchedChannels: SearchResult[];
   // Channels you follow on Twitch (Kick-cross-linked) — fetched from the API.
@@ -95,8 +99,20 @@ interface ChatStore {
   setBeaconMode: (on: boolean) => void;
 }
 
+// Pinned/banner-bar state for the active channel. Lives in its own context so
+// its changes don't ride on chatValue — which changes on every cheer/gift/
+// watched-channel poll. Twitch-only, READ-ONLY: `pinItems` is the merged,
+// cycleable bar (the real pinned message + Hype Train + announcements + raids),
+// all read from Twitch. No pinning/unpinning here — that's a mod action we're
+// deliberately not implementing yet.
+interface ChatPins {
+  // Everything to show in the cycle bar, in display order.
+  pinItems: PinItem[];
+}
+
 const ChatContext = createContext<ChatStore | null>(null);
 const ChatMessagesContext = createContext<ChatMessages | null>(null);
+const ChatPinsContext = createContext<ChatPins | null>(null);
 // Connection state for the beacon signal art lives in its own context so its
 // per-connect transitions don't re-render every useChat consumer (NavRail,
 // Settings, roster…) — only the beacon art subscribes here.
@@ -117,6 +133,7 @@ export function ChatProvider({
     connect: connectTwitch,
     cheerLeaders,
     giftLeaders,
+    liveEvents,
   } = useTwitchChat();
   const { messages: kickMessages, status: kickStatus, connect: connectKick } = useKickChat();
 
@@ -196,9 +213,14 @@ export function ChatProvider({
   const [ownKickStat, setOwnKickStat] = useState<{ isLive: boolean; viewers: number; profileImageUrl: string | null } | null>(null);
   const [activeChannel, setActiveChannel] = useState<FollowedChannel | null>(null);
   const [activeKickOnly, setActiveKickOnly] = useState<string | null>(null);
+  // Whether the current selection is live on Kick, per the search match. Twitch's
+  // equivalent is activeChannel.isLive. Drives the watch/send live-gate.
+  const [activeKickLive, setActiveKickLive] = useState(false);
   const [pendingKick, setPendingKick] = useState<PendingKick | null>(null);
   const [activeKick, setActiveKick] = useState<ActiveKick | null>(null);
   const [selfMessages, setSelfMessages] = useState<ChatMessage[]>([]);
+  const [pinnedData, setPinnedData] = useState<PinnedMessage | null>(null);
+  const [hypeTrain, setHypeTrain] = useState<HypeTrain | null>(null);
   const [beaconMode, setBeaconModeState] = useState(false);
   const lastBeaconRef = useRef<string | null>(null);
 
@@ -216,6 +238,8 @@ export function ChatProvider({
   // Select a unified search result — wires up whichever platforms it spans.
   // Declared above the beacon effect (below), which references it.
   const selectSearchResult = useCallback((result: SearchResult) => {
+    // Kick live status comes straight from the match (there's no live socket yet).
+    setActiveKickLive(!!result.kick?.isLive);
     if (result.twitch) {
       const t = result.twitch;
       setActiveKickOnly(null);
@@ -367,6 +391,7 @@ export function ChatProvider({
   // ── selection ────────────────────────────────────────────
   const selectChannel = useCallback((channel: FollowedChannel) => {
     setActiveKickOnly(null);
+    setActiveKickLive(false); // Twitch-only selection — no Kick side
     setActiveChannel(channel);
     setPendingKick(null);
   }, []);
@@ -375,12 +400,16 @@ export function ChatProvider({
     const s = slug.toLowerCase();
     setActiveChannel(null);
     setActiveKickOnly(s);
+    // No match live flag on this path (own/direct Kick) — assume live so we don't
+    // wrongly hide a channel the user explicitly picked.
+    setActiveKickLive(true);
     setPendingKick({ slug: s, chatroomId: null });
   }, []);
 
   const clearSelection = useCallback(() => {
     setActiveChannel(null);
     setActiveKickOnly(null);
+    setActiveKickLive(false);
     setPendingKick(null);
     setActiveKick(null);
   }, []);
@@ -486,12 +515,92 @@ export function ChatProvider({
     [ownChannel, kickSlug]
   );
 
-  // Clear self messages when the selection changes.
+  // Clear self messages and any pin when the selection changes — a new channel
+  // has its own (real, Twitch-side) pin, tracked fresh from this session.
   const selectionKey = activeChannel?.id ?? activeKickOnly ?? null;
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelfMessages([]);
+    setPinnedData(null);
+    setHypeTrain(null);
   }, [selectionKey]);
+
+  // ── pinned message + banner bar (Twitch, read-only) ──────
+  // The real pinned message AND active Hype Train are read for ANY channel via
+  // Twitch's anonymous GQL (/api/twitch/banner) — no mod role, no scope. We poll
+  // it, so pins set from Twitch's own UI / by mods show up too. Display only —
+  // pinning/unpinning is a mod action we're not implementing.
+  const pollBanner = useCallback(async () => {
+    if (!activeChannel) return;
+    try {
+      const res = await fetch(`/api/twitch/banner?channelId=${encodeURIComponent(activeChannel.id)}`);
+      if (!res.ok) return;
+      const { pin, hypeTrain: ht } = (await res.json()) as {
+        pin: PinnedMessage | null;
+        hypeTrain: HypeTrain | null;
+      };
+      setHypeTrain(ht);
+      setPinnedData(pin); // GQL carries text/sender/badges/pinnedBy/sentAt in full
+    } catch {
+      /* network — keep whatever we last had */
+    }
+  }, [activeChannel]);
+
+  // Poll the banner on connect and every 15s, for ANY active Twitch channel.
+  useEffect(() => {
+    if (!activeChannel) return;
+    let cancelled = false;
+    async function run() {
+      if (!cancelled) await pollBanner();
+    }
+    run();
+    const id = setInterval(run, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [activeChannel, pollBanner]);
+
+  // Age out transient banner events (announcements, raids). liveEvents changes
+  // when new ones arrive, but expiry alone wouldn't re-render — this clock ticks
+  // while any are in flight so the pinItems memo re-evaluates. Starts at 0 (all
+  // events read as fresh) until the first tick, which is fine — they just arrived.
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (liveEvents.length === 0) return;
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, [liveEvents.length]);
+
+  // The merged, cycleable bar: active Hype Train first, then the mod-pin, then
+  // recent (<30s) transient events in arrival order.
+  const pinItems = useMemo<PinItem[]>(() => {
+    const items: PinItem[] = [];
+    if (hypeTrain) items.push({ kind: "hype_train", id: "hype-train", hype: hypeTrain });
+    if (pinnedData) {
+      items.push({
+        kind: "message",
+        id: pinnedData.messageId,
+        user: pinnedData.user ?? "",
+        color: pinnedData.color,
+        text: pinnedData.text,
+        pinnedBy: pinnedData.pinnedBy,
+        sentAt: pinnedData.sentAt,
+        badges: pinnedData.badges,
+      });
+    }
+    for (const ev of liveEvents) {
+      if (now - ev.at > 30_000) continue;
+      if (ev.kind === "announcement") {
+        items.push({ kind: "announcement", id: ev.id, user: ev.user, color: ev.color, text: ev.text });
+      } else if (ev.kind === "raid") {
+        items.push({ kind: "raid", id: ev.id, from: ev.from, viewers: ev.viewers });
+      } else {
+        items.push({ kind: "gift_sub", id: ev.id, gifter: ev.gifter, count: ev.count });
+      }
+    }
+    return items;
+  }, [hypeTrain, pinnedData, liveEvents, now]);
 
   // ── live sockets ─────────────────────────────────────────
   // EventSub subscribes by broadcaster id, not login.
@@ -580,6 +689,45 @@ export function ChatProvider({
     participantsRef.current = new Map();
   }, [selectionKey]);
 
+  // Seed the registry with the broadcaster + real mods/VIPs — the SAME roster the
+  // participants window shows (broadcaster from the selection, Twitch mods/VIPs
+  // via ivr.fi) — so @-mentions can reach people who haven't chatted yet. Runs
+  // after the clear effect above on each channel switch; never overwrites a
+  // richer entry from an actual chat message.
+  const rosterTwitchLogin = activeChannel?.login ?? null;
+  const rosterTwitchName = activeChannel?.displayName ?? null;
+  const rosterTwitchId = activeChannel?.id ?? null;
+  const rosterKickSlug = activeKick?.slug ?? activeKickOnly;
+  useEffect(() => {
+    const inject = (c: MentionCandidate) => {
+      const key = `${c.platform}:${c.user.toLowerCase()}`;
+      if (!participantsRef.current.has(key)) {
+        participantsRef.current.set(key, { ...c, seq: nextSeq() });
+      }
+    };
+    if (rosterTwitchName)
+      inject({ user: rosterTwitchName, platform: "twitch", color: null, userId: rosterTwitchId ?? undefined, role: "broadcaster" });
+    if (rosterKickSlug)
+      inject({ user: rosterKickSlug, platform: "kick", color: null, role: "broadcaster" });
+    if (!rosterTwitchLogin) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/twitch/modvip?login=${encodeURIComponent(rosterTwitchLogin)}`);
+        if (!res.ok) return;
+        const j = (await res.json()) as { mods?: { user: string; id?: string }[]; vips?: { user: string; id?: string }[] };
+        if (cancelled) return;
+        for (const v of j.vips ?? [])
+          inject({ user: v.user, platform: "twitch", color: null, userId: v.id, role: isKnownBot(v.user) ? "bot" : "vip" });
+        for (const m of j.mods ?? [])
+          inject({ user: m.user, platform: "twitch", color: null, userId: m.id, role: isKnownBot(m.user) ? "bot" : "moderator" });
+      } catch {
+        /* ignore — mentions degrade to observed chatters */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rosterTwitchLogin, rosterTwitchName, rosterTwitchId, rosterKickSlug]);
+
   const getMentionCandidates = useCallback(
     (query: string, platforms: Platform[], limit = 6): MentionCandidate[] => {
       const q = query.toLowerCase();
@@ -604,6 +752,13 @@ export function ChatProvider({
     []
   );
 
+  // Live-per-platform for the active selection (from the match). Twitch reads its
+  // live flag off the active channel; Kick off the match-derived state above.
+  const liveByPlatform = useMemo(
+    () => ({ twitch: activeChannel?.isLive ?? false, kick: activeKickLive }),
+    [activeChannel, activeKickLive]
+  );
+
   // Memoized so the reference stays stable across the frequent re-renders the
   // message feed triggers — consumers of channels/selection don't re-render.
   const chatValue = useMemo<ChatStore>(
@@ -615,6 +770,7 @@ export function ChatProvider({
       activeRole,
       activeKick,
       kickConnected,
+      liveByPlatform,
       watchedChannels,
       followedChannels,
       cheerLeaders,
@@ -633,7 +789,7 @@ export function ChatProvider({
     }),
     [
       ownChannel, ownKick, activeChannel, activeKickOnly, activeRole, activeKick,
-      kickConnected, watchedChannels, followedChannels, cheerLeaders, giftLeaders,
+      kickConnected, liveByPlatform, watchedChannels, followedChannels, cheerLeaders, giftLeaders,
       selectChannel, selectKickOnly, selectSearchResult, clearSelection,
       addWatchedChannel, removeWatchedChannel, addSelfMessage, getMentionCandidates,
       getAllParticipants, beaconMode, setBeaconMode,
@@ -645,12 +801,16 @@ export function ChatProvider({
     [status, messages]
   );
 
+  const pinsValue = useMemo<ChatPins>(() => ({ pinItems }), [pinItems]);
+
   return (
     <ChatContext.Provider value={chatValue}>
       <ChatSignalContext.Provider value={signalStatus}>
-        <ChatMessagesContext.Provider value={messagesValue}>
-          {children}
-        </ChatMessagesContext.Provider>
+        <ChatPinsContext.Provider value={pinsValue}>
+          <ChatMessagesContext.Provider value={messagesValue}>
+            {children}
+          </ChatMessagesContext.Provider>
+        </ChatPinsContext.Provider>
       </ChatSignalContext.Provider>
     </ChatContext.Provider>
   );
@@ -672,5 +832,13 @@ export function useChat(): ChatStore {
 export function useChatMessages(): ChatMessages {
   const ctx = useContext(ChatMessagesContext);
   if (!ctx) throw new Error("useChatMessages must be used within a ChatProvider");
+  return ctx;
+}
+
+// Pinned-message state + pin/unpin actions for the active channel. Separate from
+// useChat so its changes don't re-render channel/selection consumers.
+export function useChatPins(): ChatPins {
+  const ctx = useContext(ChatPinsContext);
+  if (!ctx) throw new Error("useChatPins must be used within a ChatProvider");
   return ctx;
 }

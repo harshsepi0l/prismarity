@@ -5,7 +5,17 @@ import { Box, Flex, Input, Text, chakra } from "@chakra-ui/react";
 import { useChat, type MentionCandidate } from "../../_ctx/chat";
 import { PlatformIcon, PLATFORM_COLOR, PLATFORM_LABEL } from "../../components/PlatformIcon";
 import { ROLE_SECTIONS, isKnownBot, type ParticipantRole } from "../participantRole";
+import { BadgeChip } from "./ChatMessage";
 import type { Platform, UserSelection } from "../../types";
+
+// The channel badge that represents each role. Twitch's global badge set (loaded
+// by BadgeProvider) has real art for these; Kick has none, so BadgeChip falls
+// back to its HOST/MOD/VIP text label for kick.
+const ROLE_BADGE: Partial<Record<ParticipantRole, { setId: string; id: string }>> = {
+  broadcaster: { setId: "broadcaster", id: "1" },
+  moderator: { setId: "moderator", id: "1" },
+  vip: { setId: "vip", id: "1" },
+};
 
 interface ModVip {
   mods: { user: string; id?: string }[];
@@ -308,6 +318,12 @@ export default function ParticipantsButton({
                         _hover={{ bg: "raised" }}
                       >
                         <PlatformIcon platform={p.platform} color={PLATFORM_COLOR[p.platform]} size={12} />
+                        {(() => {
+                          const badge = ROLE_BADGE[p.role ?? "viewer"];
+                          return badge ? (
+                            <BadgeChip platform={p.platform} badge={badge} accent={PLATFORM_COLOR[p.platform]} />
+                          ) : null;
+                        })()}
                         <Text fontSize="13px" fontWeight="600" color={p.color || PLATFORM_COLOR[p.platform]} truncate>
                           {p.user}
                         </Text>

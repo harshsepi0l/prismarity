@@ -21,6 +21,11 @@ jobs:
           node-version: '24.x'
 
       - name: Install, build, and test
+        env:
+          # NEXT_PUBLIC_* is inlined at build time; setting it only as an App
+          # Service runtime setting has no effect. Baking it here makes the
+          # deploy-time origin authoritative for OAuth redirects.
+          NEXT_PUBLIC_BASE_URL: ${{ secrets.NEXT_PUBLIC_BASE_URL }}
         run: |
           npm install
           npm run build --if-present

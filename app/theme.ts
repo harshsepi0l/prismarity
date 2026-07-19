@@ -47,6 +47,9 @@ const config = defineConfig({
       "signal-wifi-1": { "0%": { opacity: 0.25 }, "16%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
       "signal-wifi-2": { "0%, 16%": { opacity: 0.25 }, "38%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
       "signal-wifi-3": { "0%, 38%": { opacity: 0.25 }, "58%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
+      // Logo electrons travel their orbit path (offset-distance 0→100%); paired
+      // with a steps() timing they snap pixel-to-pixel along the sprite grid.
+      "pel-orbit": { from: { offsetDistance: "0%" }, to: { offsetDistance: "100%" } },
     },
     tokens: {
       colors: {

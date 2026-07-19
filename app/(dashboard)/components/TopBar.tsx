@@ -238,11 +238,98 @@ function ActiveChannelPill() {
   );
 }
 
-// Profile button — a 3D-looking prism whose interior fills top→bottom in three
-// equal bands (Twitch, Kick, YouTube). Each band lights up in its platform color
-// when that platform is connected; YouTube stays a dim placeholder. The whole
-// prism glows in the connected platforms' colors, brightening on hover. Opens
-// settings on click.
+// ── Pixel-sprite logo geometry (computed once at module load) ──
+const PX = 8; // grid cell — chunky low-res blocks
+const PX_GAP = 0.8; // hairline between pixels
+const psnap = (v: number) => Math.round(v / PX) * PX;
+// Chunky pixel "P" (3×4 grid): bowl on top, stem down.
+const P_MATRIX = ["111", "101", "111", "100"];
+const P_W = P_MATRIX[0].length;
+const P_H = P_MATRIX.length;
+const P_OX = 60 - (P_W * PX) / 2;
+const P_OY = 60 - (P_H * PX) / 2;
+const P_PIXELS: [number, number][] = [];
+P_MATRIX.forEach((row, y) =>
+  [...row].forEach((v, x) => {
+    if (v === "1") P_PIXELS.push([P_OX + x * PX, P_OY + y * PX]);
+  })
+);
+// One tilted orbit, rasterised onto the same grid → a stepped pixel ring.
+const O_CX = 60, O_CY = 60, O_RX = 30, O_RY = 11, O_ROT = -18;
+const RING_PIXELS: [number, number][] = (() => {
+  const rad = (O_ROT * Math.PI) / 180, cs = Math.cos(rad), sn = Math.sin(rad);
+  const seen = new Set<string>();
+  const out: [number, number][] = [];
+  for (let a = 0; a < 360; a += 3) {
+    const t = (a * Math.PI) / 180, ex = O_RX * Math.cos(t), ey = O_RY * Math.sin(t);
+    const X = psnap(O_CX + ex * cs - ey * sn), Y = psnap(O_CY + ex * sn + ey * cs);
+    const k = `${X},${Y}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push([X, Y]);
+    }
+  }
+  return out;
+})();
+const ORBIT_PATH = `M${O_CX - O_RX},${O_CY} a${O_RX},${O_RY} 0 1,1 ${2 * O_RX},0 a${O_RX},${O_RY} 0 1,1 ${-2 * O_RX},0`;
+const ORBIT_STEPS = RING_PIXELS.length;
+
+// One orbiting electron: a bright pixel head plus a short stepped comet trail,
+// travelling the orbit path via CSS steps() so it snaps pixel-to-pixel. Dims and
+// pauses when its platform isn't connected.
+const TRAIL = 6; // head + 5 trailing pixels
+function Electron({
+  color,
+  durSec,
+  delaySec,
+  on,
+}: {
+  color: string;
+  durSec: number;
+  delaySec: number;
+  on: boolean;
+}) {
+  // One grid step of the animation — offset each trail pixel by this so it lands
+  // one cell BEHIND the head (otherwise every trail pixel stacks on the head).
+  const stepDur = durSec / ORBIT_STEPS;
+  return (
+    <g transform={`rotate(${O_ROT} ${O_CX} ${O_CY})`}>
+      {Array.from({ length: TRAIL }).map((_, k) => {
+        const head = k === 0;
+        const s = head ? 1 : 0.78;
+        const off = (s * PX) / 2;
+        return (
+          <rect
+            key={k}
+            x={-off}
+            y={-off}
+            width={s * PX}
+            height={s * PX}
+            fill={color}
+            shapeRendering="crispEdges"
+            opacity={on ? 1 - k * 0.15 : 0.13}
+            style={{
+              offsetPath: `path('${ORBIT_PATH}')`,
+              offsetRotate: "0deg",
+              animationName: "pel-orbit",
+              animationDuration: `${durSec}s`,
+              animationTimingFunction: `steps(${ORBIT_STEPS}, end)`,
+              animationIterationCount: "infinite",
+              animationDelay: `${(delaySec - k * stepDur).toFixed(3)}s`,
+              animationPlayState: on ? "running" : "paused",
+              filter: head ? `drop-shadow(0 0 2px ${color})` : undefined,
+            }}
+          />
+        );
+      })}
+    </g>
+  );
+}
+
+// Profile button — the Prismarity mark: a pixel-art "P" with two electrons
+// (Twitch violet, Kick green) orbiting it on a stepped pixel ring, each trailing
+// a short comet. An electron dims + pauses when its platform isn't connected.
+// Opens settings on click.
 function ProfileButton({
   onClick,
   connected,
@@ -251,16 +338,6 @@ function ProfileButton({
   connected: { twitch: boolean; kick: boolean };
 }) {
   const [hovered, setHovered] = useState(false);
-
-  // Baseline glow reflects what's connected; hover blooms the full rainbow.
-  const restGlow = [
-    connected.twitch ? "drop-shadow(0 0 3px rgba(166,108,255,0.85))" : "",
-    connected.kick ? "drop-shadow(0 0 3px rgba(91,227,125,0.85))" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const hoverGlow =
-    "drop-shadow(0 0 3px rgba(166,108,255,1)) drop-shadow(0 0 8px rgba(91,227,125,0.7)) drop-shadow(0 0 16px rgba(56,189,248,0.5)) drop-shadow(0 0 26px rgba(250,204,21,0.25))";
 
   return (
     <chakra.button
@@ -282,55 +359,21 @@ function ProfileButton({
       transition="filter .3s ease, border-color .2s, background .12s"
       style={{
         borderColor: hovered ? "rgba(166,108,255,0.5)" : "#232a38",
-        filter: hovered ? hoverGlow : restGlow || "none",
+        filter: hovered ? "drop-shadow(0 0 3px rgba(166,108,255,0.5))" : "none",
       }}
     >
-      <svg width="21" height="23" viewBox="0 0 20 22" fill="none" aria-hidden>
-        <defs>
-          <clipPath id="prism-clip">
-            <path d="M10 2 L2 20 L18 20 Z" />
-          </clipPath>
-          {/* Glassy tinted body — lighter at the top, deeper at the base. */}
-          <linearGradient id="prism-body" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(44,50,66,0.55)" />
-            <stop offset="100%" stopColor="rgba(15,18,26,0.85)" />
-          </linearGradient>
-          {/* Diagonal gloss reflection across the upper-left face. */}
-          <linearGradient id="prism-sheen" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.32)" />
-            <stop offset="40%" stopColor="rgba(255,255,255,0.05)" />
-            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-          </linearGradient>
-        </defs>
-
-        <g clipPath="url(#prism-clip)">
-          <rect x="0" y="0" width="20" height="22" fill="url(#prism-body)" />
-          {/* Equal top→bottom bands, refracting through the glass:
-              red (YouTube) · green (Kick) · purple (Twitch). */}
-          <rect x="0" y="2" width="20" height="6" fill={PLATFORM_COLOR.youtube} opacity={0.16} />
-          <rect x="0" y="8" width="20" height="6" fill={PLATFORM_COLOR.kick} opacity={connected.kick ? 0.62 : 0} style={{ transition: "opacity .3s" }} />
-          <rect x="0" y="14" width="20" height="6" fill={PLATFORM_COLOR.twitch} opacity={connected.twitch ? 0.62 : 0} style={{ transition: "opacity .3s" }} />
-          {/* Gloss layer on top makes it read as glass. */}
-          <rect x="0" y="0" width="20" height="22" fill="url(#prism-sheen)" />
-        </g>
-
-        {/* Bright rim light down the left edge for the glass highlight. */}
-        <line x1="10" y1="2" x2="2" y2="20" stroke="rgba(255,255,255,0.4)" strokeWidth="0.75" strokeLinecap="round" />
-        <path
-          d="M10 2 L2 20 L18 20 Z"
-          fill="none"
-          stroke={hovered ? "rgba(210,196,255,0.85)" : "rgba(96,106,128,0.85)"}
-          strokeWidth="1.1"
-          strokeLinejoin="round"
-          style={{ transition: "stroke .2s" }}
-        />
-        {hovered && (
-          <>
-            <circle cx="10"   cy="2.5"  r="1.5" fill="rgba(230,210,255,0.95)" />
-            <circle cx="2.5"  cy="19.5" r="1.2" fill="rgba(56,189,248,0.9)"  />
-            <circle cx="17.5" cy="19.5" r="1.2" fill="rgba(91,227,125,0.9)"  />
-          </>
-        )}
+      <svg width="30" height="30" viewBox="24 24 72 72" fill="none" aria-hidden style={{ overflow: "visible" }}>
+        {/* stepped pixel orbit ring, behind the letter */}
+        {RING_PIXELS.map(([x, y], i) => (
+          <rect key={`r${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#7C889E" opacity={0.22} shapeRendering="crispEdges" />
+        ))}
+        {/* the pixel P */}
+        {P_PIXELS.map(([x, y], i) => (
+          <rect key={`p${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#E9ECF7" shapeRendering="crispEdges" />
+        ))}
+        {/* the two electrons, on top so they always read */}
+        <Electron color={PLATFORM_COLOR.twitch} durSec={5} delaySec={0} on={connected.twitch} />
+        <Electron color={PLATFORM_COLOR.kick} durSec={5} delaySec={-2.5} on={connected.kick} />
       </svg>
     </chakra.button>
   );
