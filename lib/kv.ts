@@ -6,8 +6,10 @@
 // No-ops safely when UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN aren't set
 // — local dev and any deploy that doesn't use the beacon run fine without a KV;
 // the beacon just stays inert (see lib/beacon.ts).
-const REST_URL = process.env.UPSTASH_REDIS_REST_URL;
-const REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+// Accept either the Upstash-native names or Vercel's KV integration names —
+// whichever the installed integration injected.
+const REST_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
 export const kvEnabled = !!(REST_URL && REST_TOKEN);
 
