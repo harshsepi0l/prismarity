@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ChatMessage, ConnectionStatus } from "../types";
+import type { ChatMessage, ConnectionStatus, LiveEvent } from "../types";
+import { nextSeq } from "./seq";
 
 export interface CheerLeader {
   user: string;
@@ -23,6 +24,9 @@ interface UseTwitchChatReturn {
   // every connect() / channel switch.
   cheerLeaders: CheerLeader[];
   giftLeaders: GiftLeader[];
+  // Rolling list of transient banner events (announcements, incoming raids) for
+  // the cycle bar. (Pins + Hype Trains are read via GQL, not EventSub.)
+  liveEvents: LiveEvent[];
 }
 
 const EVENTSUB_URL = "wss://eventsub.wss.twitch.tv/ws";
@@ -54,6 +58,9 @@ interface SubGiftInfo {
   total: number;
   gifter_is_anonymous?: boolean;
   gifter_user_name?: string;
+  // Present when this single gift is one recipient of a bulk/community gift —
+  // used to skip a per-recipient notification (the community event covers it).
+  community_gift_id?: string | null;
 }
 interface CommunitySubGiftInfo {
   total: number;
@@ -61,8 +68,18 @@ interface CommunitySubGiftInfo {
 interface ChatNotificationEvent {
   notice_type: string;
   chatter_user_name: string;
+  color?: string | null;
+  message?: { text?: string };
+  announcement?: { color?: string };
   sub_gift?: SubGiftInfo;
   community_sub_gift?: CommunitySubGiftInfo;
+}
+
+// channel.raid — an incoming raid to the watched channel.
+interface RaidEvent {
+  from_broadcaster_user_name?: string;
+  to_broadcaster_user_id?: string;
+  viewers?: number;
 }
 
 interface EventSubFrame {
@@ -77,7 +94,7 @@ interface EventSubFrame {
   payload: {
     session?: { id: string; keepalive_timeout_seconds?: number; reconnect_url?: string };
     subscription?: { type?: string };
-    event?: ChatMessageEvent | ChatNotificationEvent;
+    event?: ChatMessageEvent | ChatNotificationEvent | RaidEvent;
   };
 }
 
@@ -106,6 +123,7 @@ export function useTwitchChat(): UseTwitchChatReturn {
   const giftTotals = useRef<Map<string, number>>(new Map());
   const [cheerLeaders, setCheerLeaders] = useState<CheerLeader[]>([]);
   const [giftLeaders, setGiftLeaders] = useState<GiftLeader[]>([]);
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
 
   function bumpCheer(user: string, bits: number) {
     cheerTotals.current.set(user, (cheerTotals.current.get(user) ?? 0) + bits);
@@ -125,6 +143,20 @@ export function useTwitchChat(): UseTwitchChatReturn {
         .sort((a, b) => b.gifts - a.gifts)
         .slice(0, 10)
     );
+  }
+
+  // Surface a gifted-sub as a transient banner event for the pin/banner bar.
+  function pushGiftSub(gifter: string, count: number) {
+    setLiveEvents((prev) => [
+      ...prev.slice(-9),
+      {
+        id: `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        kind: "gift_sub",
+        gifter,
+        count,
+        at: Date.now(),
+      },
+    ]);
   }
   // `open` recurses (reconnect-on-timeout, reconnect-on-migration) — routed
   // through a ref instead of calling itself by name, since it's wrapped in
@@ -203,6 +235,7 @@ export function useTwitchChat(): UseTwitchChatReturn {
                 text: e.message.text,
                 color: e.color || null,
                 timestamp: Date.now(),
+                seq: nextSeq(),
                 nativeEmotes: nativeEmotesFromFragments(e.message.fragments ?? []),
                 badges: e.badges?.map((b) => ({ setId: b.set_id, id: b.id })) ?? [],
               },
@@ -217,9 +250,45 @@ export function useTwitchChat(): UseTwitchChatReturn {
             if (e.notice_type === "sub_gift" && e.sub_gift && !e.sub_gift.gifter_is_anonymous) {
               const gifter = e.sub_gift.gifter_user_name ?? e.chatter_user_name;
               bumpGift(gifter, 1);
+              // Notify only for a STANDALONE single gift — recipients of a bulk
+              // gift carry community_gift_id and are covered by the event below.
+              if (!e.sub_gift.community_gift_id) {
+                pushGiftSub(gifter, 1);
+              }
             } else if (e.notice_type === "community_sub_gift" && e.community_sub_gift) {
               bumpGift(e.chatter_user_name, e.community_sub_gift.total);
+              pushGiftSub(e.chatter_user_name, e.community_sub_gift.total);
+            } else if (e.notice_type === "announcement") {
+              const text = e.message?.text?.trim();
+              if (text) {
+                setLiveEvents((prev) => [
+                  ...prev.slice(-9),
+                  {
+                    id: `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    kind: "announcement",
+                    user: e.chatter_user_name,
+                    color: e.announcement?.color ?? e.color ?? null,
+                    text,
+                    at: Date.now(),
+                  },
+                ]);
+              }
             }
+          } else if (subType === "channel.raid") {
+            const e = frame.payload.event as RaidEvent | undefined;
+            const from = e?.from_broadcaster_user_name;
+            if (!from) return;
+            const viewers = e?.viewers ?? 0;
+            setLiveEvents((prev) => [
+              ...prev.slice(-9),
+              {
+                id: `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                kind: "raid",
+                from,
+                viewers,
+                at: Date.now(),
+              },
+            ]);
           }
           break;
         }
@@ -262,6 +331,7 @@ export function useTwitchChat(): UseTwitchChatReturn {
       giftTotals.current = new Map();
       setCheerLeaders([]);
       setGiftLeaders([]);
+      setLiveEvents([]);
       open(channelId, EVENTSUB_URL, false);
     },
     [open]
@@ -278,5 +348,5 @@ export function useTwitchChat(): UseTwitchChatReturn {
     };
   }, []);
 
-  return { messages, status, connect, cheerLeaders, giftLeaders };
+  return { messages, status, connect, cheerLeaders, giftLeaders, liveEvents };
 }

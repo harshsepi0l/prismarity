@@ -5,6 +5,7 @@
   "description": "Auto-syncs Twitch and Kick streams to your Prismarity dashboard.",
   "permissions": [
     "tabs",
+    "storage",
     "http://localhost:3000/*"
   ],
   "background": {

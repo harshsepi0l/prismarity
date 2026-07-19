@@ -14,7 +14,9 @@ import {
 export interface RichInputHandle {
   insertEmote(code: string, url: string): void;
   acceptShortcode(code: string, url: string): void;
+  insertMention(handle: string): void;
   clear(): void;
+  restore(text: string): void;
   focus(): void;
 }
 
@@ -211,6 +213,39 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
       notify(el);
     },
 
+    // Replace the "@partial" immediately before the caret with "@handle " as
+    // plain text (mentions are sent verbatim — no inline chip). Keeps focus.
+    insertMention(handle) {
+      const el = editorRef.current;
+      if (!el) return;
+      el.focus();
+      const pos = getCaretTextPosition();
+      if (!pos) return;
+
+      const { tn, offset } = pos;
+      const before = tn.textContent?.slice(0, offset) ?? "";
+      // [\w-] so hyphenated Kick slugs survive; kept in sync with the composer's
+      // detection regex.
+      const m = before.match(/@([\w-]*)$/);
+      if (!m) return;
+
+      const start = offset - m[0].length;
+      const insert = `@${handle} `;
+      const full = tn.textContent ?? "";
+      tn.textContent = full.slice(0, start) + insert + full.slice(offset);
+
+      const caret = start + insert.length;
+      const sel = window.getSelection();
+      if (sel) {
+        const r = document.createRange();
+        r.setStart(tn, Math.min(caret, tn.length));
+        r.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+      notify(el);
+    },
+
     clear() {
       const el = editorRef.current;
       if (!el) return;
@@ -218,6 +253,23 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
       setEmpty(true);
       onChange("");
       onBeforeCursor("");
+    },
+
+    // Put text back into a cleared editor (e.g. a send failed) and refocus so
+    // the user can immediately retry.
+    restore(text) {
+      const el = editorRef.current;
+      if (!el) return;
+      el.innerHTML = "";
+      if (text) {
+        const tn = document.createTextNode(text);
+        el.appendChild(tn);
+        putCaretAtEnd(tn);
+      }
+      el.focus();
+      setEmpty(text.length === 0);
+      onChange(text);
+      onBeforeCursor(text);
     },
 
     focus() {
@@ -261,7 +313,9 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
       }
     }
 
-    if (e.key === "Enter" && !e.shiftKey) {
+    // isComposing: don't submit while an IME candidate is being composed
+    // (Enter confirms the candidate, it shouldn't send the message).
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       onSubmit?.();
     }

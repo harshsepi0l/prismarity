@@ -1,35 +1,15 @@
 import { cookies } from "next/headers";
-import { createHmac, timingSafeEqual } from "crypto";
-import { getUserById } from "./store";
+import { encrypt, decrypt } from "./crypto";
 import type { User } from "./types";
 
-// The session cookie holds ONLY the Prismarity user id, HMAC-signed so it can't
-// be tampered with. It never contains tokens.
+// STATELESS SESSIONS: the whole user record (id, platform connections with their
+// already-encrypted tokens, beacon secret) lives INSIDE the session cookie,
+// encrypted with AES-256-GCM (see crypto.ts / TOKEN_ENCRYPTION_KEY). GCM gives
+// both confidentiality and integrity, so no separate signature is needed and no
+// server-side store is required — which is what lets this run on serverless
+// hosts (Vercel) where the filesystem isn't writable/persistent.
 export const SESSION_COOKIE = "prismarity_session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
-
-function sign(userId: string): string {
-  const sig = createHmac("sha256", process.env.SESSION_SECRET ?? "")
-    .update(userId)
-    .digest("base64url");
-  return `${userId}.${sig}`;
-}
-
-function verify(value: string): string | null {
-  const dot = value.lastIndexOf(".");
-  if (dot < 0) return null;
-  const userId = value.slice(0, dot);
-  const expected = sign(userId);
-  const a = Buffer.from(value);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return userId;
-}
-
-// The signed cookie value to set after a successful login.
-export function sessionCookieValue(userId: string): string {
-  return sign(userId);
-}
 
 // httpOnly + Secure + SameSite=Lax. Secure is always on (production target);
 // use a tunnel/https locally if testing the cookie path.
@@ -41,12 +21,56 @@ export const sessionCookieOptions = {
   maxAge: SESSION_MAX_AGE,
 };
 
-// Server helper: returns the logged-in user's identity or null.
+// Cookies cap at ~4KB. Two platform connections encode to ~2.5KB encrypted — a
+// third (YouTube) would get close; warn in dev so we notice before the browser
+// silently drops an oversized cookie.
+const COOKIE_SIZE_WARN = 3800;
+
+// Encode the user for the cookie. Encrypted → opaque + tamper-proof to the client.
+export function encodeSession(user: User): string {
+  const value = encrypt(JSON.stringify(user));
+  if (process.env.NODE_ENV !== "production" && value.length > COOKIE_SIZE_WARN) {
+    console.warn(`[session] cookie is ${value.length}B (nearing the ~4KB limit)`);
+  }
+  return value;
+}
+
+// Decode the cookie back into a user, or null if missing/tampered/legacy-format.
+export function decodeSession(raw: string): User | null {
+  try {
+    const user = JSON.parse(decrypt(raw)) as User;
+    if (!user || typeof user.id !== "string" || !Array.isArray(user.connections)) return null;
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+// Server helper: the logged-in user (decoded straight from the cookie), or null.
 export async function getCurrentUser(): Promise<User | null> {
   const store = await cookies();
   const raw = store.get(SESSION_COOKIE)?.value;
   if (!raw) return null;
-  const userId = verify(raw);
-  if (!userId) return null;
-  return getUserById(userId);
+  return decodeSession(raw);
+}
+
+// Persist an updated user back to the cookie from a mutation that has no explicit
+// response object to set it on — e.g. token refresh deep in a Helix helper, or a
+// beacon-secret change. Only works inside Route Handlers / Server Actions; it's a
+// safe no-op elsewhere (all our token refreshes run in route handlers — verified).
+export async function persistSession(user: User): Promise<void> {
+  try {
+    (await cookies()).set(SESSION_COOKIE, encodeSession(user), sessionCookieOptions);
+  } catch {
+    /* not a cookie-writable context — skip; the caller still got a fresh token */
+  }
+}
+
+// Clear the session (full logout).
+export async function clearSession(): Promise<void> {
+  try {
+    (await cookies()).delete(SESSION_COOKIE);
+  } catch {
+    /* not a cookie-writable context */
+  }
 }

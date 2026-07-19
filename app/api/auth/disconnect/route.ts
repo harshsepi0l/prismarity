@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth/session";
+import {
+  getCurrentUser,
+  SESSION_COOKIE,
+  encodeSession,
+  sessionCookieOptions,
+} from "@/lib/auth/session";
 import { removeConnection } from "@/lib/auth/store";
 import type { Platform } from "@/lib/auth/types";
 
@@ -24,10 +29,14 @@ export async function POST(req: Request) {
   }
 
   const updated = await removeConnection(user.id, platform as Platform);
-  const res = NextResponse.json({ ok: true });
+  const loggedOut = !updated || updated.connections.length === 0;
+  const res = NextResponse.json({ ok: true, loggedOut });
 
-  if (!updated || updated.connections.length === 0) {
+  if (loggedOut) {
     res.cookies.delete(SESSION_COOKIE);
+  } else {
+    // Persist the user minus the removed connection back to the session cookie.
+    res.cookies.set(SESSION_COOKIE, encodeSession(updated!), sessionCookieOptions);
   }
 
   return res;

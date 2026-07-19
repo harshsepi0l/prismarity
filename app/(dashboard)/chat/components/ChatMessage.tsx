@@ -1,16 +1,12 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType, UserSelection } from "../../types";
-import { PlatformIcon } from "../../components/PlatformIcon";
+import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 import { useEmotes } from "../../_ctx/emotes";
 import { useBadges, resolveBadgeImage } from "../../_ctx/badges";
 
-const PLATFORM_COLOR: Record<string, string> = {
-  twitch: "#A66CFF",
-  youtube: "#FF5C5C",
-  kick: "#5BE37D",
-  self: "#8B93A7",
-};
+// "self" messages have no platform brand color — a neutral grey stands in.
+const SELF_COLOR = "#8B93A7";
 
 const PLATFORM_TAG: Record<string, string> = {
   twitch: "TW",
@@ -106,23 +102,36 @@ export function BadgeChip({
 }
 
 // Split on whitespace (kept), replacing any token that matches an emote code
-// with its image. Unicode emoji render natively as text.
+// with its image and highlighting "@mention" tokens. Unicode emoji render
+// natively as text.
 // Native <img> (not chakra.img) so React never replaces the DOM node on re-render,
 // which would restart GIF/animated-WebP animation.
-function renderBody(text: string, emotes: Record<string, string>) {
+function renderBody(text: string, emotes: Record<string, string>, mentionColor: string) {
   return text.split(/(\s+)/).map((token, i) => {
     const url = emotes[token];
-    if (!url) return <span key={i}>{token}</span>;
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        key={i}
-        src={url}
-        alt={token}
-        title={token}
-        style={{ display: "inline-block", height: 22, verticalAlign: "middle", margin: "0 1px" }}
-      />
-    );
+    if (url) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={i}
+          src={url}
+          alt={token}
+          title={token}
+          style={{ display: "inline-block", height: 22, verticalAlign: "middle", margin: "0 1px" }}
+        />
+      );
+    }
+    // Highlight the "@name" run, keeping any trailing punctuation plain.
+    const mention = token.match(/^(@[\w-]+)(.*)$/);
+    if (mention) {
+      return (
+        <span key={i}>
+          <span style={{ color: mentionColor, fontWeight: 600 }}>{mention[1]}</span>
+          {mention[2]}
+        </span>
+      );
+    }
+    return <span key={i}>{token}</span>;
   });
 }
 
@@ -145,8 +154,18 @@ export default memo(function ChatMessage({
   singlePlatform,
 }: ChatMessageProps) {
   const emotes = useEmotes();
-  const platformColor = PLATFORM_COLOR[message.platform] ?? "#8B93A7";
+  const platformColor = message.platform === "self" ? SELF_COLOR : PLATFORM_COLOR[message.platform];
   const nameColor = message.color || platformColor;
+
+  const body = useMemo(
+    () =>
+      renderBody(
+        message.text,
+        message.nativeEmotes ? { ...emotes, ...message.nativeEmotes } : emotes,
+        platformColor
+      ),
+    [message.text, message.nativeEmotes, emotes, platformColor]
+  );
   const tag = PLATFORM_TAG[message.platform] ?? "??";
 
   // For self-messages in split view: show only the relevant platform's name/icon.
@@ -255,12 +274,7 @@ export default memo(function ChatMessage({
         </Text>
       </Flex>
 
-      
-
-        {renderBody(
-          message.text,
-          message.nativeEmotes ? { ...emotes, ...message.nativeEmotes } : emotes
-        )}
+      {body}
     </Box>
   );
 });

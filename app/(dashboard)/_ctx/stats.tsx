@@ -8,7 +8,7 @@ import { kickLeaderboardUrl, parseKickLeaderboard } from "@/lib/kick/public";
 import type { TwitchChatSettings } from "@/app/api/twitch/chat/route";
 import type { Platform } from "../types";
 import type { CheerLeader, GiftLeader } from "../chat/useTwitchChat";
-import { useChat } from "./chat";
+import { useChat, useChatMessages } from "./chat";
 import { useSession } from "./session";
 
 // One connected platform's live stats. `included` reflects the top-bar filter
@@ -93,7 +93,8 @@ const EMPTY_DERIVED: Derived = {
 const StatsContext = createContext<LiveStats | null>(null);
 
 export function StatsProvider({ children }: { children: React.ReactNode }) {
-  const { activeChannel, messages, activeKick, cheerLeaders, giftLeaders } = useChat();
+  const { activeChannel, activeKick, cheerLeaders, giftLeaders } = useChat();
+  const { messages } = useChatMessages();
   const { connectedPlatforms, activeFilters } = useSession();
 
   const channelId = activeChannel?.id ?? null;

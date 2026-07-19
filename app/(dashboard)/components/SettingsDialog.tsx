@@ -4,7 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { PlatformIcon } from "./PlatformIcon";
-import { useChat } from "../_ctx/chat";
+import { BeaconSignal } from "./BeaconSignal";
+import { clearSessionScopedStorage } from "@/lib/clientStorage";
+import { useChat, useChatSignal } from "../_ctx/chat";
+import { useLayout } from "../_ctx/layout";
 
 const C = {
   bg: "#0E1118",
@@ -146,6 +149,65 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const [category, setCategory] = useState<Category>("accounts");
   const [disconnecting, setDisconnecting] = useState<"twitch" | "kick" | null>(null);
   const { beaconMode, setBeaconMode } = useChat();
+  const signalStatus = useChatSignal();
+  const { isCompact } = useLayout();
+  // Desktop: anchored dropdown under the prism. Mobile/tablet: centered modal.
+  const asDropdown = !isCompact;
+
+  // Flip on the next frame so the panel animates open (scale/slide/fade). The
+  // dropdown grows from its top-left corner — i.e. out of the prism icon.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // Beacon on but still no stream detected after a grace period → most likely
+  // the extension isn't installed (or nothing's open). Only arm while truly
+  // idle — a detected stream that's mid-connect (or errored) isn't the
+  // extension's fault, so it must not trip this hint.
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    if (!beaconMode || signalStatus !== "idle") return;
+    const id = setTimeout(() => setStalled(true), 6000);
+    // Reset on the way out (beacon toggled off, or a signal arrived).
+    return () => { clearTimeout(id); setStalled(false); };
+  }, [beaconMode, signalStatus]);
+
+  // Beacon pairing token, fetched from the server (derived from SESSION_SECRET,
+  // so it can't be computed client-side). Paste-once into the extension popup.
+  const [pairToken, setPairToken] = useState<string | null>(null);
+  const [pairCopied, setPairCopied] = useState(false);
+  const [pairRevealed, setPairRevealed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/beacon/pair")
+      .then((r) => (r.ok ? r.json() : { token: null }))
+      .then((d: { token?: string | null }) => { if (alive) setPairToken(d.token ?? null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const copyPairToken = useCallback(() => {
+    if (!pairToken) return;
+    navigator.clipboard?.writeText(pairToken).then(() => {
+      setPairCopied(true);
+      setTimeout(() => setPairCopied(false), 1500);
+    }).catch(() => {});
+  }, [pairToken]);
+  const [pairRotating, setPairRotating] = useState(false);
+  const rotatePairToken = useCallback(() => {
+    if (pairRotating) return;
+    if (!window.confirm("Regenerate the pairing key? Your extension will stop syncing until you paste the new key into it.")) return;
+    setPairRotating(true);
+    fetch("/api/beacon/pair", { method: "POST" })
+      .then((r) => (r.ok ? r.json() : { token: null }))
+      .then((d: { token?: string | null }) => {
+        setPairToken(d.token ?? null);
+        setPairRevealed(true); // reveal the fresh key so it can be re-pasted
+      })
+      .catch(() => {})
+      .finally(() => setPairRotating(false));
+  }, [pairRotating]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -173,11 +235,24 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const disconnect = useCallback(async (platform: "twitch" | "kick") => {
     setDisconnecting(platform);
     try {
-      await fetch("/api/auth/disconnect", {
+      const res = await fetch("/api/auth/disconnect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platform }),
       });
+      let loggedOut = false;
+      try {
+        loggedOut = !!((await res.json()) as { loggedOut?: boolean }).loggedOut;
+      } catch {
+        /* ignore malformed body */
+      }
+      if (loggedOut) {
+        // Full logout: drop the session's watched channels + chat prefs and
+        // hard-reload so no in-memory state carries into the logged-out view.
+        clearSessionScopedStorage();
+        window.location.assign("/chat");
+        return;
+      }
       router.refresh();
     } finally {
       setDisconnecting(null);
@@ -197,17 +272,21 @@ export function SettingsDialog({ auth, onClose }: Props) {
         inset="0"
         zIndex={200}
         onClick={onClose}
-        style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(3px)" }}
+        style={
+          asDropdown
+            ? { background: "transparent" }
+            : { background: "rgba(0,0,0,0.6)", backdropFilter: "blur(3px)" }
+        }
       />
 
       <Box
         position="fixed"
-        top="50%"
-        left="50%"
-        w="720px"
+        top={asDropdown ? "52px" : "50%"}
+        left={asDropdown ? "12px" : "50%"}
+        w={asDropdown ? "440px" : "720px"}
         maxW="calc(100vw - 24px)"
-        h="480px"
-        maxH="calc(100vh - 24px)"
+        h={asDropdown ? "440px" : "480px"}
+        maxH={asDropdown ? "calc(100vh - 72px)" : "calc(100vh - 24px)"}
         borderRadius="12px"
         display="flex"
         flexDirection="column"
@@ -215,10 +294,21 @@ export function SettingsDialog({ auth, onClose }: Props) {
         zIndex={201}
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
         style={{
-          transform: "translate(-50%, -50%)",
+          transform: asDropdown
+            ? mounted
+              ? "none"
+              : "scale(0.95) translateY(-8px)"
+            : mounted
+              ? "translate(-50%, -50%)"
+              : "translate(-50%, -50%) scale(0.96)",
+          transformOrigin: asDropdown ? "top left" : "center",
+          opacity: mounted ? 1 : 0,
+          transition: "transform 0.16s cubic-bezier(0.2,0.8,0.2,1), opacity 0.16s ease",
           background: C.bg,
           border: `1px solid ${C.line}`,
-          boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+          boxShadow: asDropdown
+            ? "0 18px 50px rgba(0,0,0,0.55)"
+            : "0 32px 80px rgba(0,0,0,0.6)",
         }}
       >
         {/* Header */}
@@ -293,12 +383,12 @@ export function SettingsDialog({ auth, onClose }: Props) {
           </Flex>
 
           {/* Content */}
-          <Box flex="1" overflowY="auto" p="28px" style={{ background: C.bg }}>
+          <Box flex="1" minW="0" overflowY="auto" p={asDropdown ? "18px" : "28px"} style={{ background: C.bg }}>
 
             {category === "accounts" && (
               <Box>
                 <Text fontSize="13px" mb="20px" lineHeight="1.6" style={{ color: C.muted }}>
-                  Connect your accounts to the streaming platforms you'd like to sync with Prismarity.
+                  Connect your accounts to the streaming platforms you&apos;d like to sync with Prismarity.
                 </Text>
 
                 <PlatformSection
@@ -320,6 +410,20 @@ export function SettingsDialog({ auth, onClose }: Props) {
                   onDisconnect={disconnect}
                   onConnect={() => openPopup("kick")}
                 />
+
+                <Box my="12px" />
+
+                {/* Placeholder for the upcoming YouTube integration */}
+                <Flex
+                  align="center" gap="10px" px="10px" py="11px" borderRadius="8px"
+                  style={{ background: C.raised, opacity: 0.55 }}
+                >
+                  <PlatformIcon platform="youtube" size={13} />
+                  <Text fontSize="12px" style={{ color: C.text }}>YouTube</Text>
+                  <Text fontSize="11px" ml="auto" fontFamily="mono" style={{ color: C.faint }}>
+                    Coming soon
+                  </Text>
+                </Flex>
               </Box>
             )}
 
@@ -327,12 +431,23 @@ export function SettingsDialog({ auth, onClose }: Props) {
               <Box>
                 {/* ── Beacon Mode ───────────────────────────── */}
                 <Flex align="center" gap="12px" mb="10px">
-                  <BeaconIcon size={22} color={beaconMode ? "#A66CFF" : C.muted} />
+                  <Box w="22px" flex="none" display="flex" justifyContent="center">
+                    <BeaconSignal size={20} state={beaconMode && signalStatus !== "connected" ? "searching" : "strong"} />
+                  </Box>
                   <Box flex="1">
                     <Text fontSize="14px" fontWeight="600" style={{ color: C.text }}>Beacon Mode</Text>
                     <Text fontSize="12px" style={{ color: C.faint, marginTop: 2 }}>
                       Auto-syncs to whatever stream you open in your browser via the Prismarity Beacon extension.
                     </Text>
+                    {beaconMode && (
+                      <Text fontSize="11px" fontWeight="500" style={{ color: "rgba(56,189,248,0.85)", marginTop: 5 }}>
+                        {signalStatus === "connected"
+                          ? "Signal strong — following your beacon"
+                          : stalled
+                          ? "No signal — is the Beacon extension installed?"
+                          : "Waiting for signal…"}
+                      </Text>
+                    )}
                   </Box>
                   {/* Toggle pill */}
                   <chakra.button
@@ -344,7 +459,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
                     cursor="pointer"
                     transition="background .2s"
                     position="relative"
-                    style={{ background: beaconMode ? "#A66CFF" : C.raised, border: `1px solid ${beaconMode ? "#A66CFF" : C.fieldLine}` }}
+                    style={{ background: beaconMode ? "#38BDF8" : C.raised, border: `1px solid ${beaconMode ? "#38BDF8" : C.fieldLine}` }}
                   >
                     <Box
                       position="absolute"
@@ -372,6 +487,71 @@ export function SettingsDialog({ auth, onClose }: Props) {
                     Install the companion extension from the <code style={{ color: C.muted }}>extension/</code> folder in the project.
                     It watches your active tab for Twitch and Kick streams and signals Prismarity automatically.
                   </Text>
+
+                  {/* Pairing key — paste into the extension popup once so its
+                      signals are bound to this account. */}
+                  <Text fontSize="11px" fontWeight="600" mt="12px" mb="4px" style={{ color: C.muted }}>
+                    Pairing key
+                  </Text>
+                  <Text fontSize="11px" lineHeight="1.6" mb="8px" style={{ color: C.faint }}>
+                    Paste this into the extension popup to link it to your account. Keep it private.
+                  </Text>
+                  <Flex align="center" gap="8px">
+                    <Box
+                      flex="1" borderRadius="6px" px="10px" py="7px"
+                      fontFamily="monospace" fontSize="11px"
+                      overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap"
+                      style={{ background: C.field, border: `1px solid ${C.fieldLine}`, color: C.muted }}
+                      // Only expose the value on hover once explicitly revealed —
+                      // never leak it via tooltip while masked (screen-share safe).
+                      title={pairRevealed ? pairToken ?? undefined : undefined}
+                    >
+                      {!pairToken
+                        ? "unavailable — sign in first"
+                        : pairRevealed
+                        ? pairToken
+                        : "•".repeat(24)}
+                    </Box>
+                    <chakra.button
+                      onClick={() => setPairRevealed((v) => !v)}
+                      disabled={!pairToken}
+                      borderRadius="6px" px="10px" py="7px"
+                      fontSize="11px" fontWeight="600"
+                      cursor={pairToken ? "pointer" : "not-allowed"}
+                      aria-label={pairRevealed ? "Hide pairing key" : "Show pairing key"}
+                      style={{
+                        background: C.raised,
+                        border: `1px solid ${C.fieldLine}`,
+                        color: pairToken ? C.text : C.faint,
+                      }}
+                    >
+                      {pairRevealed ? "Hide" : "Show"}
+                    </chakra.button>
+                    <chakra.button
+                      onClick={copyPairToken}
+                      disabled={!pairToken}
+                      borderRadius="6px" px="12px" py="7px"
+                      fontSize="11px" fontWeight="600"
+                      cursor={pairToken ? "pointer" : "not-allowed"}
+                      style={{
+                        background: C.raised,
+                        border: `1px solid ${C.fieldLine}`,
+                        color: pairToken ? C.text : C.faint,
+                      }}
+                    >
+                      {pairCopied ? "Copied" : "Copy"}
+                    </chakra.button>
+                  </Flex>
+                  <chakra.button
+                    onClick={rotatePairToken}
+                    disabled={!pairToken || pairRotating}
+                    mt="8px"
+                    fontSize="10px" fontWeight="600"
+                    cursor={pairToken && !pairRotating ? "pointer" : "not-allowed"}
+                    style={{ background: "transparent", border: "none", color: C.faint, textDecoration: "underline" }}
+                  >
+                    {pairRotating ? "Regenerating…" : "Regenerate key"}
+                  </chakra.button>
                 </Box>
               </Box>
             )}
@@ -386,6 +566,16 @@ export function SettingsDialog({ auth, onClose }: Props) {
                 <Text fontSize="12px" lineHeight="2" style={{ color: C.faint }}>
                   Authentication uses OAuth 2.0 with PKCE. Tokens are encrypted at rest using AES-256-GCM.
                   No credentials are ever sent to third-party servers.
+                </Text>
+                <Box my="20px" style={{ height: "1px", background: C.line }} />
+                <Text fontSize="11px" fontWeight="700" mb="8px" style={{ color: C.muted, letterSpacing: "0.06em" }}>
+                  PLATFORM NOTES
+                </Text>
+                <Text fontSize="12px" lineHeight="2" style={{ color: C.faint }}>
+                  Twitch and Kick expose different data. Twitch provides your followed channels through
+                  its official API; Kick&apos;s public API does not, so your Kick follows can&apos;t be
+                  listed automatically — reach Kick channels through search instead. When a channel you
+                  follow on Twitch also exists on Kick, both are linked so you see the unified view.
                 </Text>
               </Box>
             )}

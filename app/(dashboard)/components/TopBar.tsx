@@ -5,10 +5,10 @@ import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { SettingsDialog } from "./SettingsDialog";
 import { CommandSearch } from "./CommandSearch";
 import { ChannelAbout } from "./ChannelAbout";
-import { MentionText } from "./MentionText";
-import { PlatformIcon, PLATFORM_COLOR, VerifiedBadge } from "./PlatformIcon";
+import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
+import { BeaconSignal } from "./BeaconSignal";
 import { useLayout } from "../_ctx/layout";
-import { useChat } from "../_ctx/chat";
+import { useChat, useChatSignal } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
 
 export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null };
@@ -34,34 +34,14 @@ function SplitIcon() {
 
 // Center pill — the stream you're tuned into: avatar, name, LIVE state,
 // viewers and stream title, live from the stats context. Beacon state folds
-// in here: waiting animation when beacon is on with no channel, a steady
-// beacon dot when the current selection is beacon-driven.
+// in here: the signal art scans while beacon is armed with no channel (or while
+// a beacon-selected channel is still connecting) and holds strong once live.
 function ActiveChannelPill() {
   const { activeChannel, activeKick, activeKickOnly, beaconMode } = useChat();
+  const signalStatus = useChatSignal();
   const { platforms, collab } = useStats();
   const { isMobile } = useLayout();
-  const [beaconSignal, setBeaconSignal] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-
-  useEffect(() => {
-    if (!beaconMode) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setBeaconSignal(false);
-      return;
-    }
-    let cancelled = false;
-    async function poll() {
-      try {
-        const res = await fetch("/api/beacon");
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { platform?: string; channel?: string };
-        if (!cancelled) setBeaconSignal(!!data.platform && !!data.channel);
-      } catch { /* silent */ }
-    }
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [beaconMode]);
 
   const hasSelection = !!activeChannel || !!activeKickOnly;
 
@@ -76,20 +56,11 @@ function ActiveChannelPill() {
     // Beacon armed, waiting for the extension to report a stream.
     return (
       <Flex
-        align="center" gap="8px" px="12px" h="28px"
+        align="center" gap="9px" px="12px" h="28px"
         borderRadius="7px" borderWidth="1px"
         style={{ borderColor: "rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}
       >
-        <Box position="relative" w="7px" h="7px" flex="none">
-          <Box
-            position="absolute" inset="0" borderRadius="full"
-            style={{ background: "rgba(56,189,248,0.9)", animation: "beacon-pulse 1.6s ease-in-out infinite" }}
-          />
-          <Box
-            position="absolute" inset="-3px" borderRadius="full"
-            style={{ background: "rgba(56,189,248,0.25)", animation: "beacon-ring 1.6s ease-out infinite" }}
-          />
-        </Box>
+        <BeaconSignal state="searching" />
         <Text fontSize="12px" fontWeight="500" style={{ color: "rgba(56,189,248,0.75)" }}>
           Waiting for signal...
         </Text>
@@ -105,12 +76,6 @@ function ActiveChannelPill() {
   const avatar =
     (isLive ? live : platforms).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
   const viewers = live.reduce((sum, p) => sum + p.viewers, 0);
-  // Only a LIVE platform's own title/category is shown — never one platform's
-  // logo paired with another's description.
-  const desc = live.find((p) => p.title || p.category);
-  const title = desc
-    ? `${desc.title || "—"}${desc.category ? ` · ${desc.category}` : ""}`
-    : "";
 
   // Per-platform presence + live state. The icon lights up in the platform's
   // color only when it is actually live there; a present-but-offline platform
@@ -129,12 +94,13 @@ function ActiveChannelPill() {
     >
       {/* Inner content clips so a long name/title can never overlap the badges. */}
       <Flex align="center" gap="9px" minW="0" overflow="hidden" flex="1">
-      {beaconMode && beaconSignal && (
+      {beaconMode && (
         <Box
-          w="6px" h="6px" borderRadius="full" flex="none"
-          title="Following your beacon"
-          style={{ background: "rgba(56,189,248,0.9)" }}
-        />
+          flex="none" display="inline-flex"
+          title={signalStatus === "connected" ? "Following your beacon" : "Tuning in…"}
+        >
+          <BeaconSignal state={signalStatus === "connected" ? "strong" : "searching"} />
+        </Box>
       )}
 
       {/* Profile pic */}
@@ -195,10 +161,6 @@ function ActiveChannelPill() {
         <Text fontSize="13px" fontWeight="600" truncate>
           {name}
         </Text>
-        {twitchP?.verified && <VerifiedBadge size={12} title="Verified partner" />}
-        {kickP?.verified && (
-          <VerifiedBadge size={12} color={PLATFORM_COLOR.kick} title="Verified on Kick" />
-        )}
       </chakra.button>
 
       {isLive ? (
@@ -243,7 +205,6 @@ function ActiveChannelPill() {
                           HOST
                         </Text>
                       )}
-                      {c.verified && <VerifiedBadge size={11} title="Verified partner" />}
                       {c.viewers != null && (
                         <Text fontFamily="mono" fontSize="10px" color="muted" flex="none">
                           {c.viewers.toLocaleString()}
@@ -270,15 +231,6 @@ function ActiveChannelPill() {
         </Text>
       )}
 
-      {/* Stream title + category — hidden below md to keep the pill compact. */}
-      {title && (
-        <Flex hideBelow="md" align="center" gap="9px" minW="0" flex="1">
-          <Box w="1px" h="16px" bg="line" flex="none" />
-          <Text fontSize="12px" color="muted" truncate minW="0" title={title}>
-            <MentionText text={title} />
-          </Text>
-        </Flex>
-      )}
       </Flex>
 
       {aboutOpen && <ChannelAbout onClose={() => setAboutOpen(false)} />}
@@ -286,8 +238,105 @@ function ActiveChannelPill() {
   );
 }
 
-// Profile button — prism icon that emits a rainbow aura on hover, opens settings on click.
-function ProfileButton({ onClick }: { onClick: () => void }) {
+// ── Pixel-sprite logo geometry (computed once at module load) ──
+const PX = 8; // grid cell — chunky low-res blocks
+const PX_GAP = 0.8; // hairline between pixels
+const psnap = (v: number) => Math.round(v / PX) * PX;
+// Chunky pixel "P" (3×4 grid): bowl on top, stem down.
+const P_MATRIX = ["111", "101", "111", "100"];
+const P_W = P_MATRIX[0].length;
+const P_H = P_MATRIX.length;
+const P_OX = 60 - (P_W * PX) / 2;
+const P_OY = 60 - (P_H * PX) / 2;
+const P_PIXELS: [number, number][] = [];
+P_MATRIX.forEach((row, y) =>
+  [...row].forEach((v, x) => {
+    if (v === "1") P_PIXELS.push([P_OX + x * PX, P_OY + y * PX]);
+  })
+);
+// One tilted orbit, rasterised onto the same grid → a stepped pixel ring.
+const O_CX = 60, O_CY = 60, O_RX = 30, O_RY = 11, O_ROT = -18;
+const RING_PIXELS: [number, number][] = (() => {
+  const rad = (O_ROT * Math.PI) / 180, cs = Math.cos(rad), sn = Math.sin(rad);
+  const seen = new Set<string>();
+  const out: [number, number][] = [];
+  for (let a = 0; a < 360; a += 3) {
+    const t = (a * Math.PI) / 180, ex = O_RX * Math.cos(t), ey = O_RY * Math.sin(t);
+    const X = psnap(O_CX + ex * cs - ey * sn), Y = psnap(O_CY + ex * sn + ey * cs);
+    const k = `${X},${Y}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push([X, Y]);
+    }
+  }
+  return out;
+})();
+const ORBIT_PATH = `M${O_CX - O_RX},${O_CY} a${O_RX},${O_RY} 0 1,1 ${2 * O_RX},0 a${O_RX},${O_RY} 0 1,1 ${-2 * O_RX},0`;
+const ORBIT_STEPS = RING_PIXELS.length;
+
+// One orbiting electron: a bright pixel head plus a short stepped comet trail,
+// travelling the orbit path via CSS steps() so it snaps pixel-to-pixel. Dims and
+// pauses when its platform isn't connected.
+const TRAIL = 6; // head + 5 trailing pixels
+function Electron({
+  color,
+  durSec,
+  delaySec,
+  on,
+}: {
+  color: string;
+  durSec: number;
+  delaySec: number;
+  on: boolean;
+}) {
+  // One grid step of the animation — offset each trail pixel by this so it lands
+  // one cell BEHIND the head (otherwise every trail pixel stacks on the head).
+  const stepDur = durSec / ORBIT_STEPS;
+  return (
+    <g transform={`rotate(${O_ROT} ${O_CX} ${O_CY})`}>
+      {Array.from({ length: TRAIL }).map((_, k) => {
+        const head = k === 0;
+        const s = head ? 1 : 0.78;
+        const off = (s * PX) / 2;
+        return (
+          <rect
+            key={k}
+            x={-off}
+            y={-off}
+            width={s * PX}
+            height={s * PX}
+            fill={color}
+            shapeRendering="crispEdges"
+            opacity={on ? 1 - k * 0.15 : 0.13}
+            style={{
+              offsetPath: `path('${ORBIT_PATH}')`,
+              offsetRotate: "0deg",
+              animationName: "pel-orbit",
+              animationDuration: `${durSec}s`,
+              animationTimingFunction: `steps(${ORBIT_STEPS}, end)`,
+              animationIterationCount: "infinite",
+              animationDelay: `${(delaySec - k * stepDur).toFixed(3)}s`,
+              animationPlayState: on ? "running" : "paused",
+              filter: head ? `drop-shadow(0 0 2px ${color})` : undefined,
+            }}
+          />
+        );
+      })}
+    </g>
+  );
+}
+
+// Profile button — the Prismarity mark: a pixel-art "P" with two electrons
+// (Twitch violet, Kick green) orbiting it on a stepped pixel ring, each trailing
+// a short comet. An electron dims + pauses when its platform isn't connected.
+// Opens settings on click.
+function ProfileButton({
+  onClick,
+  connected,
+}: {
+  onClick: () => void;
+  connected: { twitch: boolean; kick: boolean };
+}) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -310,29 +359,21 @@ function ProfileButton({ onClick }: { onClick: () => void }) {
       transition="filter .3s ease, border-color .2s, background .12s"
       style={{
         borderColor: hovered ? "rgba(166,108,255,0.5)" : "#232a38",
-        filter: hovered
-          ? "drop-shadow(0 0 3px rgba(166,108,255,1)) drop-shadow(0 0 8px rgba(91,227,125,0.7)) drop-shadow(0 0 16px rgba(56,189,248,0.5)) drop-shadow(0 0 26px rgba(250,204,21,0.25))"
-          : "none",
+        filter: hovered ? "drop-shadow(0 0 3px rgba(166,108,255,0.5))" : "none",
       }}
     >
-      <svg width="16" height="18" viewBox="0 0 16 18" fill="none" aria-hidden>
-        <path
-          d="M8 1 L1 17 L15 17 Z"
-          fill="#171B26"
-          stroke={hovered ? "rgba(200,185,255,0.75)" : "rgba(80,90,110,0.8)"}
-          strokeWidth="1.1"
-          strokeLinejoin="round"
-          style={{ transition: "stroke .2s" }}
-        />
-        <line x1="8" y1="1" x2="1" y2="17" stroke="rgba(255,255,255,0.06)" strokeWidth="0.6" />
-        <line x1="8" y1="1" x2="15" y2="17" stroke="rgba(255,255,255,0.04)" strokeWidth="0.6" />
-        {hovered && (
-          <>
-            <circle cx="8"    cy="1.5"  r="1.4" fill="rgba(230,210,255,0.95)" />
-            <circle cx="1.5"  cy="16.5" r="1.1" fill="rgba(56,189,248,0.9)"  />
-            <circle cx="14.5" cy="16.5" r="1.1" fill="rgba(91,227,125,0.9)"  />
-          </>
-        )}
+      <svg width="30" height="30" viewBox="24 24 72 72" fill="none" aria-hidden style={{ overflow: "visible" }}>
+        {/* stepped pixel orbit ring, behind the letter */}
+        {RING_PIXELS.map(([x, y], i) => (
+          <rect key={`r${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#7C889E" opacity={0.22} shapeRendering="crispEdges" />
+        ))}
+        {/* the pixel P */}
+        {P_PIXELS.map(([x, y], i) => (
+          <rect key={`p${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#E9ECF7" shapeRendering="crispEdges" />
+        ))}
+        {/* the two electrons, on top so they always read */}
+        <Electron color={PLATFORM_COLOR.twitch} durSec={5} delaySec={0} on={connected.twitch} />
+        <Electron color={PLATFORM_COLOR.kick} durSec={5} delaySec={-2.5} on={connected.kick} />
       </svg>
     </chakra.button>
   );
@@ -414,7 +455,10 @@ export function TopBar({ auth }: TopBarProps) {
               <path d="M10 3 L5 8 L10 13" stroke="#8B93A7" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </chakra.button>
-          <ProfileButton onClick={() => setSettingsOpen(true)} />
+          <ProfileButton
+            onClick={() => setSettingsOpen(true)}
+            connected={{ twitch: !!auth.twitch, kick: !!auth.kick }}
+          />
           <Text
             hideBelow="sm"
             fontFamily="mono"

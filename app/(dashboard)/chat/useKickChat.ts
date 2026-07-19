@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChatMessage, ConnectionStatus } from "../types";
+import { nextSeq } from "./seq";
 
 const PUSHER_KEY = "32cbd69e4b950bf97679";
 const PUSHER_WS = `wss://ws-us2.pusher.com/app/${PUSHER_KEY}?protocol=7&client=js&version=8.4.0-rc2&flash=false`;
@@ -106,6 +107,7 @@ export function useKickChat() {
             timestamp: payload.created_at
               ? (Date.parse(payload.created_at) || Date.now())
               : Date.now(),
+            seq: nextSeq(),
             nativeEmotes,
             badges: (payload.sender?.identity?.badges ?? []).map((b) => ({
               setId: b.type ?? "unknown",

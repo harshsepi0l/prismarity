@@ -1,74 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { RichInput, type RichInputHandle } from "./RichInput";
-import { Box, Flex, Input, Text, chakra } from "@chakra-ui/react";
-import { useChat } from "../../_ctx/chat";
+import { Box, Flex, Text, chakra } from "@chakra-ui/react";
+import { useChat, type MentionCandidate } from "../../_ctx/chat";
 import { useEmotes, useEmoteCategories } from "../../_ctx/emotes";
 import { useSession } from "../../_ctx/session";
 import { useStats } from "../../_ctx/stats";
-import { PlatformIcon, PLATFORM_LABEL } from "../../components/PlatformIcon";
+import { PLATFORM_LABEL } from "../../components/PlatformIcon";
 import type { Platform } from "../../types";
-import type { EmoteSource } from "@/app/api/emotes/route";
-
-type EmoteTab = "all" | EmoteSource;
-
-const TAB_LABEL: Record<EmoteTab, string> = {
-  all: "All",
-  "7tv": "7TV",
-  bttv: "BTTV",
-  ffz: "FFZ",
-  "twitch-channel": "Channel",
-};
-
-function LockBadge() {
-  return (
-    <Box
-      position="absolute"
-      bottom="2px"
-      right="2px"
-      borderRadius="3px"
-      px="2px"
-      py="1px"
-      style={{ background: "rgba(0,0,0,0.65)", lineHeight: 0 }}
-    >
-      <svg width="8" height="8" viewBox="0 0 24 24" fill="white" aria-hidden>
-        <path d="M18 10h-1V7c0-2.76-2.24-5-5-5S7 4.24 7 7v3H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V7c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v3z" />
-      </svg>
-    </Box>
-  );
-}
-
-const ERROR_TEXT: Record<string, string> = {
-  not_logged_in: "Log in to chat",
-  unauthorized: "Re-login to grant chat permission",
-  not_connected: "Platform not connected",
-  bad_request: "Couldn't send that message",
-  send_failed: "The platform rejected the message",
-  no_channel: "Select a channel to chat",
-  network: "Network error",
-  follower_only: "Follower-only chat — follow to send messages",
-  sub_only: "Subscriber-only chat",
-  slow_mode: "Slow mode — wait a moment before sending again",
-  timed_out: "You're timed out in this chat",
-  banned: "You're banned from this chat",
-};
-
-function friendly(error?: string): string {
-  if (!error) return "Couldn't send";
-  return ERROR_TEXT[error] ?? error;
-}
+import { useChatSend, FOLLOWER_ONLY_MESSAGE } from "./composer/useChatSend";
+import EmotePicker from "./composer/EmotePicker";
+import EmoteAutocomplete from "./composer/EmoteAutocomplete";
+import MentionAutocomplete from "./composer/MentionAutocomplete";
+import SendTargets from "./composer/SendTargets";
 
 export default function Composer() {
-  const { activeChannel, activeKick, activeKickOnly, addSelfMessage } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, getMentionCandidates, liveByPlatform } = useChat();
   const emotes = useEmotes();
   const categories = useEmoteCategories();
   const { sendTargets, toggleSendTarget } = useSession();
-  const { platforms } = useStats();
+  const { platforms } = useStats(); // per-platform chat-mode (follower minutes)
 
-  // Live status per platform for the active selection.
-  const liveByPlatform: Partial<Record<Platform, boolean>> = {};
-  for (const p of platforms) liveByPlatform[p.platform] = p.isLive;
+  const { sending, error, errorPlatform, followCountdown, startFollowCountdown, send, clearError } =
+    useChatSend();
 
   // The name shown in placeholders/status — Twitch channel, else the Kick slug.
   const channelName = activeChannel?.displayName ?? activeKick?.slug ?? activeKickOnly ?? null;
@@ -76,175 +31,122 @@ export default function Composer() {
   const richInputRef = useRef<RichInputHandle>(null);
   const [text, setText] = useState("");
   const [textBeforeCursor, setTextBeforeCursor] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [errorPlatform, setErrorPlatform] = useState<"twitch" | "kick" | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // Clear input whenever the active channel changes or is removed.
+  // The platforms you can send to for the active selection: Twitch when a channel
+  // is selected, Kick when one is linked — but only where the streamer is LIVE
+  // (per the match). We don't send to a platform where they're offline.
+  const available: Platform[] = [];
+  if (activeChannel && liveByPlatform.twitch) available.push("twitch");
+  if (activeKick && liveByPlatform.kick) available.push("kick");
+  // Armed targets among the available platforms; default is all-on.
+  const deliverable = available.filter((p) => sendTargets.has(p));
+  // (Offline platforms are excluded from `available` above, so nothing armed is
+  // ever offline — kept for the SendTargets warning contract.)
+  const offlineTargets = deliverable.filter((p) => liveByPlatform[p] === false);
+
+  // Identifies the active channel selection — used to reset transient composer
+  // state on switch, and to guard the async restore-on-failure below.
   const selectionKey = activeChannel?.id ?? activeKick?.slug ?? activeKickOnly ?? null;
-  useEffect(() => {
-    richInputRef.current?.clear();
-    setError(null);
-    setErrorPlatform(null);
-    setPickerOpen(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectionKey]);
+  const selectionKeyRef = useRef(selectionKey);
 
-  // Both platforms are reactive-only: a failed send is the only reliable signal
-  // that the user isn't following. No proactive API checks, no proactive banners.
-  // After clicking Follow we show a countdown so they know when to try again.
-  const [followCountdown, setFollowCountdown] = useState<number | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const startFollowCountdown = useCallback((seconds: number) => {
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    setFollowCountdown(seconds);
-    countdownRef.current = setInterval(() => {
-      setFollowCountdown((n) => {
-        if (n == null || n <= 1) {
-          if (countdownRef.current) clearInterval(countdownRef.current);
-          countdownRef.current = null;
-          return null;
-        }
-        return n - 1;
-      });
-    }, 1000);
-  }, []);
-
-  useEffect(() => () => { if (countdownRef.current) clearInterval(countdownRef.current); }, []);
-
-  const twitchFollowerMinutes =
-    platforms.find((p) => p.platform === "twitch")?.chatMode?.followerMinutes ?? 0;
-  const kickFollowerMinutes =
-    platforms.find((p) => p.platform === "kick")?.chatMode?.followerMinutes ?? 0;
-
-  // Reactive follow link — shown only after a failed send proves the user isn't following.
-  const isFollowerError = error === ERROR_TEXT.follower_only;
-  const reactiveFollowLink = isFollowerError
-    ? errorPlatform === "twitch"
-      ? `https://twitch.tv/${activeChannel?.login ?? ""}`
-      : errorPlatform === "kick"
-        ? `https://kick.com/${activeKick?.slug ?? ""}`
-        : null
-    : null;
-  const [emoteQuery, setEmoteQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<EmoteTab>("all");
+  // ── emote ":shortcode" autocomplete ──────────────────────
   const [dismissedShortcode, setDismissedShortcode] = useState<string | null>(null);
   const [selectedSuggIdx, setSelectedSuggIdx] = useState(0);
 
-  // Detect ":word" immediately before the caret (not end of full text, since
-  // the caret might not be at the end with a rich input).
+  // Twitch emotes (7TV/BTTV/FFZ/channel) are only relevant when Twitch is a send
+  // target. If only Kick is targeted, we have no Kick-specific emotes to offer.
+  const showTwitchEmotes = sendTargets.has("twitch");
+
+  // Detect ":word" immediately before the caret (not end of full text, since the
+  // caret might not be at the end with a rich input).
   const shortcodeQuery = textBeforeCursor.match(/:(\w+)$/)?.[1]?.toLowerCase() ?? null;
   const shortcodeSuggestions = useMemo(() => {
-    if (!shortcodeQuery || shortcodeQuery === dismissedShortcode || pickerOpen) return [];
+    if (!showTwitchEmotes || !shortcodeQuery || shortcodeQuery === dismissedShortcode || pickerOpen)
+      return [];
     return Object.entries(emotes)
       .filter(([code]) => code.toLowerCase().startsWith(shortcodeQuery))
       .slice(0, 8);
-  }, [emotes, shortcodeQuery, dismissedShortcode, pickerOpen]);
+  }, [emotes, shortcodeQuery, dismissedShortcode, pickerOpen, showTwitchEmotes]);
 
-  // Reset selection index whenever the query changes (new character typed).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setSelectedSuggIdx(0); }, [shortcodeQuery]);
+
+  // ── "@mention" autocomplete ──────────────────────────────
+  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
+  const [selectedMentionIdx, setSelectedMentionIdx] = useState(0);
+
+  // Detect "@word" before the caret: boundary-guarded (start or whitespace) so it
+  // never fires mid-token (e.g. an email), and [\w-] so hyphenated Kick slugs
+  // match. Empty query (bare "@") is allowed — it lists recent chatters.
+  const mentionQuery = textBeforeCursor.match(/(?:^|\s)@([\w-]*)$/)?.[1] ?? null;
+  const mentionSuggestions = useMemo<MentionCandidate[]>(() => {
+    // Mutually exclusive with the emote popover (a caret can't be preceded by
+    // both a ":word" and an "@word" run), but guard defensively anyway.
+    if (mentionQuery == null || mentionQuery === dismissedMention || pickerOpen) return [];
+    if (shortcodeSuggestions.length > 0 || deliverable.length === 0) return [];
+    return getMentionCandidates(mentionQuery, deliverable, 6);
+  }, [mentionQuery, dismissedMention, pickerOpen, shortcodeSuggestions.length, deliverable, getMentionCandidates]);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setSelectedMentionIdx(0); }, [mentionQuery]);
+
+  // Clear input + reset transient state whenever the active channel changes, and
+  // keep selectionKeyRef current for the async restore-on-failure guard below.
   useEffect(() => {
-    setSelectedSuggIdx(0);
-  }, [shortcodeQuery]);
+    selectionKeyRef.current = selectionKey;
+    richInputRef.current?.clear();
+    clearError();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPickerOpen(false);
+    setDismissedShortcode(null);
+    setDismissedMention(null);
+  }, [selectionKey, clearError]);
 
   function acceptShortcode(code: string, url: string) {
     richInputRef.current?.acceptShortcode(code, url);
     setDismissedShortcode(null);
   }
 
+  function acceptMention(c: MentionCandidate) {
+    richInputRef.current?.insertMention(c.user);
+  }
+
   function handleComposerKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (shortcodeSuggestions.length === 0) return;
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      setSelectedSuggIdx((i) => (i + 1) % shortcodeSuggestions.length);
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      setSelectedSuggIdx((i) => (i - 1 + shortcodeSuggestions.length) % shortcodeSuggestions.length);
-    } else if (e.key === "Tab" || e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      const [code, url] = shortcodeSuggestions[selectedSuggIdx];
-      acceptShortcode(code, url);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setDismissedShortcode(shortcodeQuery);
+    if (shortcodeSuggestions.length > 0) {
+      const len = shortcodeSuggestions.length;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setSelectedSuggIdx((i) => (i + 1) % len);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setSelectedSuggIdx((i) => (i - 1 + len) % len);
+      } else if (e.key === "Tab" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const [code, url] = shortcodeSuggestions[selectedSuggIdx];
+        acceptShortcode(code, url);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setDismissedShortcode(shortcodeQuery);
+      }
+      return;
     }
-  }
-
-  // Twitch emotes (7TV/BTTV/FFZ/channel) are only relevant when Twitch is a send target.
-  // If only Kick is targeted, we have no Kick-specific emotes to offer.
-  const showTwitchEmotes = sendTargets.has("twitch");
-
-  // Only offer tabs for sources that actually have emotes for this channel.
-  const availableTabs: EmoteTab[] = useMemo(
-    () =>
-      showTwitchEmotes
-        ? ["all", ...categories.filter((c) => c.emotes.length > 0).map((c) => c.source)]
-        : [],
-    [categories, showTwitchEmotes]
-  );
-
-  type EmoteEntry = { code: string; url: string; locked?: boolean };
-  const filteredEmotes = useMemo((): EmoteEntry[] => {
-    if (!showTwitchEmotes) return [];
-    const q = emoteQuery.trim().toLowerCase();
-    const source: EmoteEntry[] =
-      activeTab === "all"
-        ? categories.flatMap((c) => c.emotes)
-        : (categories.find((c) => c.source === activeTab)?.emotes ?? []);
-    const matched = q ? source.filter((e) => e.code.toLowerCase().includes(q)) : source;
-    return matched.slice(0, 200);
-  }, [categories, activeTab, emoteQuery, showTwitchEmotes]);
-
-  function insertEmote(code: string, url: string, locked?: boolean) {
-    if (locked) return;
-    richInputRef.current?.insertEmote(code, url);
-  }
-
-  // The platforms you can actually send to for the active selection: Twitch when
-  // a channel is selected, Kick when one is linked. Independent of role — the
-  // channel you're viewing now spans both environments.
-  const SEND_PLATFORMS: { id: Platform; color: string }[] = [
-    { id: "twitch", color: "#A66CFF" },
-    { id: "kick", color: "#5BE37D" },
-  ];
-  const available: Platform[] = [];
-  if (activeChannel) available.push("twitch");
-  if (activeKick) available.push("kick");
-  // Glow toggles pick among the available platforms; default is all-on.
-  const deliverable = available.filter((p) => sendTargets.has(p));
-  // Armed targets whose channel is currently offline — the message would land in
-  // that platform's offline chat.
-  const offlineTargets = deliverable.filter((p) => liveByPlatform[p] === false);
-
-  async function sendOne(
-    platform: Platform,
-    message: string
-  ): Promise<{ ok: boolean; error?: string }> {
-    try {
-      if (platform === "twitch") {
-        if (!activeChannel) return { ok: false, error: "no_channel" };
-        const res = await fetch("/api/twitch/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channelId: activeChannel.id, message }),
-        });
-        const j = (await res.json().catch(() => ({ ok: false }))) as { ok?: boolean; error?: string };
-        return { ok: res.ok && !!j.ok, error: j.error };
+    if (mentionSuggestions.length > 0) {
+      const len = mentionSuggestions.length;
+      // Vertical list: ↑/↓ navigate; ←/→ stay free for editing the @partial.
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedMentionIdx((i) => (i + 1) % len);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedMentionIdx((i) => (i - 1 + len) % len);
+      } else if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        acceptMention(mentionSuggestions[selectedMentionIdx]);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setDismissedMention(mentionQuery);
       }
-      if (platform === "kick") {
-        if (!activeKick) return { ok: false, error: "no_channel" };
-        const res = await fetch("/api/kick/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug: activeKick.slug, message }),
-        });
-        const j = (await res.json().catch(() => ({ ok: false }))) as { ok?: boolean; error?: string };
-        return { ok: res.ok && !!j.ok, error: j.error };
-      }
-      return { ok: false, error: "not_connected" }; // YouTube not yet supported
-    } catch {
-      return { ok: false, error: "network" };
     }
   }
 
@@ -252,178 +154,58 @@ export default function Composer() {
     const message = text.trim();
     if (!message || sending || deliverable.length === 0) return;
 
-    setSending(true);
-    setError(null);
-    setErrorPlatform(null);
-    addSelfMessage(message, deliverable);
-    try {
-      const results = await Promise.all(
-        deliverable.map(async (t) => ({ platform: t, ...(await sendOne(t, message)) }))
-      );
+    // Optimistic: clear + keep focus the instant we send (the self-message is
+    // added to the feed at the same moment), rather than waiting on the network.
+    const keyAtSend = selectionKeyRef.current;
+    richInputRef.current?.clear();
+    richInputRef.current?.focus();
+    setPickerOpen(false);
 
-      const failed = results.find((r) => !r.ok);
-      if (failed) {
-        setError(friendly(failed.error));
-        setErrorPlatform(
-          failed.platform === "twitch" || failed.platform === "kick" ? failed.platform : null
-        );
-      } else {
-        richInputRef.current?.clear();
-        setPickerOpen(false);
-      }
-    } finally {
-      setSending(false);
+    const ok = await send(message, deliverable);
+    // Restore the text so it can be retried — but only if we're still on the same
+    // channel (a slow failure shouldn't dump old text into a channel we switched to).
+    if (!ok && selectionKeyRef.current === keyAtSend) {
+      richInputRef.current?.restore(message);
     }
   }
 
   const canSend = deliverable.length > 0 && !!text.trim() && !sending;
 
+  // Reactive follow link — shown only after a failed send proves the user isn't
+  // following. No proactive API checks; the failure is the only reliable signal.
+  const isFollowerError = error === FOLLOWER_ONLY_MESSAGE;
+  const reactiveFollowLink = isFollowerError
+    ? errorPlatform === "twitch"
+      ? `https://twitch.tv/${activeChannel?.login ?? ""}`
+      : errorPlatform === "kick"
+        ? `https://kick.com/${activeKick?.slug ?? ""}`
+        : null
+    : null;
+  const twitchFollowerMinutes =
+    platforms.find((p) => p.platform === "twitch")?.chatMode?.followerMinutes ?? 0;
+  const kickFollowerMinutes =
+    platforms.find((p) => p.platform === "kick")?.chatMode?.followerMinutes ?? 0;
+
   return (
     <Box flex="none" px={{ base: "12px", md: "24px" }} pt="16px" pb="22px">
       <Box position="relative">
-        {pickerOpen && (
-          <Box
-            position="absolute"
-            bottom="100%"
-            left="0"
-            right="0"
-            mb="8px"
-            maxH="280px"
-            bg="panel"
-            borderWidth="1px"
-            borderColor="line"
-            borderRadius="10px"
-            overflow="hidden"
-            display="flex"
-            flexDirection="column"
-            zIndex={5}
-          >
-            <Box p="8px" borderBottomWidth="1px" borderColor="line">
-              <Input
-                value={emoteQuery}
-                onChange={(e) => setEmoteQuery(e.target.value)}
-                placeholder="Search emotes…"
-                h="30px"
-                fontSize="12px"
-                bg="field"
-                borderColor="fieldLine"
-                borderRadius="8px"
-                color="text"
-                _placeholder={{ color: "faint" }}
-                _focusVisible={{ borderColor: "muted", boxShadow: "none" }}
-              />
-            </Box>
+        <EmotePicker
+          open={pickerOpen}
+          categories={categories}
+          onInsert={(code, url) => richInputRef.current?.insertEmote(code, url)}
+        />
 
-            {availableTabs.length > 1 && (
-              <Flex px="8px" py="6px" gap="4px" borderBottomWidth="1px" borderColor="line">
-                {availableTabs.map((tab) => (
-                  <chakra.button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    px="8px"
-                    py="3px"
-                    borderRadius="6px"
-                    fontSize="11px"
-                    fontWeight="600"
-                    bg={activeTab === tab ? "raised" : "transparent"}
-                    color={activeTab === tab ? "text" : "faint"}
-                    cursor="pointer"
-                    transition="background .12s, color .12s"
-                    _hover={{ color: "text" }}
-                  >
-                    {TAB_LABEL[tab]}
-                  </chakra.button>
-                ))}
-              </Flex>
-            )}
+        <EmoteAutocomplete
+          items={shortcodeSuggestions}
+          selectedIdx={selectedSuggIdx}
+          onPick={acceptShortcode}
+        />
 
-            <Flex p="8px" gap="2px" wrap="wrap" overflowY="auto" alignContent="flex-start">
-              {filteredEmotes.length === 0 ? (
-                <Text fontSize="12px" color="faint" p="8px">
-                  No emotes
-                </Text>
-              ) : (
-                filteredEmotes.map(({ code, url, locked }) => (
-                  <chakra.button
-                    key={code}
-                    type="button"
-                    onClick={() => insertEmote(code, url, locked)}
-                    title={locked ? `${code} (Subscribers only — cannot send)` : code}
-                    p="4px"
-                    borderRadius="6px"
-                    cursor={locked ? "not-allowed" : "pointer"}
-                    opacity={locked ? 0.45 : 1}
-                    transition="background .1s, opacity .1s"
-                    _hover={{ bg: locked ? "transparent" : "raised" }}
-                    position="relative"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt={code} style={{ display: "block", height: 26 }} />
-                    {locked && <LockBadge />}
-                  </chakra.button>
-                ))
-              )}
-            </Flex>
-          </Box>
-        )}
-
-        {shortcodeSuggestions.length > 0 && (
-          <Box
-            position="absolute"
-            bottom="100%"
-            left="0"
-            mb="8px"
-            bg="panel"
-            borderWidth="1px"
-            borderColor="line"
-            borderRadius="10px"
-            zIndex={5}
-            maxW="100%"
-            overflow="hidden"
-          >
-            <Flex px="8px" pt="5px" pb="1px" justify="space-between" align="center">
-              <Text fontSize="9px" fontFamily="mono" letterSpacing="0.1em" color="faint">
-                EMOTES
-              </Text>
-              <Text fontSize="9px" color="faint">
-                ←→ navigate · Enter insert · Esc close
-              </Text>
-            </Flex>
-            <Flex p="6px" gap="4px" overflowX="auto">
-            {shortcodeSuggestions.map(([code, url], idx) => {
-              const selected = idx === selectedSuggIdx;
-              return (
-                <chakra.button
-                  key={code}
-                  type="button"
-                  onClick={() => acceptShortcode(code, url)}
-                  title={code}
-                  display="flex"
-                  flexDirection="column"
-                  alignItems="center"
-                  gap="2px"
-                  p="4px"
-                  borderRadius="6px"
-                  cursor="pointer"
-                  flex="none"
-                  bg={selected ? "raised" : "transparent"}
-                  outline={selected ? "1px solid" : "none"}
-                  outlineColor={selected ? "#A66CFF66" : "transparent"}
-                  transition="background .1s"
-                  _hover={{ bg: "raised" }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt={code} style={{ display: "block", height: 22 }} />
-                  <Text fontSize="9px" color={selected ? "text" : "faint"} maxW="56px" truncate>
-                    {code}
-                  </Text>
-                </chakra.button>
-              );
-            })}
-            </Flex>
-          </Box>
-        )}
+        <MentionAutocomplete
+          items={mentionSuggestions}
+          selectedIdx={selectedMentionIdx}
+          onPick={acceptMention}
+        />
 
         <Flex
           as="form"
@@ -442,7 +224,6 @@ export default function Composer() {
             ref={richInputRef}
             emotes={emotes}
             placeholder={channelName ? `Message ${channelName}…` : "Select a channel to chat"}
-            disabled={sending}
             onChange={setText}
             onBeforeCursor={setTextBeforeCursor}
             onKeyDown={handleComposerKeyDown}
@@ -500,77 +281,15 @@ export default function Composer() {
           </chakra.button>
         </Flex>
       </Box>
+
       <Flex mt="10px" align="center" gap="12px" wrap="wrap" rowGap="6px">
+        <SendTargets
+          available={available}
+          sendTargets={sendTargets}
+          toggleSendTarget={toggleSendTarget}
+          liveByPlatform={liveByPlatform}
+        />
 
-
-        <Flex align="center" gap="8px">
-          {/* Pure send targets — each chip arms/disarms a platform your message
-              is delivered to. Reading is controlled separately, up at the feed. */}
-          <Text fontFamily="mono" fontSize="10px" letterSpacing="0.06em" color="faint" flex="none">
-            SEND TO
-          </Text>
-          {SEND_PLATFORMS.filter(({ id }) => available.includes(id)).map(({ id, color }) => {
-            const armed = sendTargets.has(id);
-            const offline = liveByPlatform[id] === false;
-            const label = PLATFORM_LABEL[id];
-            const title = !armed
-              ? `Click to send your messages to ${label}`
-              : offline
-                ? `${label} is offline — your message posts to its offline chat`
-                : `Sending to ${label} — click to stop`;
-            return (
-              <chakra.button
-                key={id}
-                type="button"
-                onClick={() => toggleSendTarget(id)}
-                title={title}
-                aria-pressed={armed}
-                position="relative"
-                display="inline-flex"
-                alignItems="center"
-                gap="6px"
-                flex="none"
-                px="9px"
-                py="4px"
-                borderRadius="full"
-                borderWidth="1px"
-                borderColor={armed ? `${color}66` : "fieldLine"}
-                bg={armed ? `${color}1A` : "transparent"}
-                color={armed ? "text" : "faint"}
-                opacity={armed ? 1 : 0.7}
-                cursor="pointer"
-                transition="background .12s, border-color .12s, opacity .12s, filter .12s"
-                style={{ filter: armed && !offline ? `drop-shadow(0 0 4px ${color}55)` : "none" }}
-                _hover={{ opacity: 1, borderColor: `${color}66` }}
-              >
-                <PlatformIcon platform={id} color={color} size={14} />
-                <Text fontSize="11px" fontWeight="600">
-                  {label}
-                </Text>
-                {armed && offline && (
-                  <Box
-                    position="absolute"
-                    top="-3px"
-                    right="-3px"
-                    w="7px"
-                    h="7px"
-                    borderRadius="full"
-                    bg="#F5A623"
-                    borderWidth="1.5px"
-                    borderColor="bg"
-                    pointerEvents="none"
-                    style={{ animation: "pris-pulse 1.2s ease-in-out infinite" }}
-                  />
-                )}
-              </chakra.button>
-            );
-          })}
-          {available.length === 0 && (
-            <Text fontSize="11px" color="faint" opacity={0.7}>
-              Select a channel
-            </Text>
-          )}
-        </Flex>
         {offlineTargets.length > 0 ? (
           <Flex align="center" gap="6px" title="Both Twitch and Kick allow chatting while a channel is offline.">
             <Box w="6px" h="6px" borderRadius="full" bg="#F5A623" flex="none" />
@@ -588,12 +307,7 @@ export default function Composer() {
 
         {error ? (
           <Flex align="center" gap="8px" ml="auto">
-            <Text
-              fontFamily="mono"
-              fontSize="10px"
-              letterSpacing="0.04em"
-              color="#FF5C5C"
-            >
+            <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="#FF5C5C">
               {error}
             </Text>
             {reactiveFollowLink && (
@@ -623,13 +337,7 @@ export default function Composer() {
             )}
           </Flex>
         ) : (
-          <Text
-            ml="auto"
-            fontFamily="mono"
-            fontSize="10px"
-            letterSpacing="0.04em"
-            color="faint"
-          >
+          <Text ml="auto" fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="faint">
             {channelName ? `Chatting in ${channelName}` : "Select a channel to start chatting."}
           </Text>
         )}

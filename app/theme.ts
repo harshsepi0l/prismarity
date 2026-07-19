@@ -41,6 +41,15 @@ const config = defineConfig({
         "0%": { opacity: 0.6, transform: "scale(1)" },
         "100%": { opacity: 0, transform: "scale(2.8)" },
       },
+      // Beacon signal art — the classic Wi-Fi "connecting" sweep. The centre dot
+      // lights first, then the inner arc, then the outer arc (bottom-to-top),
+      // all hold briefly, then reset together at 100% so it loops cleanly.
+      "signal-wifi-1": { "0%": { opacity: 0.25 }, "16%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
+      "signal-wifi-2": { "0%, 16%": { opacity: 0.25 }, "38%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
+      "signal-wifi-3": { "0%, 38%": { opacity: 0.25 }, "58%, 80%": { opacity: 1 }, "100%": { opacity: 0.25 } },
+      // Logo electrons travel their orbit path (offset-distance 0→100%); paired
+      // with a steps() timing they snap pixel-to-pixel along the sprite grid.
+      "pel-orbit": { from: { offsetDistance: "0%" }, to: { offsetDistance: "100%" } },
     },
     tokens: {
       colors: {
@@ -62,8 +71,8 @@ const config = defineConfig({
         kick:    { value: "#5BE37D" },
       },
       fonts: {
-        heading: { value: "var(--font-space-grotesk), sans-serif" },
-        body:    { value: "var(--font-ibm-plex-sans), sans-serif" },
+        heading: { value: "var(--font-inter), sans-serif" },
+        body:    { value: "var(--font-inter), sans-serif" },
         mono:    { value: "var(--font-ibm-plex-mono), monospace" },
       },
     },
