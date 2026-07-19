@@ -68,13 +68,16 @@ function ActiveChannelPill() {
     );
   }
 
-  // Stats rows exist per platform feed the selection spans.
-  const live = platforms.filter((p) => p.isLive);
+  // Stats rows exist per platform feed the selection spans. YouTube is the
+  // connected account's OWN channel (not part of the tuned Twitch/Kick
+  // selection), so it's excluded from the pill.
+  const tuned = platforms.filter((p) => p.platform !== "youtube");
+  const live = tuned.filter((p) => p.isLive);
   const isLive = live.length > 0;
   const name =
-    activeChannel?.displayName ?? platforms[0]?.channelName ?? activeKickOnly!;
+    activeChannel?.displayName ?? tuned[0]?.channelName ?? activeKickOnly!;
   const avatar =
-    (isLive ? live : platforms).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
+    (isLive ? live : tuned).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
   const viewers = live.reduce((sum, p) => sum + p.viewers, 0);
 
   // Per-platform presence + live state. The icon lights up in the platform's

@@ -1,5 +1,5 @@
-// Shared auth types. Multi-platform from the start; only Twitch is implemented
-// in this phase. TODO: implement YouTube and Kick connections.
+// Shared auth types. Multi-platform: Twitch, Kick and YouTube are all
+// implemented (YouTube read-only — live status + subscriber count, no chat yet).
 export type Platform = "twitch" | "youtube" | "kick";
 
 // Role is PER CHANNEL and DERIVED server-side — never chosen by the client.

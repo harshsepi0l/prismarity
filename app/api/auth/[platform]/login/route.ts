@@ -10,14 +10,16 @@ export async function GET(
   { params }: { params: Promise<{ platform: string }> }
 ) {
   const { platform } = await params;
-  if (platform !== "twitch" && platform !== "kick") {
+  if (platform !== "twitch" && platform !== "kick" && platform !== "youtube") {
     return NextResponse.json({ error: "invalid_platform" }, { status: 400 });
   }
 
   const lib =
     platform === "twitch"
       ? await import("@/lib/auth/twitch")
-      : await import("@/lib/auth/kick");
+      : platform === "kick"
+        ? await import("@/lib/auth/kick")
+        : await import("@/lib/auth/youtube");
 
   const popup = new URL(req.url).searchParams.get("popup") === "1";
   const state = randomBytes(16).toString("hex");

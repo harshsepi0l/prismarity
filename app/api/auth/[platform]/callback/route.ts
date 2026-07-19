@@ -16,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ platform: string }> }
 ) {
   const { platform } = await params;
-  if (platform !== "twitch" && platform !== "kick") {
+  if (platform !== "twitch" && platform !== "kick" && platform !== "youtube") {
     return NextResponse.json({ error: "invalid_platform" }, { status: 400 });
   }
 
@@ -34,7 +34,8 @@ export async function GET(
   // Narrow to the right lib so TypeScript sees concrete TokenResponse types in each branch.
   const twitchLib = platform === "twitch" ? await import("@/lib/auth/twitch") : null;
   const kickLib = platform === "kick" ? await import("@/lib/auth/kick") : null;
-  const lib = (twitchLib ?? kickLib)!;
+  const youtubeLib = platform === "youtube" ? await import("@/lib/auth/youtube") : null;
+  const lib = (twitchLib ?? kickLib ?? youtubeLib)!;
 
   const cookieState = req.cookies.get(lib.STATE_COOKIE)?.value;
   const verifier = req.cookies.get(lib.VERIFIER_COOKIE)?.value;
@@ -69,10 +70,14 @@ export async function GET(
       const token = await twitchLib.exchangeCode(code, verifier);
       const identity = await twitchLib.fetchIdentity(token.access_token);
       connection = twitchLib.toConnection(token, identity);
+    } else if (kickLib) {
+      const token = await kickLib.exchangeCode(code, verifier);
+      const identity = await kickLib.fetchIdentity(token.access_token);
+      connection = kickLib.toConnection(token, identity);
     } else {
-      const token = await kickLib!.exchangeCode(code, verifier);
-      const identity = await kickLib!.fetchIdentity(token.access_token);
-      connection = kickLib!.toConnection(token, identity);
+      const token = await youtubeLib!.exchangeCode(code, verifier);
+      const identity = await youtubeLib!.fetchIdentity(token.access_token);
+      connection = youtubeLib!.toConnection(token, identity);
     }
     const user = await attachConnection(connection);
     const dest = isPopup

@@ -172,9 +172,12 @@ export function ChannelAbout({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; };
   }, [twitchLogin]);
 
-  const live = platforms.filter((p) => p.isLive);
-  const name = activeChannel?.displayName ?? platforms[0]?.channelName ?? activeKickOnly ?? "";
-  const avatar = (live[0] ?? platforms[0])?.profileImageUrl ?? null;
+  // YouTube is the connected account's own channel, not part of the tuned
+  // Twitch/Kick selection this card describes — exclude it here.
+  const tuned = platforms.filter((p) => p.platform !== "youtube");
+  const live = tuned.filter((p) => p.isLive);
+  const name = activeChannel?.displayName ?? tuned[0]?.channelName ?? activeKickOnly ?? "";
+  const avatar = (live[0] ?? tuned[0])?.profileImageUrl ?? null;
 
   const kickSlug = activeKick?.slug ?? activeKickOnly ?? null;
   const hrefFor = (p: PlatformLive): string | null =>
@@ -279,7 +282,7 @@ export function ChannelAbout({ onClose }: { onClose: () => void }) {
 
         {/* Per-platform stats */}
         <Flex direction="column" gap="9px">
-          {platforms.map((p) => (
+          {tuned.map((p) => (
             <PlatformSection key={p.platform} p={p} href={hrefFor(p)} />
           ))}
         </Flex>
