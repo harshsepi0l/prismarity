@@ -85,6 +85,9 @@ function ActiveChannelPill() {
   // is dimmed so it never implies a stream that isn't happening.
   const twitchP = platforms.find((p) => p.platform === "twitch");
   const kickP = platforms.find((p) => p.platform === "kick");
+  // YouTube is your OWN connected channel (there's no watch-any-channel flow);
+  // its icon shows alongside the tuned channel, lit only when you're live there.
+  const youtubeP = platforms.find((p) => p.platform === "youtube");
   const twitchLogin = activeChannel?.login ?? null;
   const kickSlug = activeKick?.slug ?? activeKickOnly ?? null;
 
@@ -147,6 +150,19 @@ function ActiveChannelPill() {
             _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
           >
             <PlatformIcon platform="kick" color={kickP.isLive ? PLATFORM_COLOR.kick : "#3a4152"} size={12} />
+          </chakra.a>
+        )}
+        {youtubeP && (
+          <chakra.a
+            href={youtubeP.channelId ? `https://www.youtube.com/channel/${youtubeP.channelId}` : undefined}
+            target="_blank" rel="noreferrer"
+            title={`Your YouTube channel${youtubeP.isLive ? " (live)" : " (offline)"}`}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            display="inline-flex" flex="none"
+            transition="opacity .12s"
+            _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
+          >
+            <PlatformIcon platform="youtube" color={youtubeP.isLive ? PLATFORM_COLOR.youtube : "#3a4152"} size={12} />
           </chakra.a>
         )}
       </Flex>
@@ -305,14 +321,12 @@ function Electron({
   steps,
   durSec,
   delaySec,
-  on,
 }: {
   color: string;
   rot: number;
   steps: number;
   durSec: number;
   delaySec: number;
-  on: boolean;
 }) {
   const stepDur = durSec / steps;
   return (
@@ -330,7 +344,7 @@ function Electron({
             height={s * PX}
             fill={color}
             shapeRendering="crispEdges"
-            opacity={on ? 1 - k * 0.15 : 0.13}
+            opacity={1 - k * 0.15}
             style={{
               offsetPath: `path('${ORBIT_PATH}')`,
               offsetRotate: "0deg",
@@ -339,7 +353,6 @@ function Electron({
               animationTimingFunction: `steps(${steps}, end)`,
               animationIterationCount: "infinite",
               animationDelay: `${(delaySec - k * stepDur).toFixed(3)}s`,
-              animationPlayState: on ? "running" : "paused",
               filter: head ? `drop-shadow(0 0 2px ${color})` : undefined,
             }}
           />
@@ -349,11 +362,11 @@ function Electron({
   );
 }
 
-// Profile button — the Prismarity mark: a pixel-art "P" with two electrons
-// (Twitch "\", Kick "/", YouTube vertical) orbiting it on stepped pixel rings,
-// each trailing a short comet. An electron dims + pauses when its platform isn't
-// connected; the YouTube orbit only appears once YouTube OAuth is connected.
-// Opens settings on click.
+// Profile button — the Prismarity mark: a bold pixel-art "P" nucleus with a
+// colored comet (Twitch "\", Kick "/", YouTube vertical) orbiting it for each
+// CONNECTED platform. No faint/grey rings — scattered low-opacity pixels read as
+// noise and hurt readability at this size; a platform that isn't connected
+// simply shows nothing. Opens settings on click.
 function ProfileButton({
   onClick,
   connected,
@@ -387,21 +400,13 @@ function ProfileButton({
       }}
     >
       <svg width="30" height="30" viewBox="24 24 72 72" fill="none" aria-hidden style={{ overflow: "visible" }}>
-        {/* faint stepped pixel rings, behind the letter (YouTube hidden until connected) */}
-        {ORBITS.map((o) =>
-          o.platform === "youtube" && !connected.youtube
-            ? null
-            : o.ring.map(([x, y], i) => (
-                <rect key={`r-${o.platform}-${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#7C889E" opacity={0.22} shapeRendering="crispEdges" />
-              ))
-        )}
-        {/* the pixel P nucleus */}
+        {/* the bold pixel P nucleus — the whole mark when nothing is connected */}
         {P_PIXELS.map(([x, y], i) => (
           <rect key={`p${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#E9ECF7" shapeRendering="crispEdges" />
         ))}
-        {/* the orbiting particles, on top so they always read */}
+        {/* one colored comet per CONNECTED platform — nothing shown otherwise */}
         {ORBITS.map((o) =>
-          o.platform === "youtube" && !connected.youtube ? null : (
+          !connected[o.platform] ? null : (
             <Electron
               key={`e-${o.platform}`}
               color={o.color}
@@ -409,7 +414,6 @@ function ProfileButton({
               steps={o.steps}
               durSec={5}
               delaySec={o.delaySec}
-              on={connected[o.platform]}
             />
           )
         )}
