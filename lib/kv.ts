@@ -6,10 +6,22 @@
 // No-ops safely when UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN aren't set
 // — local dev and any deploy that doesn't use the beacon run fine without a KV;
 // the beacon just stays inert (see lib/beacon.ts).
-// Accept either the Upstash-native names or Vercel's KV integration names —
-// whichever the installed integration injected.
-const REST_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-const REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+// Find an env var by SUFFIX — the Vercel/Upstash integration may prefix the
+// standard names (e.g. UPSTASH_REDIS_REST_KV_REST_API_URL), so match on the tail
+// rather than the exact key. Suffixes are tried in order of preference.
+function envBySuffix(...suffixes: string[]): string | undefined {
+  const entries = Object.entries(process.env);
+  for (const suffix of suffixes) {
+    const hit = entries.find(([k, v]) => !!v && k.endsWith(suffix));
+    if (hit) return hit[1];
+  }
+  return undefined;
+}
+
+// Needs the REST endpoint + a read-WRITE token (the beacon writes state). The
+// read-only token (…READ_ONLY_TOKEN) is deliberately not matched by the suffixes.
+const REST_URL = envBySuffix("UPSTASH_REDIS_REST_URL", "KV_REST_API_URL");
+const REST_TOKEN = envBySuffix("UPSTASH_REDIS_REST_TOKEN", "KV_REST_API_TOKEN");
 
 export const kvEnabled = !!(REST_URL && REST_TOKEN);
 
