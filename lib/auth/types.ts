@@ -19,13 +19,10 @@ export interface Connection {
   expiresIn: number; // seconds until the access token expires
 }
 
-// One Prismarity user -> many connected platform accounts.
+// One Prismarity user -> many connected platform accounts. The whole record is
+// serialised into the encrypted session cookie (see lib/auth/session.ts).
 export interface User {
   id: string;
   createdAt: number;
   connections: Connection[];
-  // Random per-user secret backing the beacon pairing token. Regenerated on
-  // rotation, which invalidates any extension still holding the old token.
-  // Created lazily the first time the pairing key is viewed.
-  beaconSecret?: string;
 }

@@ -1,140 +1,60 @@
-import { promises as fs } from "fs";
-import path from "path";
-import { randomUUID, randomBytes } from "crypto";
+import { randomUUID } from "crypto";
 import type { Connection, Platform, User } from "./types";
+import { getCurrentUser, persistSession } from "./session";
 
-// Simple server-side persistence for now: a JSON file under .data/ (gitignored).
-// TODO: replace with a real database. This naive read-modify-write is fine for
-// single-instance local dev but is not safe under concurrency or at scale.
-const DATA_DIR = path.join(process.cwd(), ".data");
-const FILE = path.join(DATA_DIR, "auth.json");
+// STATELESS store: there is no server-side database. "The user" is whatever the
+// current request's session cookie decodes to (see session.ts) — every mutation
+// reads that user, changes it, and either writes it straight back to the cookie
+// (persistSession) or returns it for the route handler to set on its response.
+//
+// Consequence: this is single-user-per-browser. Connections merged by
+// (platform, platformUserId); re-login on the same platform replaces its entry,
+// a new platform is added to the same session user.
 
-interface DB {
-  users: Record<string, User>;
-}
-
-async function read(): Promise<DB> {
-  try {
-    return JSON.parse(await fs.readFile(FILE, "utf8")) as DB;
-  } catch {
-    return { users: {} };
-  }
-}
-
-async function write(db: DB): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(db, null, 2), "utf8");
-}
-
-export async function getUserById(id: string): Promise<User | null> {
-  const db = await read();
-  return db.users[id] ?? null;
-}
-
-// Returns the user's current beacon secret without minting one. Used by token
-// verification — a missing user or unset secret means no valid token exists.
-export async function getBeaconSecret(userId: string): Promise<string | null> {
-  const db = await read();
-  return db.users[userId]?.beaconSecret ?? null;
-}
-
-// Returns the user's beacon secret, minting one on first use. Returns null if
-// the user doesn't exist.
-export async function ensureBeaconSecret(userId: string): Promise<string | null> {
-  const db = await read();
-  const user = db.users[userId];
-  if (!user) return null;
-  if (!user.beaconSecret) {
-    user.beaconSecret = randomBytes(24).toString("base64url");
-    await write(db);
-  }
-  return user.beaconSecret;
-}
-
-// Rotates the user's beacon secret, invalidating any previously issued token.
-// Returns the new secret, or null if the user doesn't exist.
-export async function rotateBeaconSecret(userId: string): Promise<string | null> {
-  const db = await read();
-  const user = db.users[userId];
-  if (!user) return null;
-  user.beaconSecret = randomBytes(24).toString("base64url");
-  await write(db);
-  return user.beaconSecret;
-}
-
-// Upsert a connection, keyed by (platform, platformUserId). Reuses the existing
-// Prismarity user that owns that connection, otherwise creates a new one.
-export async function upsertConnection(conn: Connection): Promise<User> {
-  const db = await read();
-
-  let user = Object.values(db.users).find((u) =>
-    u.connections.some(
-      (c) => c.platform === conn.platform && c.platformUserId === conn.platformUserId
-    )
-  );
-
-  if (!user) {
-    user = { id: randomUUID(), createdAt: Date.now(), connections: [] };
-    db.users[user.id] = user;
-  }
-
+function mergeConnection(user: User, conn: Connection): User {
   const idx = user.connections.findIndex(
     (c) => c.platform === conn.platform && c.platformUserId === conn.platformUserId
   );
-  if (idx >= 0) user.connections[idx] = conn;
-  else user.connections.push(conn);
+  const connections = [...user.connections];
+  if (idx >= 0) connections[idx] = conn;
+  else connections.push(conn);
+  return { ...user, connections };
+}
 
-  await write(db);
+function newUser(): User {
+  return { id: randomUUID(), createdAt: Date.now(), connections: [] };
+}
+
+// Merge a connection into the current session user (or start a fresh user).
+// Does NOT write the cookie — the OAuth callback sets it on its redirect
+// response. The session cookie is the source of truth for "current user".
+export async function attachConnection(conn: Connection): Promise<User> {
+  const current = await getCurrentUser();
+  return mergeConnection(current ?? newUser(), conn);
+}
+
+// Same merge, but persists to the cookie directly — used by the token-refresh
+// path (getValidAccessToken), which runs deep inside a Route Handler with no
+// response object of its own to set the cookie on.
+export async function upsertConnection(conn: Connection): Promise<User> {
+  const current = await getCurrentUser();
+  const user = mergeConnection(current ?? newUser(), conn);
+  await persistSession(user);
   return user;
 }
 
-// Remove a single platform connection from a user. Returns the updated user,
-// or null if the user doesn't exist. Does NOT delete the user record even if
-// all connections are removed — the caller decides whether to clear the session.
+// Remove a platform connection from the current session user. Returns the updated
+// user (or null if not logged in). Does NOT write the cookie — the disconnect
+// route sets/deletes it on its response.
 export async function removeConnection(
-  userId: string,
+  _userId: string,
   platform: Platform
 ): Promise<User | null> {
-  const db = await read();
-  const user = db.users[userId];
+  const user = await getCurrentUser();
   if (!user) return null;
-  user.connections = user.connections.filter((c) => c.platform !== platform);
-  await write(db);
-  return user;
+  return { ...user, connections: user.connections.filter((c) => c.platform !== platform) };
 }
 
-// Attach a connection, preferring (in order): the user who already owns this
-// exact connection, then the current session user (so a second platform links
-// to the same Prismarity account), then a brand-new user.
-// TODO: if the connection is owned by user A but the session is user B, this
-// keeps it on A — fine for single-user local dev; revisit when merging accounts.
-export async function attachConnection(
-  conn: Connection,
-  currentUserId?: string | null
-): Promise<User> {
-  const db = await read();
-
-  let owner = Object.values(db.users).find((u) =>
-    u.connections.some(
-      (c) => c.platform === conn.platform && c.platformUserId === conn.platformUserId
-    )
-  );
-
-  if (!owner && currentUserId && db.users[currentUserId]) {
-    owner = db.users[currentUserId];
-  }
-
-  if (!owner) {
-    owner = { id: randomUUID(), createdAt: Date.now(), connections: [] };
-    db.users[owner.id] = owner;
-  }
-
-  const idx = owner.connections.findIndex(
-    (c) => c.platform === conn.platform && c.platformUserId === conn.platformUserId
-  );
-  if (idx >= 0) owner.connections[idx] = conn;
-  else owner.connections.push(conn);
-
-  await write(db);
-  return owner;
-}
+// (Beacon pairing secret now lives in the KV, keyed by user id — see lib/beacon.ts.
+// It can't live in the cookie: the extension that verifies against it sends no
+// session cookie.)

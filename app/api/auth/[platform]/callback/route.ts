@@ -3,9 +3,8 @@ import { attachConnection } from "@/lib/auth/store";
 import { getBaseUrl } from "@/lib/settings/store";
 import {
   SESSION_COOKIE,
-  sessionCookieValue,
+  encodeSession,
   sessionCookieOptions,
-  getCurrentUser,
 } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -65,8 +64,6 @@ export async function GET(
   if (!code) return fail("no_code");
 
   try {
-    const current = await getCurrentUser();
-
     let connection;
     if (twitchLib) {
       const token = await twitchLib.exchangeCode(code, verifier);
@@ -77,13 +74,13 @@ export async function GET(
       const identity = await kickLib!.fetchIdentity(token.access_token);
       connection = kickLib!.toConnection(token, identity);
     }
-    const user = await attachConnection(connection, current?.id);
+    const user = await attachConnection(connection);
     const dest = isPopup
       ? new URL("/auth/success", base)
       : new URL("/chat", base);
     const res = NextResponse.redirect(dest);
     clearAuthCookies(res);
-    res.cookies.set(SESSION_COOKIE, sessionCookieValue(user.id), sessionCookieOptions);
+    res.cookies.set(SESSION_COOKIE, encodeSession(user), sessionCookieOptions);
     return res;
   } catch (e) {
     console.error(
