@@ -365,7 +365,7 @@ export default function SidePanel({ mode }: SidePanelProps) {
         <Flex direction="column" gap="8px">
           {stats.platforms.map((p) => (
             <PlatformRow
-              key={p.platform}
+              key={p.channelId ? `${p.platform}:${p.channelId}` : p.platform}
               p={p}
               showSubs={showSubs}
               cheerLeaders={stats.cheerLeaders}

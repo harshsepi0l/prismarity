@@ -17,11 +17,14 @@ export default async function DashboardLayout({
   const user = await getCurrentUser();
   const twitch = user?.connections.find((c) => c.platform === "twitch");
   const kick = user?.connections.find((c) => c.platform === "kick");
-  const youtube = user?.connections.find((c) => c.platform === "youtube");
+  // YouTube can have several connected channels (one OAuth grant each).
+  const youtube = (user?.connections ?? [])
+    .filter((c) => c.platform === "youtube")
+    .map((c) => ({ channelId: c.platformUserId, displayName: c.displayName }));
   const auth = {
     twitch: twitch ? { displayName: twitch.displayName } : null,
     kick: kick ? { displayName: kick.displayName } : null,
-    youtube: youtube ? { displayName: youtube.displayName } : null,
+    youtube,
   };
   const connectedPlatforms = user?.connections.map((c) => c.platform) ?? [];
 
