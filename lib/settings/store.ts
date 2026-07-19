@@ -25,20 +25,34 @@ export function normalizeBaseUrl(base: string): string {
 }
 
 // The public origin used to build OAuth redirect URLs. Resolution order:
-//   1. NEXT_PUBLIC_BASE_URL — explicit, for custom domains. NOTE: NEXT_PUBLIC_*
-//      is INLINED AT BUILD TIME, so it only takes effect if it was set when
-//      Vercel built (and a cache-reusing redeploy won't re-bake it).
-//   2. VERCEL_PROJECT_PRODUCTION_URL — Vercel injects this at RUNTIME (the stable
-//      production domain, no scheme), so the deploy "just works" on *.vercel.app
-//      without setting anything, and it's immune to the build-time-inlining trap.
-//   3. localhost, for local dev.
-// Never derive this from req.url: behind a proxy that carries the internal
-// host:port, which would leak into Location headers.
-function resolveBaseUrl(): string {
+//   1. NEXT_PUBLIC_BASE_URL, if it's a real (non-localhost) value — for custom
+//      domains you want to pin. (It's inlined at build; a localhost value is
+//      ignored so a stray/leftover setting can't drag us back to localhost.)
+//   2. The HOST THE USER ACTUALLY HIT — x-forwarded-host / host from the request
+//      (Vercel sets these to the real public domain). This is what makes the
+//      OAuth redirect_uri always match the domain the login started on, with
+//      zero env config, across previews + custom domains. Safe because OAuth
+//      only allows redirect_uris registered on the app anyway.
+//   3. VERCEL_PROJECT_PRODUCTION_URL (Vercel runtime), then localhost.
+async function resolveBaseUrl(): Promise<string> {
   const explicit = process.env.NEXT_PUBLIC_BASE_URL;
+  if (explicit && !explicit.includes("localhost")) return normalizeBaseUrl(explicit);
+
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const host = h.get("x-forwarded-host") || h.get("host");
+    if (host) {
+      const proto = h.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
+      return normalizeBaseUrl(`${proto}://${host}`);
+    }
+  } catch {
+    /* not inside a request (e.g. build) — fall through */
+  }
+
   const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
-  const raw = explicit || (vercel ? `https://${vercel}` : "") || "http://localhost:3000";
-  return normalizeBaseUrl(raw);
+  if (vercel) return normalizeBaseUrl(`https://${vercel}`);
+  return "http://localhost:3000";
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -47,7 +61,7 @@ export async function getSettings(): Promise<Settings> {
     twitchClientSecretEnc: "",
     kickClientId: process.env.KICK_CLIENT_ID ?? "",
     kickClientSecretEnc: "",
-    baseUrl: resolveBaseUrl(),
+    baseUrl: await resolveBaseUrl(),
   };
 }
 

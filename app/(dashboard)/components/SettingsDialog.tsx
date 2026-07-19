@@ -221,7 +221,13 @@ export function SettingsDialog({ auth, onClose }: Props) {
       "prismarity_auth",
       "width=520,height=680,menubar=no,toolbar=no,location=no,status=no"
     );
-    if (!popup) return;
+    // Popup blocked (returns null, or a closed/undefined window) — fall back to a
+    // full-page redirect so the button always does *something* instead of looking
+    // dead. This flow returns to /chat instead of the popup's /auth/success.
+    if (!popup || popup.closed || typeof popup.closed === "undefined") {
+      window.location.href = `/api/auth/${platform}/login`;
+      return;
+    }
     const handler = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
       if (e.data?.type === "prismarity_auth_success" || e.data?.type === "prismarity_auth_error") {
