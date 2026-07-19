@@ -21,7 +21,7 @@ export async function OPTIONS() {
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({}, { status: 401 });
-  return NextResponse.json(getBeacon(user.id) ?? {});
+  return NextResponse.json((await getBeacon(user.id)) ?? {});
 }
 
 export async function POST(req: NextRequest) {
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     typeof body.channel === "string" &&
     body.channel.length > 0
   ) {
-    setBeacon(userId, { platform: body.platform, channel: body.channel.toLowerCase(), ts: Date.now() });
+    await setBeacon(userId, { platform: body.platform, channel: body.channel.toLowerCase(), ts: Date.now() });
   }
   return NextResponse.json({ ok: true }, { headers: WRITE_CORS });
 }
