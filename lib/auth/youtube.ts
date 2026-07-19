@@ -56,8 +56,11 @@ export async function getAuthorizeUrl(state: string, challenge: string): Promise
     code_challenge_method: "S256",
     // access_type=offline + prompt=consent → Google returns a refresh_token
     // (only granted on an explicit consent, not on silent re-auth).
+    // select_account forces the account/channel chooser every time, so a user
+    // with multiple YouTube channels (Brand Accounts) can connect each one as a
+    // separate grant — one token only ever maps to one channel (mine=true).
     access_type: "offline",
-    prompt: "consent",
+    prompt: "select_account consent",
     include_granted_scopes: "true",
   });
   return `${AUTHORIZE_URL}?${params.toString()}`;

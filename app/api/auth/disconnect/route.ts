@@ -28,7 +28,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_platform" }, { status: 400 });
   }
 
-  const updated = await removeConnection(user.id, platform as Platform);
+  // Optional: remove a single connection (YouTube can have several channels).
+  const rawChannelId = (body as Record<string, unknown>).channelId;
+  const channelId = typeof rawChannelId === "string" ? rawChannelId : undefined;
+
+  const updated = await removeConnection(user.id, platform as Platform, channelId);
   const loggedOut = !updated || updated.connections.length === 0;
   const res = NextResponse.json({ ok: true, loggedOut });
 

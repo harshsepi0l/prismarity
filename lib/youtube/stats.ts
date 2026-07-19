@@ -1,28 +1,27 @@
-import type { User } from "@/lib/auth/types";
-import { getValidYouTubeToken, youtubeConnection, YOUTUBE_API } from "./client";
+import type { Connection, User } from "@/lib/auth/types";
+import { getValidYouTubeTokenFor, youtubeConnections, YOUTUBE_API } from "./client";
 
 // Only the two features we support so far: is the channel live, and how many
 // subscribers it has. `subscribers` is deliberately surfaced as the follow-
 // equivalent (mapped into PlatformLive.followers) — YouTube "subscribers" are
 // the free follow relationship, not paid subs.
 export interface YouTubeStats {
+  // The channel this row belongs to — a user may have several connected.
+  channelId: string;
   channelName: string;
   profileImageUrl: string | null;
   isLive: boolean;
   subscribers: number | null;
 }
 
-// Stats for the logged-in user's OWN YouTube channel. There's no "watch an
-// arbitrary channel" flow for YouTube (no chat yet), so this is always the
-// connected account's own channel.
-export async function getYouTubeOwnStats(user: User): Promise<YouTubeStats | null> {
-  const conn = youtubeConnection(user);
-  if (!conn) return null;
-  const token = await getValidYouTubeToken(user);
+// Stats for ONE connected YouTube channel, using that connection's own token.
+export async function getYouTubeChannelStats(conn: Connection): Promise<YouTubeStats | null> {
+  const token = await getValidYouTubeTokenFor(conn);
   if (!token) return null;
   const headers = { Authorization: `Bearer ${token}` };
 
   const stats: YouTubeStats = {
+    channelId: conn.platformUserId,
     channelName: conn.displayName,
     profileImageUrl: null,
     isLive: false,
@@ -75,4 +74,13 @@ export async function getYouTubeOwnStats(user: User): Promise<YouTubeStats | nul
   }
 
   return stats;
+}
+
+// Stats for EVERY connected YouTube channel (each has its own OAuth grant, so
+// there's no watch-any-channel flow — these are all the user's own channels).
+export async function getAllYouTubeStats(user: User): Promise<YouTubeStats[]> {
+  const conns = youtubeConnections(user);
+  if (conns.length === 0) return [];
+  const results = await Promise.all(conns.map((c) => getYouTubeChannelStats(c)));
+  return results.filter((s): s is YouTubeStats => s != null);
 }

@@ -46,13 +46,24 @@ export async function upsertConnection(conn: Connection): Promise<User> {
 // Remove a platform connection from the current session user. Returns the updated
 // user (or null if not logged in). Does NOT write the cookie — the disconnect
 // route sets/deletes it on its response.
+//
+// When `platformUserId` is given, only that specific connection is removed —
+// needed for YouTube, where a user can connect several channels of the same
+// platform. Without it, ALL connections of the platform are removed (Twitch/Kick
+// only ever have one, so this is their normal path).
 export async function removeConnection(
   _userId: string,
-  platform: Platform
+  platform: Platform,
+  platformUserId?: string
 ): Promise<User | null> {
   const user = await getCurrentUser();
   if (!user) return null;
-  return { ...user, connections: user.connections.filter((c) => c.platform !== platform) };
+  const connections = user.connections.filter((c) =>
+    platformUserId != null
+      ? !(c.platform === platform && c.platformUserId === platformUserId)
+      : c.platform !== platform
+  );
+  return { ...user, connections };
 }
 
 // (Beacon pairing secret now lives in the KV, keyed by user id — see lib/beacon.ts.

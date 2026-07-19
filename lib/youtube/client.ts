@@ -5,13 +5,17 @@ import { upsertConnection } from "@/lib/auth/store";
 
 export const YOUTUBE_API = "https://www.googleapis.com/youtube/v3";
 
-// Returns a non-expired YouTube (Google) access token, refreshing + persisting
-// if needed. Google refresh responses omit the refresh_token, so the existing
-// one is preserved.
-export async function getValidYouTubeToken(user: User): Promise<string | null> {
-  const conn = user.connections.find((c) => c.platform === "youtube");
-  if (!conn) return null;
+// All connected YouTube channels. A user may own several (Brand Accounts), each
+// connected as its own OAuth grant — one token maps to one channel.
+export function youtubeConnections(user: User): Connection[] {
+  return user.connections.filter((c) => c.platform === "youtube");
+}
 
+// Returns a non-expired Google access token for a SPECIFIC YouTube connection,
+// refreshing + persisting if needed. Google refresh responses omit the
+// refresh_token, so the existing one is preserved. upsertConnection keys by
+// (platform, platformUserId), so refreshing one channel never touches another.
+export async function getValidYouTubeTokenFor(conn: Connection): Promise<string | null> {
   const expiresAt = conn.obtainedAt + conn.expiresIn * 1000;
   if (Date.now() < expiresAt - 60_000) {
     return decrypt(conn.accessTokenEnc);
@@ -34,8 +38,4 @@ export async function getValidYouTubeToken(user: User): Promise<string | null> {
   } catch {
     return decrypt(conn.accessTokenEnc);
   }
-}
-
-export function youtubeConnection(user: User): Connection | undefined {
-  return user.connections.find((c) => c.platform === "youtube");
 }
