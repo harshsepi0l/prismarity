@@ -5,6 +5,7 @@ import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { useChat } from "../_ctx/chat";
 import { useSession } from "../_ctx/session";
 import { PlatformIcon } from "./PlatformIcon";
+import { useYouTubePresence } from "../_hooks/useYouTubePresence";
 import type { SearchResult } from "../types";
 
 // ⌘K-style channel search. Opens as a centered overlay; picking a result
@@ -65,6 +66,8 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
   }, [query]);
 
   const visible = results.filter((r) => (r.twitch && twitchOn) || (r.kick && kickOn));
+  // YouTube existence for a third badge (socials lookup, no live scrape).
+  const ytPresence = useYouTubePresence(visible.map((r) => r.handle));
 
   function isActive(r: SearchResult): boolean {
     if (r.twitch && activeChannel) return activeChannel.id === r.twitch.id;
@@ -157,8 +160,10 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
                     _hover={{ bg: "raised", color: "text" }}
                   >
                     <Flex align="center" gap="4px" flex="none">
+                      {/* Existence badges — one per platform the streamer is on. */}
                       {showTwitch && <PlatformIcon platform="twitch" size={15} />}
                       {showKick && <PlatformIcon platform="kick" size={14} />}
+                      {ytPresence[r.handle]?.url && <PlatformIcon platform="youtube" size={14} />}
                     </Flex>
                     <Text flex="1" minW="0" fontSize="13px" textAlign="left" truncate>
                       {r.displayName}
