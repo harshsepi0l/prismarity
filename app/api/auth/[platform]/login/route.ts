@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
+import { COOKIE_SECURE } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,10 @@ export async function GET(
   const res = NextResponse.redirect(await lib.getAuthorizeUrl(state, challenge));
   const opts = {
     httpOnly: true,
-    secure: true,
+    // Gated on production — a Secure cookie over http://localhost is dropped,
+    // which would break the state/verifier round-trip in local dev. See
+    // COOKIE_SECURE in lib/auth/session.
+    secure: COOKIE_SECURE,
     sameSite: "lax" as const,
     path: "/",
     maxAge: 600,

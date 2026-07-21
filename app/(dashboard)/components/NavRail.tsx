@@ -10,6 +10,7 @@ import { useSession } from "../_ctx/session";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import { SectionLabel } from "./ui";
+import { useYouTubePresence } from "../_hooks/useYouTubePresence";
 import type { SearchResult } from "../types";
 
 const VODS_ICON = (
@@ -57,6 +58,9 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
   const twitchOn = activeFilters.has("twitch");
   const kickOn = activeFilters.has("kick");
   const visible = results.filter((r) => (r.twitch && twitchOn) || (r.kick && kickOn));
+  // YouTube existence (do they have a YouTube linked) for a third badge — no
+  // live scrape here, just the socials lookup.
+  const ytPresence = useYouTubePresence(visible.map((r) => r.handle));
 
   function handleSelect(r: SearchResult) {
     selectSearchResult(r);
@@ -177,8 +181,10 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
                   _hover={{ bg: "raised", color: "text" }}
                 >
                   <Flex align="center" gap="3px" flex="none">
+                    {/* Existence badges — one per platform the streamer is on. */}
                     {r.twitch && twitchOn && <PlatformIcon platform="twitch" size={13} />}
                     {r.kick && kickOn && <PlatformIcon platform="kick" size={13} />}
+                    {ytPresence[r.handle]?.url && <PlatformIcon platform="youtube" size={13} />}
                   </Flex>
                   <Text flex="1" minW="0" fontSize="12px" textAlign="left" truncate>{r.displayName}</Text>
                   {isLive && <Box w="5px" h="5px" borderRadius="full" bg="#FF5C5C" flex="none" />}
@@ -191,6 +197,22 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
     </Box>
   );
 }
+
+// Stacks live-platform colors into EQUAL, hard-edged vertical bands (no blend),
+// so a multi-platform edge reads as distinct even segments rather than a smear.
+function equalBands(colors: string[]): string {
+  if (colors.length === 1) return colors[0];
+  const n = colors.length;
+  const stops = colors
+    .map((c, i) => `${c} ${(i / n) * 100}%, ${c} ${((i + 1) / n) * 100}%`)
+    .join(", ");
+  return `linear-gradient(to bottom, ${stops})`;
+}
+
+// Shared look for the platform-identity edge: a boxy, bordered chip.
+const EDGE_RADIUS = "2px";
+const EDGE_WIDTH = "5px";
+const EDGE_BORDER = "1px solid rgba(255,255,255,0.16)";
 
 // ── Own channel button ───────────────────────────────────────────────────────
 
@@ -283,11 +305,11 @@ const OwnChannelButton = memo(function OwnChannelButton({
       transition="background .12s, color .12s"
       _hover={{ bg: "raised" }}
     >
-      {/* Platform identity edge */}
+      {/* Platform identity edge — boxy bordered chip; lit only when live. */}
       <Box
-        w="3px" alignSelf="stretch" borderRadius="full" flex="none"
-        style={{ background: color, opacity: active ? 1 : 0.35 }}
-        transition="opacity .12s"
+        w={EDGE_WIDTH} alignSelf="stretch" borderRadius={EDGE_RADIUS} flex="none"
+        style={{ background: isLive ? color : "#2a3140", opacity: isLive ? 1 : 0.5, border: EDGE_BORDER }}
+        transition="opacity .12s, background .12s"
       />
       {AvatarEl}
       <Text flex="1" minW="0" fontSize="13px" fontWeight={active ? "500" : "400"} color={active ? "text" : "muted"} textAlign="left" truncate>
@@ -312,26 +334,32 @@ const OwnChannelButton = memo(function OwnChannelButton({
 // context, but these keep the same props). Handlers take the result so callers
 // pass STABLE context callbacks instead of per-render closures.
 const WatchedChannelButton = memo(function WatchedChannelButton({
-  result, active, collapsed, onSelect, onRemove,
+  result, active, collapsed, youtubeLive, onSelect, onRemove,
 }: {
   result: SearchResult;
   active: boolean;
   collapsed: boolean;
+  youtubeLive?: boolean; // live on their YouTube (from Twitch socials + scrape)
   onSelect: (result: SearchResult) => void;
   onRemove?: (result: SearchResult) => void; // omitted for followed channels (not removable)
 }) {
-  const isLive = result.twitch?.isLive || result.kick?.isLive;
   const avatar = result.profileImageUrl;
   const initial = result.displayName[0]?.toUpperCase() ?? "?";
 
-  // Platform identity edge — solid for one platform, gradient when the
-  // channel spans both.
-  const edge =
-    result.twitch && result.kick
-      ? `linear-gradient(${PLATFORM_COLOR.twitch}, ${PLATFORM_COLOR.kick})`
-      : result.twitch
-        ? PLATFORM_COLOR.twitch
-        : PLATFORM_COLOR.kick;
+  // Platform identity edge — lights up per platform the streamer is LIVE on:
+  // purple (Twitch), green (Kick), red (YouTube). Multiple live → gradient;
+  // offline everywhere → dim grey, so the colored bar always means "live here".
+  const liveTwitch = !!result.twitch?.isLive;
+  const liveKick = !!result.kick?.isLive;
+  const liveYoutube = !!youtubeLive;
+  const isLive = liveTwitch || liveKick || liveYoutube;
+  const OFFLINE_EDGE = "#2a3140";
+  const liveColors = [
+    liveTwitch ? PLATFORM_COLOR.twitch : null,
+    liveKick ? PLATFORM_COLOR.kick : null,
+    liveYoutube ? PLATFORM_COLOR.youtube : null,
+  ].filter((c): c is string => !!c);
+  const edge = liveColors.length === 0 ? OFFLINE_EDGE : equalBands(liveColors);
 
   const Avatar = (
     <Box position="relative" flex="none" w="22px" h="22px">
@@ -360,15 +388,15 @@ const WatchedChannelButton = memo(function WatchedChannelButton({
           _hover={{ bg: "raised", color: "text" }}
         >
           <Box
-            w="3px" alignSelf="stretch" borderRadius="full" flex="none"
-            style={{ background: edge, opacity: active ? 1 : 0.35 }}
-            transition="opacity .12s"
+            w={EDGE_WIDTH} alignSelf="stretch" borderRadius={EDGE_RADIUS} flex="none"
+            style={{ background: edge, opacity: isLive ? 1 : 0.5, border: EDGE_BORDER }}
+            transition="opacity .12s, background .12s"
           />
           {Avatar}
           <Text flex="1" minW="0" fontSize="12px" textAlign="left" truncate>{result.displayName}</Text>
-          {isLive ? (
-            <Box w="5px" h="5px" borderRadius="full" bg="#FF5C5C" flex="none" />
-          ) : (
+          {/* Live is shown by the dot on the avatar (see `Avatar`), so the right
+              side only labels the offline state — no redundant live dot here. */}
+          {!isLive && (
             <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">offline</Text>
           )}
         </chakra.button>
@@ -406,7 +434,7 @@ const WatchedChannelButton = memo(function WatchedChannelButton({
       >
         {Avatar}
         <Text flex="none" fontSize="12px">{result.displayName}</Text>
-        {isLive && <Box flex="none" w="5px" h="5px" borderRadius="full" bg="#FF5C5C" />}
+        {/* No live dot here — the avatar already carries it. */}
       </chakra.button>
     </Box>
   );
@@ -442,6 +470,16 @@ export function NavRail() {
     [followedChannels, followedShown]
   );
   const followedMore = followedChannels.length - followedShown;
+
+  // YouTube live status for the visible sidebar channels — resolved from each
+  // streamer's Twitch socials (YouTube link) + a live scrape, so the edge bar
+  // can light up red when they're live on YouTube. Only the visible rows are
+  // checked (the scrape is heavy); server-cached.
+  const sidebarLogins = useMemo(
+    () => [...followedVisible, ...visibleWatched].map((r) => r.handle),
+    [followedVisible, visibleWatched]
+  );
+  const ytLive = useYouTubePresence(sidebarLogins, { live: true });
 
   // Stable handlers so the memo'd channel buttons keep the same props across the
   // NavRail re-renders that the chat context triggers on every message.
@@ -548,6 +586,7 @@ export function NavRail() {
                       result={result}
                       active={active}
                       collapsed={collapsed}
+                      youtubeLive={ytLive[result.handle]?.isLive}
                       onSelect={selectSearchResult}
                     />
                   );
@@ -583,6 +622,7 @@ export function NavRail() {
                       result={result}
                       active={active}
                       collapsed={collapsed}
+                      youtubeLive={ytLive[result.handle]?.isLive}
                       onSelect={selectSearchResult}
                       onRemove={handleRemoveWatched}
                     />

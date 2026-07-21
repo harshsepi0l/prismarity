@@ -11,11 +11,14 @@ import type { User } from "./types";
 export const SESSION_COOKIE = "prismarity_session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
-// httpOnly + Secure + SameSite=Lax. Secure is always on (production target);
-// use a tunnel/https locally if testing the cookie path.
+// httpOnly + Secure + SameSite=Lax. Secure is gated on production so that local
+// dev over http://localhost works — a Secure cookie set over plain http is
+// dropped by the browser (Safari rejects it outright), which silently breaks the
+// whole login flow. In production (Vercel, https) Secure is always on.
+export const COOKIE_SECURE = process.env.NODE_ENV === "production";
 export const sessionCookieOptions = {
   httpOnly: true,
-  secure: true,
+  secure: COOKIE_SECURE,
   sameSite: "lax" as const,
   path: "/",
   maxAge: SESSION_MAX_AGE,

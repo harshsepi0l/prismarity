@@ -5,8 +5,7 @@ import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 import type { Platform } from "../../types";
 
 // Shown in the chat area when no platform is connected — the "log in to get
-// started" gate. Twitch/Kick are full-page OAuth links; YouTube is a planted
-// placeholder for the upcoming integration.
+// started" gate. Each row is a full-page OAuth login link.
 function ConnectRow({
   platform,
   label,
@@ -62,7 +61,7 @@ export default function ChatEmptyState() {
         <Flex direction="column" gap="10px">
           <ConnectRow platform="twitch" label="Continue with Twitch" href="/api/auth/twitch/login" />
           <ConnectRow platform="kick" label="Continue with Kick" href="/api/auth/kick/login" />
-          <ConnectRow platform="youtube" label="Continue with YouTube" comingSoon />
+          <ConnectRow platform="youtube" label="Continue with YouTube" href="/api/auth/youtube/login" />
         </Flex>
         <Text fontSize="12px" color="faint" mt="18px" lineHeight="1.6" textAlign="center">
           Already connected? Add or manage other connections anytime from the prism menu in the

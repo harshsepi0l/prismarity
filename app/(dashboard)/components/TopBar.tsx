@@ -43,6 +43,55 @@ function ActiveChannelPill() {
   const { isMobile } = useLayout();
   const [aboutOpen, setAboutOpen] = useState(false);
 
+  // The tuned streamer's OWN YouTube channel, pulled from their Twitch About-
+  // panel social links (GQL) — same "same person, across platforms" idea as the
+  // Twitch/Kick icons. Link only; we don't fetch YouTube live status here.
+  const streamerLogin = activeChannel?.login ?? null;
+  const [streamerYouTube, setStreamerYouTube] = useState<string | null>(null);
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setStreamerYouTube(null);
+    if (!streamerLogin) return;
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    fetch(`/api/twitch/socials?login=${encodeURIComponent(streamerLogin)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { socials?: { name: string; title: string; url: string }[] } | null) => {
+        if (cancelled || !j?.socials) return;
+        const yt = j.socials.find(
+          (s) => /youtube\.com|youtu\.be/i.test(s.url) || /youtube/i.test(s.name)
+        );
+        setStreamerYouTube(yt?.url ?? null);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [streamerLogin]);
+
+  // Whether that YouTube channel is live right now (scrape-based, best-effort —
+  // /api/youtube/live). Lets the YouTube icon light up on live like Twitch/Kick;
+  // any failure just reads as offline, so it degrades to a muted link.
+  const [streamerYouTubeLive, setStreamerYouTubeLive] = useState(false);
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setStreamerYouTubeLive(false);
+    if (!streamerYouTube) return;
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/youtube/live?url=${encodeURIComponent(streamerYouTube!)}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const j = (await res.json()) as { live?: boolean };
+        if (!cancelled) setStreamerYouTubeLive(!!j.live);
+      } catch {
+        /* ignore — stays offline */
+      }
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [streamerYouTube]);
+
   const hasSelection = !!activeChannel || !!activeKickOnly;
 
   if (!hasSelection) {
@@ -80,14 +129,11 @@ function ActiveChannelPill() {
     (isLive ? live : tuned).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
   const viewers = live.reduce((sum, p) => sum + p.viewers, 0);
 
-  // Per-platform presence + live state. The icon lights up in the platform's
-  // color only when it is actually live there; a present-but-offline platform
-  // is dimmed so it never implies a stream that isn't happening.
+  // Per-platform live state — each icon lights up in the platform's brand color
+  // only when the streamer is actually LIVE there; offline → dim grey. (YouTube
+  // has no live signal available, so it stays a muted link — see below.)
   const twitchP = platforms.find((p) => p.platform === "twitch");
   const kickP = platforms.find((p) => p.platform === "kick");
-  // YouTube is your OWN connected channel (there's no watch-any-channel flow);
-  // its icon shows alongside the tuned channel, lit only when you're live there.
-  const youtubeP = platforms.find((p) => p.platform === "youtube");
   const twitchLogin = activeChannel?.login ?? null;
   const kickSlug = activeKick?.slug ?? activeKickOnly ?? null;
 
@@ -152,17 +198,20 @@ function ActiveChannelPill() {
             <PlatformIcon platform="kick" color={kickP.isLive ? PLATFORM_COLOR.kick : "#3a4152"} size={12} />
           </chakra.a>
         )}
-        {youtubeP && (
+        {streamerYouTube && (
+          // The tuned streamer's YouTube (from their Twitch socials). Lights up
+          // brand-red when they're live on YouTube (scrape-based), dim grey when
+          // offline/unknown — same live-based rule as the Twitch/Kick icons.
           <chakra.a
-            href={youtubeP.channelId ? `https://www.youtube.com/channel/${youtubeP.channelId}` : undefined}
+            href={streamerYouTube}
             target="_blank" rel="noreferrer"
-            title={`Your YouTube channel${youtubeP.isLive ? " (live)" : " (offline)"}`}
+            title={`Open ${name} on YouTube${streamerYouTubeLive ? " (live)" : ""}`}
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
             display="inline-flex" flex="none"
             transition="opacity .12s"
             _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
           >
-            <PlatformIcon platform="youtube" color={youtubeP.isLive ? PLATFORM_COLOR.youtube : "#3a4152"} size={12} />
+            <PlatformIcon platform="youtube" color={streamerYouTubeLive ? PLATFORM_COLOR.youtube : "#3a4152"} size={12} />
           </chakra.a>
         )}
       </Flex>
@@ -276,18 +325,22 @@ P_MATRIX.forEach((row, y) =>
 const psnap = (v: number) => Math.round(v / PX) * PX;
 
 // Three orbits tilted like an atom: Twitch on the "\" diagonal, Kick on the "/"
-// diagonal, YouTube vertical (top↔bottom). One shared ellipse (O_RX × O_RY) is
-// rasterised at each tilt into a stepped pixel ring; a comet snaps along it.
-const O_RX = 30, O_RY = 11;
-const ORBIT_PATH = `M${60 - O_RX},60 a${O_RX},${O_RY} 0 1,1 ${2 * O_RX},0 a${O_RX},${O_RY} 0 1,1 ${-2 * O_RX},0`;
+// diagonal, YouTube vertical (top↔bottom). Each has its OWN ellipse (rx×ry) so
+// the tilted pair (Twitch/Kick) and the vertical one nest cleanly — tuned in the
+// orbit tuner. Each ellipse is rasterised at its tilt into a stepped pixel ring;
+// a comet snaps along it.
 const YOUTUBE_COLOR = "#FF3D46";
 
-function rasterizeRing(rot: number): [number, number][] {
+function orbitPath(rx: number, ry: number): string {
+  return `M${60 - rx},60 a${rx},${ry} 0 1,1 ${2 * rx},0 a${rx},${ry} 0 1,1 ${-2 * rx},0`;
+}
+
+function rasterizeRing(rot: number, rx: number, ry: number): [number, number][] {
   const rad = (rot * Math.PI) / 180, cs = Math.cos(rad), sn = Math.sin(rad);
   const seen = new Set<string>();
   const out: [number, number][] = [];
   for (let a = 0; a < 360; a += 3) {
-    const t = (a * Math.PI) / 180, ex = O_RX * Math.cos(t), ey = O_RY * Math.sin(t);
+    const t = (a * Math.PI) / 180, ex = rx * Math.cos(t), ey = ry * Math.sin(t);
     const X = psnap(60 + ex * cs - ey * sn), Y = psnap(60 + ex * sn + ey * cs);
     const k = `${X},${Y}`;
     if (!seen.has(k)) {
@@ -298,17 +351,18 @@ function rasterizeRing(rot: number): [number, number][] {
   return out;
 }
 
-// rot: -45 = "/" diagonal, 45 = "\" diagonal, 90 = vertical. Each ring's own pixel
-// count is its steps() so the comet lands exactly on drawn cells. The delays are
-// tuned so all three particles converge at the top-CENTRE (on the vertical midline
-// above the P) once per lap — never bunching on one side.
+// Per-orbit ellipse + phase, tuned in the orbit tuner so the comets converge on
+// the vertical midline above the P. delaySec is the top-centre crossing phase ×
+// the 5s lap. Kick `reverse`s its spin so Twitch and Kick counter-rotate (mirror)
+// through their shared meeting point instead of tracking in lockstep — reversing
+// flips its phase, so its delay is the reverse-equivalent of the tuner's value.
 const ORBITS = [
-  { platform: "twitch" as const, color: PLATFORM_COLOR.twitch, rot: 45, delaySec: -0.88 },
-  { platform: "kick" as const, color: PLATFORM_COLOR.kick, rot: -45, delaySec: -1.62 },
-  { platform: "youtube" as const, color: YOUTUBE_COLOR, rot: 90, delaySec: 0 },
+  { platform: "twitch" as const, color: PLATFORM_COLOR.twitch, rot: 45, rx: 32, ry: 11.75, delaySec: -4.130, reverse: false },
+  { platform: "kick" as const, color: PLATFORM_COLOR.kick, rot: -45, rx: 32, ry: 11.75, delaySec: -1.630, reverse: true },
+  { platform: "youtube" as const, color: YOUTUBE_COLOR, rot: 90, rx: 26, ry: 9.55, delaySec: 0, reverse: false },
 ].map((o) => {
-  const ring = rasterizeRing(o.rot);
-  return { ...o, ring, steps: ring.length };
+  const ring = rasterizeRing(o.rot, o.rx, o.ry);
+  return { ...o, ring, steps: ring.length, path: orbitPath(o.rx, o.ry) };
 });
 
 // One orbiting particle: a bright pixel head plus a short stepped comet trail,
@@ -321,12 +375,16 @@ function Electron({
   steps,
   durSec,
   delaySec,
+  path,
+  reverse,
 }: {
   color: string;
   rot: number;
   steps: number;
   durSec: number;
   delaySec: number;
+  path: string;
+  reverse: boolean;
 }) {
   const stepDur = durSec / steps;
   return (
@@ -335,6 +393,9 @@ function Electron({
         const head = k === 0;
         const s = head ? 1 : 0.78;
         const off = (s * PX) / 2;
+        // The trail sits BEHIND the head along its direction of travel: earlier
+        // in the animation for a forward spin, later for a reversed one.
+        const trailDelay = reverse ? delaySec + k * stepDur : delaySec - k * stepDur;
         return (
           <rect
             key={k}
@@ -346,13 +407,14 @@ function Electron({
             shapeRendering="crispEdges"
             opacity={1 - k * 0.15}
             style={{
-              offsetPath: `path('${ORBIT_PATH}')`,
+              offsetPath: `path('${path}')`,
               offsetRotate: "0deg",
               animationName: "pel-orbit",
               animationDuration: `${durSec}s`,
               animationTimingFunction: `steps(${steps}, end)`,
               animationIterationCount: "infinite",
-              animationDelay: `${(delaySec - k * stepDur).toFixed(3)}s`,
+              animationDirection: reverse ? "reverse" : "normal",
+              animationDelay: `${trailDelay.toFixed(3)}s`,
               filter: head ? `drop-shadow(0 0 2px ${color})` : undefined,
             }}
           />
@@ -414,6 +476,8 @@ function ProfileButton({
               steps={o.steps}
               durSec={5}
               delaySec={o.delaySec}
+              path={o.path}
+              reverse={o.reverse}
             />
           )
         )}
