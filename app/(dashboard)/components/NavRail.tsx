@@ -7,6 +7,7 @@ import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { useLayout, NAV_RAIL_WIDTH } from "../_ctx/layout";
 import { useChat } from "../_ctx/chat";
 import { useSession } from "../_ctx/session";
+import { useStats } from "../_ctx/stats";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import { SectionLabel } from "./ui";
@@ -216,21 +217,28 @@ const EDGE_BORDER = "1px solid rgba(255,255,255,0.16)";
 
 // ── Own channel button ───────────────────────────────────────────────────────
 
+// Compact count, e.g. 12400 → "12.4K" (YouTube subscriber display).
+const compact = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+
 const OwnChannelButton = memo(function OwnChannelButton({
   platform,
   name,
   avatar,
   isLive,
   viewers,
+  rightLabel,
   active,
   collapsed,
   onClick,
 }: {
-  platform: "twitch" | "kick";
+  platform: "twitch" | "kick" | "youtube";
   name: string;
   avatar: string | null;
   isLive: boolean;
   viewers?: number;
+  // Overrides the viewers/offline text on the right (YouTube shows sub count —
+  // it has no viewer feed and isn't chat-selectable).
+  rightLabel?: string;
   active: boolean;
   collapsed: boolean;
   onClick: () => void;
@@ -285,7 +293,9 @@ const OwnChannelButton = memo(function OwnChannelButton({
         >
           {AvatarEl}
           <Text flex="none" fontSize="12px">{name}</Text>
-          {isLive && viewers != null && (
+          {rightLabel ? (
+            <Text flex="none" fontFamily="mono" fontSize="10px" color="muted">{rightLabel}</Text>
+          ) : isLive && viewers != null && (
             <Text flex="none" fontFamily="mono" fontSize="10px" color="muted">
               {viewers.toLocaleString()}
             </Text>
@@ -315,7 +325,9 @@ const OwnChannelButton = memo(function OwnChannelButton({
       <Text flex="1" minW="0" fontSize="13px" fontWeight={active ? "500" : "400"} color={active ? "text" : "muted"} textAlign="left" truncate>
         {name}
       </Text>
-      {isLive ? (
+      {rightLabel ? (
+        <Text fontFamily="mono" fontSize="11px" color="muted" flex="none">{rightLabel}</Text>
+      ) : isLive ? (
         <Flex align="center" gap="4px" flex="none">
           <Text fontFamily="mono" fontSize="11px" color="muted">
             {viewers != null ? viewers.toLocaleString() : ""}
@@ -520,7 +532,12 @@ export function NavRail() {
   const ownTwitchActive = !!ownChannel && activeChannel?.id === ownChannel.id;
   const ownKickActive = !!ownKick && activeKickOnly === ownKick.slug.toLowerCase();
 
-  const hasOwnChannels = !!ownChannel || !!ownKick;
+  // Your own YouTube channel (read-only presence — not chat-selectable). Its
+  // live status + subscriber count come from the stats context; clicking opens
+  // the channel on YouTube.
+  const ownYouTube = useStats().platforms.find((p) => p.platform === "youtube") ?? null;
+
+  const hasOwnChannels = !!ownChannel || !!ownKick || !!ownYouTube;
 
   const content = (
     <>
@@ -565,6 +582,22 @@ export function NavRail() {
                     active={ownKickActive}
                     collapsed={collapsed}
                     onClick={selectOwnKick}
+                  />
+                )}
+                {ownYouTube && (
+                  <OwnChannelButton
+                    platform="youtube"
+                    name={ownYouTube.channelName}
+                    avatar={ownYouTube.profileImageUrl}
+                    isLive={ownYouTube.isLive}
+                    rightLabel={ownYouTube.followers != null ? `${compact(ownYouTube.followers)} subs` : undefined}
+                    active={false}
+                    collapsed={collapsed}
+                    onClick={() => {
+                      if (ownYouTube.channelId) {
+                        window.open(`https://www.youtube.com/channel/${ownYouTube.channelId}`, "_blank", "noopener,noreferrer");
+                      }
+                    }}
                   />
                 )}
               </Flex>
