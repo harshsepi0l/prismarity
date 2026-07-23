@@ -103,7 +103,7 @@ function PlatformSection({
           style={{ background: C.raised }}
         >
           <PlatformIcon platform={platform} size={13} />
-          <Text fontSize="12px" style={{ color: C.text }}>
+          <Text fontSize="12px" flex="1" minW="0" truncate style={{ color: C.text }}>
             Connected as{" "}
             <Text as="span" fontWeight="600">{displayName}</Text>
           </Text>
@@ -111,6 +111,7 @@ function PlatformSection({
             type="button"
             onClick={() => onDisconnect(platform)}
             disabled={disconnecting !== null}
+            flex="none"
             ml="auto"
             px="9px"
             py="4px"
@@ -395,10 +396,22 @@ export function SettingsDialog({ auth, onClose }: Props) {
                 </chakra.button>
               );
             })}
+
+            {/* Brand — pinned to the bottom-left of the panel. */}
+            <Text
+              mt="auto" px="18px" pt="12px"
+              fontFamily="mono"
+              fontSize="11px"
+              fontWeight="700"
+              letterSpacing="0.18em"
+              style={{ color: C.faint }}
+            >
+              PRISMARITY
+            </Text>
           </Flex>
 
           {/* Content */}
-          <Box flex="1" minW="0" overflowY="auto" p={asDropdown ? "18px" : "28px"} style={{ background: C.bg }}>
+          <Box flex="1" minW="0" overflowY="auto" p={asDropdown ? "18px" : { base: "16px", md: "28px" }} style={{ background: C.bg }}>
 
             {category === "accounts" && (
               <Box>
@@ -496,8 +509,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
                     <Text fontSize="12px" fontWeight="600" style={{ color: C.muted }}>Prismarity Beacon Extension</Text>
                   </Flex>
                   <Text fontSize="11px" lineHeight="1.7" style={{ color: C.faint }}>
-                    Install the companion extension from the <code style={{ color: C.muted }}>extension/</code> folder in the project.
-                    It watches your active tab for Twitch and Kick streams and signals Prismarity automatically.
+                    Install the extension from your browser&apos;s web store.
                   </Text>
 
                   {/* Pairing key — paste into the extension popup once so its
@@ -508,9 +520,9 @@ export function SettingsDialog({ auth, onClose }: Props) {
                   <Text fontSize="11px" lineHeight="1.6" mb="8px" style={{ color: C.faint }}>
                     Paste this into the extension popup to link it to your account. Keep it private.
                   </Text>
-                  <Flex align="center" gap="8px">
+                  <Flex align="center" gap="8px" flexWrap="wrap">
                     <Box
-                      flex="1" borderRadius="6px" px="10px" py="7px"
+                      flex="1 1 140px" minW="120px" borderRadius="6px" px="10px" py="7px"
                       fontFamily="monospace" fontSize="11px"
                       overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap"
                       style={{ background: C.field, border: `1px solid ${C.fieldLine}`, color: C.muted }}
@@ -571,23 +583,14 @@ export function SettingsDialog({ auth, onClose }: Props) {
             {category === "about" && (
               <Box>
                 <Text fontSize="18px" fontWeight="700" mb="6px" style={{ color: C.text }}>Prismarity</Text>
-                <Text fontSize="13px" mb="20px" style={{ color: C.muted }}>
-                  A multi-platform streaming dashboard for Twitch, Kick and YouTube.
+                <Text fontSize="13px" mb="20px" lineHeight="1.7" style={{ color: C.muted }}>
+                  One place to watch and chat across Twitch, Kick and YouTube. Connect your
+                  accounts, follow your channels, and jump between streams without juggling tabs.
                 </Text>
                 <Box mb="20px" style={{ height: "1px", background: C.line }} />
-                <Text fontSize="12px" lineHeight="2" style={{ color: C.faint }}>
-                  Authentication uses OAuth 2.0 with PKCE. Tokens are encrypted at rest using AES-256-GCM.
-                  No credentials are ever sent to third-party servers.
-                </Text>
-                <Box my="20px" style={{ height: "1px", background: C.line }} />
-                <Text fontSize="11px" fontWeight="700" mb="8px" style={{ color: C.muted, letterSpacing: "0.06em" }}>
-                  PLATFORM NOTES
-                </Text>
-                <Text fontSize="12px" lineHeight="2" style={{ color: C.faint }}>
-                  Twitch and Kick expose different data. Twitch provides your followed channels through
-                  its official API; Kick&apos;s public API does not, so your Kick follows can&apos;t be
-                  listed automatically — reach Kick channels through search instead. When a channel you
-                  follow on Twitch also exists on Kick, both are linked so you see the unified view.
+                <Text fontSize="12px" lineHeight="1.8" style={{ color: C.faint }}>
+                  Your accounts stay secure — sign-in happens through each platform&apos;s official
+                  login and your details are never shared with anyone else.
                 </Text>
               </Box>
             )}

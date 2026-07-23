@@ -48,19 +48,37 @@ export function detectLive(body: string): boolean {
   return canonicalWatch && liveFlag;
 }
 
+// Concurrent viewer count from a live watch page's embedded data. Live streams
+// expose the raw number in `originalViewCount`; we fall back to the human
+// "12,345 watching now" string in the viewCount runs. null when neither is
+// present (offline pages, or markup we don't recognise).
+export function extractConcurrentViewers(body: string): number | null {
+  const raw = body.match(/"originalViewCount":"(\d+)"/);
+  if (raw) return parseInt(raw[1], 10);
+  const watching = body.match(/([\d,]+)\s*watching now/i);
+  if (watching) return parseInt(watching[1].replace(/,/g, ""), 10);
+  return null;
+}
+
+export interface YouTubeLiveInfo {
+  live: boolean;
+  viewers: number | null; // concurrent viewers when live and scrapable
+}
+
 // Small in-memory cache so repeated polls (and multiple viewers) don't refetch
 // a ~1.2MB page every time. Best-effort on serverless (per warm instance).
-const cache = new Map<string, { live: boolean; ts: number }>();
+const cache = new Map<string, { info: YouTubeLiveInfo; ts: number }>();
 const TTL_MS = 30_000;
 
-export async function isYouTubeChannelLive(channelUrl: string): Promise<boolean> {
+// Live status + concurrent viewers for a channel URL (best-effort scrape).
+export async function getYouTubeLiveInfo(channelUrl: string): Promise<YouTubeLiveInfo> {
   const liveUrl = toLiveUrl(channelUrl);
-  if (!liveUrl) return false;
+  if (!liveUrl) return { live: false, viewers: null };
 
   const hit = cache.get(liveUrl);
-  if (hit && Date.now() - hit.ts < TTL_MS) return hit.live;
+  if (hit && Date.now() - hit.ts < TTL_MS) return hit.info;
 
-  let live = false;
+  let info: YouTubeLiveInfo = { live: false, viewers: null };
   try {
     const res = await fetch(liveUrl, {
       headers: {
@@ -73,12 +91,17 @@ export async function isYouTubeChannelLive(channelUrl: string): Promise<boolean>
     });
     if (res.ok) {
       const body = await res.text();
-      live = detectLive(body);
+      const live = detectLive(body);
+      info = { live, viewers: live ? extractConcurrentViewers(body) : null };
     }
   } catch {
     /* network error / blocked → treat as not live */
   }
 
-  cache.set(liveUrl, { live, ts: Date.now() });
-  return live;
+  cache.set(liveUrl, { info, ts: Date.now() });
+  return info;
+}
+
+export async function isYouTubeChannelLive(channelUrl: string): Promise<boolean> {
+  return (await getYouTubeLiveInfo(channelUrl)).live;
 }
