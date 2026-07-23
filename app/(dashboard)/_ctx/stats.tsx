@@ -34,6 +34,10 @@ export interface PlatformLive {
   verified: boolean;
   // Chat mode restrictions for this platform's current channel.
   chatMode: { followerOnly: boolean; followerMinutes: number; subOnly: boolean } | null;
+  // True only for the connected account's OWN standalone YouTube row (which
+  // isn't part of the tuned Twitch/Kick selection). Lets the tuned About card
+  // drop it while keeping the watched streamer's simulcast YouTube row.
+  ownAccount: boolean;
 }
 
 export interface LiveStats {
@@ -376,7 +380,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   // a streamer who's multi-streaming to YouTube (e.g. Twitch + YouTube at once).
   // Only a Twitch selection carries socials, so Kick-only picks have no source.
   const twitchLogin = activeChannel?.login ?? null;
-  const [streamerYt, setStreamerYt] = useState<{ live: boolean; viewers: number | null } | null>(null);
+  const [streamerYt, setStreamerYt] = useState<{ live: boolean; viewers: number | null; subscribers: number | null } | null>(null);
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     setStreamerYt(null);
@@ -397,8 +401,8 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
         }
         const r = await fetch(`/api/youtube/live?url=${encodeURIComponent(yt.url)}`, { cache: "no-store" });
         if (!r.ok) return;
-        const rj = (await r.json()) as { live?: boolean; viewers?: number | null };
-        if (!cancelled) setStreamerYt({ live: !!rj.live, viewers: rj.viewers ?? null });
+        const rj = (await r.json()) as { live?: boolean; viewers?: number | null; subscribers?: number | null };
+        if (!cancelled) setStreamerYt({ live: !!rj.live, viewers: rj.viewers ?? null, subscribers: rj.subscribers ?? null });
       } catch {
         /* ignore — no YouTube row */
       }
@@ -430,7 +434,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       let perMin = 0;
 
       for (const m of msgs) {
-        if (m.platform === "self") continue;
+        if (m.platform === "self" || m.system) continue;
         if (m.timestamp > now - 60_000) perMin++;
         if (m.timestamp > now - 300_000) active.add(m.user);
         seen.add(m.user);
@@ -476,6 +480,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
             subOnly: twitchChatSettings.subOnly,
           }
         : null,
+      ownAccount: false,
     });
   }
   if (activeKick) {
@@ -498,6 +503,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       chatMode: km
         ? { followerOnly: km.followerOnly, followerMinutes: km.followerMinutes, subOnly: km.subOnly }
         : null,
+      ownAccount: false,
     });
   }
 
@@ -529,6 +535,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       chatters: null,
       verified: false,
       chatMode: null,
+      ownAccount: true,
     });
   } else if (!viewingOwnChannel && streamerYt?.live && activeChannel) {
     platforms.push({
@@ -542,11 +549,12 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       uptimeMs: null,
       title: "",
       category: "",
-      followers: null,
+      followers: streamerYt.subscribers,
       subs: null,
       chatters: null,
       verified: false,
       chatMode: null,
+      ownAccount: false,
     });
   }
 

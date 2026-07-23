@@ -60,9 +60,24 @@ export function extractConcurrentViewers(body: string): number | null {
   return null;
 }
 
+// Public subscriber count from the embedded ytInitialData. YouTube only exposes
+// a ROUNDED count (3 sig figs) on the page — same as the Data API for channels
+// you don't own — so "1.23M subscribers" → 1_230_000. Matches the contiguous
+// "<count> subscribers" label (accessibility/simpleText forms); null when the
+// markup doesn't carry it. Best-effort, like the rest of this scraper.
+export function extractSubscribers(body: string): number | null {
+  const m = body.match(/([\d,.]+)\s*([KMB])?\s*subscribers/i);
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(/,/g, ""));
+  if (!isFinite(n)) return null;
+  const mult = m[2] ? { K: 1e3, M: 1e6, B: 1e9 }[m[2].toUpperCase() as "K" | "M" | "B"] : 1;
+  return Math.round(n * mult);
+}
+
 export interface YouTubeLiveInfo {
   live: boolean;
   viewers: number | null; // concurrent viewers when live and scrapable
+  subscribers: number | null; // rounded public subscriber count when scrapable
 }
 
 // Small in-memory cache so repeated polls (and multiple viewers) don't refetch
@@ -73,12 +88,12 @@ const TTL_MS = 30_000;
 // Live status + concurrent viewers for a channel URL (best-effort scrape).
 export async function getYouTubeLiveInfo(channelUrl: string): Promise<YouTubeLiveInfo> {
   const liveUrl = toLiveUrl(channelUrl);
-  if (!liveUrl) return { live: false, viewers: null };
+  if (!liveUrl) return { live: false, viewers: null, subscribers: null };
 
   const hit = cache.get(liveUrl);
   if (hit && Date.now() - hit.ts < TTL_MS) return hit.info;
 
-  let info: YouTubeLiveInfo = { live: false, viewers: null };
+  let info: YouTubeLiveInfo = { live: false, viewers: null, subscribers: null };
   try {
     const res = await fetch(liveUrl, {
       headers: {
@@ -92,7 +107,11 @@ export async function getYouTubeLiveInfo(channelUrl: string): Promise<YouTubeLiv
     if (res.ok) {
       const body = await res.text();
       const live = detectLive(body);
-      info = { live, viewers: live ? extractConcurrentViewers(body) : null };
+      info = {
+        live,
+        viewers: live ? extractConcurrentViewers(body) : null,
+        subscribers: extractSubscribers(body),
+      };
     }
   } catch {
     /* network error / blocked → treat as not live */
