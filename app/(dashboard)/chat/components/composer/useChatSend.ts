@@ -31,7 +31,7 @@ function friendly(error?: string): string {
 export interface ChatSend {
   sending: boolean;
   error: string | null;
-  errorPlatform: "twitch" | "kick" | null;
+  errorPlatform: "twitch" | "kick" | "youtube" | null;
   followCountdown: number | null;
   startFollowCountdown: (seconds: number) => void;
   // Delivers `message` to every platform in `deliverable`, adding the optimistic
@@ -44,11 +44,11 @@ export interface ChatSend {
 // All the outgoing-message state and orchestration, pulled out of Composer:
 // per-platform delivery, error mapping, and the post-follow retry countdown.
 export function useChatSend(): ChatSend {
-  const { activeChannel, activeKick, addSelfMessage } = useChat();
+  const { activeChannel, activeKick, activeYouTube, addSelfMessage } = useChat();
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [errorPlatform, setErrorPlatform] = useState<"twitch" | "kick" | null>(null);
+  const [errorPlatform, setErrorPlatform] = useState<"twitch" | "kick" | "youtube" | null>(null);
   const [followCountdown, setFollowCountdown] = useState<number | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -92,12 +92,28 @@ export function useChatSend(): ChatSend {
           const j = (await res.json().catch(() => ({ ok: false }))) as { ok?: boolean; error?: string };
           return { ok: res.ok && !!j.ok, error: j.error };
         }
-        return { ok: false, error: "not_connected" }; // YouTube not yet supported
+        if (platform === "youtube") {
+          if (!activeYouTube) return { ok: false, error: "no_channel" };
+          // Own broadcast: omit liveChatId, the route resolves it via mine=true.
+          // Tuned streamer: post to the resolved liveChatId (needs YT connected).
+          if (!activeYouTube.own && !activeYouTube.liveChatId) return { ok: false, error: "no_channel" };
+          const res = await fetch("/api/youtube/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              liveChatId: activeYouTube.own ? undefined : activeYouTube.liveChatId,
+              message,
+            }),
+          });
+          const j = (await res.json().catch(() => ({ ok: false }))) as { ok?: boolean; error?: string };
+          return { ok: res.ok && !!j.ok, error: j.error };
+        }
+        return { ok: false, error: "not_connected" };
       } catch {
         return { ok: false, error: "network" };
       }
     },
-    [activeChannel, activeKick]
+    [activeChannel, activeKick, activeYouTube]
   );
 
   const send = useCallback(
@@ -114,7 +130,9 @@ export function useChatSend(): ChatSend {
         if (failed) {
           setError(friendly(failed.error));
           setErrorPlatform(
-            failed.platform === "twitch" || failed.platform === "kick" ? failed.platform : null
+            failed.platform === "twitch" || failed.platform === "kick" || failed.platform === "youtube"
+              ? failed.platform
+              : null
           );
           return false;
         }

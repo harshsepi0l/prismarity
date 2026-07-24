@@ -15,6 +15,7 @@ import type { Role } from "@/lib/auth/types";
 import { useTwitchChat, type CheerLeader, type GiftLeader } from "../chat/useTwitchChat";
 import type { PinnedMessage } from "@/lib/twitch/pins";
 import { useKickChat } from "../chat/useKickChat";
+import { useYouTubeChat, type YouTubeChatTarget } from "../chat/useYouTubeChat";
 import { nextSeq } from "../chat/seq";
 
 // How long a transient banner event (raid, gift-sub, announcement) lingers in
@@ -39,6 +40,15 @@ export interface KickOnlyChannel {
   isLive: boolean;
   viewers: number;
   profileImageUrl: string | null;
+}
+
+// The logged-in user's OWN YouTube channel. Unlike Twitch/Kick there's no
+// "watch any channel" flow — YouTube live-chat is readable only for the
+// connected account's own broadcast (readonly scope, mine=true).
+export interface OwnYouTubeChannel {
+  channelName: string;
+  profileImageUrl: string | null;
+  isLive: boolean;
 }
 
 // A recent chatter — surfaced by the composer's @-mention autocomplete and the
@@ -70,8 +80,16 @@ interface ChatMessages {
 interface ChatStore {
   ownChannel: FollowedChannel | null;
   ownKick: KickOnlyChannel | null;
+  ownYouTube: OwnYouTubeChannel | null;
   activeChannel: FollowedChannel | null;
   activeKickOnly: string | null; // slug, when a Kick-only selection is active
+  // Whether the current selection is the user's own YouTube channel (read-only).
+  activeYouTubeOwn: boolean;
+  // The YouTube live-chat we're actually reading, if any: the own broadcast, or
+  // a tuned Twitch streamer's simulcast. Null when there's no YouTube chat in the
+  // current selection. Sendable when own, or when a tuned target resolved a
+  // liveChatId (needs YouTube connected).
+  activeYouTube: YouTubeChatTarget | null;
   activeRole: Role;
   activeKick: ActiveKick | null;
   kickConnected: boolean;
@@ -88,6 +106,7 @@ interface ChatStore {
   giftLeaders: GiftLeader[];
   selectChannel: (channel: FollowedChannel) => void;
   selectKickOnly: (slug: string) => void;
+  selectYouTubeOwn: () => void;
   selectSearchResult: (result: SearchResult) => void;
   clearSelection: () => void;
   addWatchedChannel: (result: SearchResult) => void;
@@ -125,10 +144,12 @@ const ChatSignalContext = createContext<ConnectionStatus>("idle");
 export function ChatProvider({
   kickSlug = null,
   twitchConnected = false,
+  youtubeConnected = false,
   children,
 }: {
   kickSlug?: string | null; // the logged-in user's own Kick slug (if connected)
   twitchConnected?: boolean; // whether a Twitch account is connected this session
+  youtubeConnected?: boolean; // whether a YouTube account is connected this session
   children: React.ReactNode;
 }) {
   const {
@@ -145,6 +166,11 @@ export function ChatProvider({
     connect: connectKick,
     liveEvents: kickLiveEvents,
   } = useKickChat();
+  const {
+    messages: youtubeMessages,
+    status: youtubeStatus,
+    connect: connectYouTube,
+  } = useYouTubeChat();
   // Twitch (EventSub) + Kick (Pusher) alerts, one stream for the banner & feed.
   const liveEvents = useMemo(
     () => [...twitchLiveEvents, ...kickLiveEvents],
@@ -225,8 +251,16 @@ export function ChatProvider({
 
   const [ownChannel, setOwnChannel] = useState<FollowedChannel | null>(null);
   const [ownKickStat, setOwnKickStat] = useState<{ isLive: boolean; viewers: number; profileImageUrl: string | null } | null>(null);
+  const [ownYouTube, setOwnYouTube] = useState<OwnYouTubeChannel | null>(null);
   const [activeChannel, setActiveChannel] = useState<FollowedChannel | null>(null);
   const [activeKickOnly, setActiveKickOnly] = useState<string | null>(null);
+  // Whether the user's own YouTube channel is the current (read-only) selection.
+  const [activeYouTubeOwn, setActiveYouTubeOwn] = useState(false);
+  // The tuned Twitch streamer's YouTube live video, when they're simulcasting
+  // there (resolved from their Twitch socials → /live scrape). `videoId` reads
+  // the chat via InnerTube; `liveChatId` (best-effort, needs YT connected) is the
+  // send target — null makes that chat read-only.
+  const [tunedYouTube, setTunedYouTube] = useState<{ videoId: string; liveChatId: string | null } | null>(null);
   // Whether the current selection is live on Kick, per the search match. Twitch's
   // equivalent is activeChannel.isLive. Drives the watch/send live-gate.
   const [activeKickLive, setActiveKickLive] = useState(false);
@@ -260,6 +294,7 @@ export function ChatProvider({
   // Select a unified search result — wires up whichever platforms it spans.
   // Declared above the beacon effect (below), which references it.
   const selectSearchResult = useCallback((result: SearchResult) => {
+    setActiveYouTubeOwn(false);
     // Kick live status comes straight from the match (there's no live socket yet).
     setActiveKickLive(!!result.kick?.isLive);
     if (result.twitch) {
@@ -410,8 +445,90 @@ export function ChatProvider({
     [kickSlug, ownKickStat]
   );
 
+  // Own YouTube channel identity + live status (same own-stats endpoint the
+  // dashboard uses). Drives the YOUR CHANNELS entry and gates the live-chat poll.
+  useEffect(() => {
+    if (!youtubeConnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOwnYouTube(null);
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/youtube/stats");
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          stats?: { channelName: string; profileImageUrl: string | null; isLive: boolean } | null;
+        };
+        if (!cancelled && json.stats) {
+          setOwnYouTube({
+            channelName: json.stats.channelName,
+            profileImageUrl: json.stats.profileImageUrl ?? null,
+            isLive: json.stats.isLive,
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [youtubeConnected]);
+
+  // Resolve the TUNED Twitch streamer's YouTube live-chat, so their simulcast
+  // chat can be read alongside Twitch/Kick. Their YouTube URL comes from their
+  // Twitch social links; /api/youtube/resolve scrapes the /live page for the
+  // video id and turns it into a liveChatId (null unless they're live there).
+  // Re-polls so going live/offline on YouTube is reflected. Needs YouTube
+  // connected (the resolve/read use the caller's token); Kick-only selections
+  // have no YouTube link to resolve.
+  const tunedLogin = activeChannel?.login ?? null;
+  useEffect(() => {
+    if (!youtubeConnected || !tunedLogin) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTunedYouTube(null);
+      return;
+    }
+    let cancelled = false;
+    async function resolve() {
+      try {
+        const sres = await fetch(`/api/twitch/socials?login=${encodeURIComponent(tunedLogin!)}`, { cache: "no-store" });
+        if (!sres.ok) return;
+        const sj = (await sres.json()) as { socials?: { name: string; url: string }[] };
+        const yt = sj.socials?.find(
+          (s) => /youtube\.com|youtu\.be/i.test(s.url) || /youtube/i.test(s.name)
+        );
+        if (!yt?.url) {
+          if (!cancelled) setTunedYouTube(null);
+          return;
+        }
+        const rres = await fetch(`/api/youtube/resolve?url=${encodeURIComponent(yt.url)}`, { cache: "no-store" });
+        if (!rres.ok) return;
+        const rj = (await rres.json()) as { live?: boolean; videoId?: string; liveChatId?: string | null };
+        if (cancelled) return;
+        setTunedYouTube(
+          rj.live && rj.videoId ? { videoId: rj.videoId, liveChatId: rj.liveChatId ?? null } : null
+        );
+      } catch {
+        /* network — keep whatever we had */
+      }
+    }
+    resolve();
+    const id = setInterval(resolve, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [youtubeConnected, tunedLogin]);
+
   // ── selection ────────────────────────────────────────────
   const selectChannel = useCallback((channel: FollowedChannel) => {
+    setActiveYouTubeOwn(false);
     setActiveKickOnly(null);
     setActiveKickLive(false); // Twitch-only selection — no Kick side
     setActiveChannel(channel);
@@ -420,6 +537,7 @@ export function ChatProvider({
 
   const selectKickOnly = useCallback((slug: string) => {
     const s = slug.toLowerCase();
+    setActiveYouTubeOwn(false);
     setActiveChannel(null);
     setActiveKickOnly(s);
     // No match live flag on this path (own/direct Kick) — assume live so we don't
@@ -428,21 +546,36 @@ export function ChatProvider({
     setPendingKick({ slug: s, chatroomId: null });
   }, []);
 
+  // Own YouTube channel is a standalone, read-only selection (no Twitch/Kick
+  // side, no send). Clearing the others mirrors the Twitch/Kick own-channel
+  // selectors — these are mutually-exclusive single-platform picks.
+  const selectYouTubeOwn = useCallback(() => {
+    setActiveChannel(null);
+    setActiveKickOnly(null);
+    setActiveKickLive(false);
+    setPendingKick(null);
+    setActiveKick(null);
+    setActiveYouTubeOwn(true);
+  }, []);
+
   const clearSelection = useCallback(() => {
     setActiveChannel(null);
     setActiveKickOnly(null);
     setActiveKickLive(false);
     setPendingKick(null);
     setActiveKick(null);
+    setActiveYouTubeOwn(false);
   }, []);
 
   // Role for the active selection — own Twitch/Kick = creator; a moderated
   // Twitch channel = moderator; else viewer.
   const activeRole: Role = activeChannel
     ? activeChannel.role
-    : activeKickOnly && kickSlug && activeKickOnly.toLowerCase() === kickSlug.toLowerCase()
+    : activeYouTubeOwn
       ? "creator"
-      : "viewer";
+      : activeKickOnly && kickSlug && activeKickOnly.toLowerCase() === kickSlug.toLowerCase()
+        ? "creator"
+        : "viewer";
 
   // Resolve the pending Kick side into a live target (slug + chatroom id).
   // Strategy:
@@ -539,7 +672,7 @@ export function ChatProvider({
 
   // Clear self messages and any pin when the selection changes — a new channel
   // has its own (real, Twitch-side) pin, tracked fresh from this session.
-  const selectionKey = activeChannel?.id ?? activeKickOnly ?? null;
+  const selectionKey = activeChannel?.id ?? activeKickOnly ?? (activeYouTubeOwn ? "youtube-own" : null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelfMessages([]);
@@ -702,6 +835,32 @@ export function ChatProvider({
     connectKick(kickRoom);
   }, [kickRoom, connectKick]);
 
+  // Which YouTube chat (if any) the current selection reads: the own broadcast
+  // when its channel is selected AND live, else a tuned streamer's simulcast.
+  // Keyed on PRIMITIVES so the 60s stats/resolve re-polls (which hand back fresh
+  // object identities with the same values) don't churn the target or reset the
+  // feed.
+  const ytOwnActive = activeYouTubeOwn && (ownYouTube?.isLive ?? false);
+  const ytTunedVideoId = tunedYouTube?.videoId ?? null;
+  const ytTunedLiveChatId = tunedYouTube?.liveChatId ?? null;
+  const activeYouTube = useMemo<YouTubeChatTarget | null>(
+    () =>
+      ytOwnActive
+        ? { own: true }
+        : ytTunedVideoId
+          ? { own: false, videoId: ytTunedVideoId, liveChatId: ytTunedLiveChatId }
+          : null,
+    [ytOwnActive, ytTunedVideoId, ytTunedLiveChatId]
+  );
+
+  // The poll runs for the resolved target; the hook re-checks on its own while
+  // offline, so a stream that starts mid-selection reconnects without a re-select.
+  useEffect(() => {
+    if (ytOwnActive) connectYouTube({ own: true });
+    else if (ytTunedVideoId) connectYouTube({ own: false, videoId: ytTunedVideoId, liveChatId: ytTunedLiveChatId });
+    else connectYouTube(null);
+  }, [ytOwnActive, ytTunedVideoId, ytTunedLiveChatId, connectYouTube]);
+
   // Connection state driving the beacon signal art, collapsed across whichever
   // platforms the current selection spans. A freshly-selected channel reads as
   // "connecting" (its socket is still handshaking, or hasn't been told to yet)
@@ -710,11 +869,12 @@ export function ChatProvider({
     const parts: ConnectionStatus[] = [];
     if (targetChannelId) parts.push(status);
     if (kickRoom != null) parts.push(kickStatus);
+    if (activeYouTube) parts.push(youtubeStatus);
     if (parts.length === 0) return "idle";
     if (parts.some((s) => s === "connecting" || s === "idle")) return "connecting";
     if (parts.some((s) => s === "connected")) return "connected";
     return "error";
-  }, [targetChannelId, kickRoom, status, kickStatus]);
+  }, [targetChannelId, kickRoom, status, kickStatus, activeYouTube, youtubeStatus]);
 
   // Merge both feeds by client-arrival order (bounded). Ordering by `seq` — a
   // single monotonic counter stamped when each message reaches the browser —
@@ -723,8 +883,8 @@ export function ChatProvider({
   // messages only ever append at the bottom. Socket echoes of a message we just
   // sent are dropped in favour of its single unified self entry.
   const messages = useMemo(() => {
-    if (!activeChannel && !activeKickOnly) return [];
-    const socket = [...twitchMessages, ...kickMessages].filter(
+    if (!activeChannel && !activeKickOnly && !activeYouTubeOwn) return [];
+    const socket = [...twitchMessages, ...kickMessages, ...youtubeMessages].filter(
       (m) =>
         !selfMessages.some(
           (sm) =>
@@ -739,7 +899,7 @@ export function ChatProvider({
       // epoch-ms timestamps, which would pin it wrongly.
       .sort((a, b) => (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER))
       .slice(-300);
-  }, [activeChannel, activeKickOnly, twitchMessages, kickMessages, selfMessages, eventMessages]);
+  }, [activeChannel, activeKickOnly, activeYouTubeOwn, twitchMessages, kickMessages, youtubeMessages, selfMessages, eventMessages]);
 
   // ── @-mention participant registry ───────────────────────
   // A rolling record of who has chatted (per platform), kept in a ref so the
@@ -843,8 +1003,14 @@ export function ChatProvider({
   // Live-per-platform for the active selection (from the match). Twitch reads its
   // live flag off the active channel; Kick off the match-derived state above.
   const liveByPlatform = useMemo(
-    () => ({ twitch: activeChannel?.isLive ?? false, kick: activeKickLive }),
-    [activeChannel, activeKickLive]
+    () => ({
+      twitch: activeChannel?.isLive ?? false,
+      kick: activeKickLive,
+      // YouTube is watchable exactly when we resolved a live chat to read — the
+      // own broadcast (selected + live) or a tuned streamer's live simulcast.
+      youtube: !!activeYouTube,
+    }),
+    [activeChannel, activeKickLive, activeYouTube]
   );
 
   // Memoized so the reference stays stable across the frequent re-renders the
@@ -853,8 +1019,11 @@ export function ChatProvider({
     () => ({
       ownChannel,
       ownKick,
+      ownYouTube,
       activeChannel,
       activeKickOnly,
+      activeYouTubeOwn,
+      activeYouTube,
       activeRole,
       activeKick,
       kickConnected,
@@ -865,6 +1034,7 @@ export function ChatProvider({
       giftLeaders,
       selectChannel,
       selectKickOnly,
+      selectYouTubeOwn,
       selectSearchResult,
       clearSelection,
       addWatchedChannel,
@@ -876,9 +1046,9 @@ export function ChatProvider({
       setBeaconMode,
     }),
     [
-      ownChannel, ownKick, activeChannel, activeKickOnly, activeRole, activeKick,
+      ownChannel, ownKick, ownYouTube, activeChannel, activeKickOnly, activeYouTubeOwn, activeYouTube, activeRole, activeKick,
       kickConnected, liveByPlatform, watchedChannels, followedChannels, cheerLeaders, giftLeaders,
-      selectChannel, selectKickOnly, selectSearchResult, clearSelection,
+      selectChannel, selectKickOnly, selectYouTubeOwn, selectSearchResult, clearSelection,
       addWatchedChannel, removeWatchedChannel, addSelfMessage, getMentionCandidates,
       getAllParticipants, beaconMode, setBeaconMode,
     ]

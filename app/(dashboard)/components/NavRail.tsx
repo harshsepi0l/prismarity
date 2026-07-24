@@ -342,7 +342,7 @@ const OwnChannelButton = memo(function OwnChannelButton({
   category,
   onClick,
 }: {
-  platform: "twitch" | "kick";
+  platform: "twitch" | "kick" | "youtube";
   name: string;
   avatar: string | null;
   isLive: boolean;
@@ -541,10 +541,10 @@ export function NavRail() {
   const pathname = usePathname();
   const { navWidth, setNavWidth, isMobile, navOpen, setNavOpen, navMode } = useLayout();
   const {
-    ownChannel, ownKick,
-    activeChannel, activeKickOnly,
+    ownChannel, ownKick, ownYouTube,
+    activeChannel, activeKickOnly, activeYouTubeOwn,
     watchedChannels, followedChannels,
-    selectChannel, selectKickOnly, selectSearchResult,
+    selectChannel, selectKickOnly, selectYouTubeOwn, selectSearchResult,
     clearSelection, removeWatchedChannel,
   } = useChat();
 
@@ -601,6 +601,9 @@ export function NavRail() {
   const selectOwnKick = useCallback(() => {
     if (ownKick) selectKickOnly(ownKick.slug);
   }, [ownKick, selectKickOnly]);
+  const selectOwnYouTube = useCallback(() => {
+    if (ownYouTube) selectYouTubeOwn();
+  }, [ownYouTube, selectYouTubeOwn]);
   const handleRemoveWatched = useCallback(
     (result: SearchResult) => {
       const isActive =
@@ -631,8 +634,9 @@ export function NavRail() {
 
   const ownTwitchActive = !!ownChannel && activeChannel?.id === ownChannel.id;
   const ownKickActive = !!ownKick && activeKickOnly === ownKick.slug.toLowerCase();
+  const ownYouTubeActive = !!ownYouTube && activeYouTubeOwn;
 
-  const hasOwnChannels = !!ownChannel || !!ownKick;
+  const hasOwnChannels = !!ownChannel || !!ownKick || !!ownYouTube;
 
   const content = (
     <>
@@ -678,6 +682,17 @@ export function NavRail() {
                     active={ownKickActive}
                     collapsed={collapsed}
                     onClick={selectOwnKick}
+                  />
+                )}
+                {ownYouTube && (
+                  <OwnChannelButton
+                    platform="youtube"
+                    name={ownYouTube.channelName}
+                    avatar={ownYouTube.profileImageUrl}
+                    isLive={ownYouTube.isLive}
+                    active={ownYouTubeActive}
+                    collapsed={collapsed}
+                    onClick={selectOwnYouTube}
                   />
                 )}
               </Flex>
