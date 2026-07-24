@@ -21,7 +21,11 @@ const C = {
   faint: "#5C6479",
   twitch: "#A66CFF",
   kick: "#5BE37D",
+  youtube: "#FF5C5C",
 };
+
+// Platforms with an interactive connect/disconnect flow in Settings.
+type ConnectPlatform = "twitch" | "kick" | "youtube";
 
 const PERSON_ICON = (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -60,7 +64,11 @@ function BeaconIcon({ size = 20, color = "currentColor" }: { size?: number; colo
 type Category = "accounts" | "chat" | "about";
 
 interface Props {
-  auth: { twitch: { displayName: string } | null; kick: { displayName: string } | null };
+  auth: {
+    twitch: { displayName: string } | null;
+    kick: { displayName: string } | null;
+    youtube: { displayName: string } | null;
+  };
   onClose: () => void;
 }
 
@@ -73,14 +81,15 @@ function PlatformSection({
   onDisconnect,
   onConnect,
 }: {
-  platform: "twitch" | "kick";
+  platform: ConnectPlatform;
   color: string;
   displayName: string | null;
-  disconnecting: "twitch" | "kick" | null;
-  onDisconnect: (p: "twitch" | "kick") => void;
+  disconnecting: ConnectPlatform | null;
+  onDisconnect: (p: ConnectPlatform) => void;
   onConnect: () => void;
 }) {
-  const label = platform === "twitch" ? "Twitch" : "Kick";
+  const label =
+    platform === "twitch" ? "Twitch" : platform === "kick" ? "Kick" : "YouTube";
 
   return (
     <Box mb="8px">
@@ -94,7 +103,7 @@ function PlatformSection({
           style={{ background: C.raised }}
         >
           <PlatformIcon platform={platform} size={13} />
-          <Text fontSize="12px" style={{ color: C.text }}>
+          <Text fontSize="12px" flex="1" minW="0" truncate style={{ color: C.text }}>
             Connected as{" "}
             <Text as="span" fontWeight="600">{displayName}</Text>
           </Text>
@@ -102,6 +111,7 @@ function PlatformSection({
             type="button"
             onClick={() => onDisconnect(platform)}
             disabled={disconnecting !== null}
+            flex="none"
             ml="auto"
             px="9px"
             py="4px"
@@ -147,7 +157,7 @@ function PlatformSection({
 export function SettingsDialog({ auth, onClose }: Props) {
   const router = useRouter();
   const [category, setCategory] = useState<Category>("accounts");
-  const [disconnecting, setDisconnecting] = useState<"twitch" | "kick" | null>(null);
+  const [disconnecting, setDisconnecting] = useState<ConnectPlatform | null>(null);
   const { beaconMode, setBeaconMode } = useChat();
   const signalStatus = useChatSignal();
   const { isCompact } = useLayout();
@@ -215,13 +225,19 @@ export function SettingsDialog({ auth, onClose }: Props) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const openPopup = useCallback((platform: "twitch" | "kick") => {
+  const openPopup = useCallback((platform: ConnectPlatform) => {
     const popup = window.open(
       `/api/auth/${platform}/login?popup=1`,
       "prismarity_auth",
       "width=520,height=680,menubar=no,toolbar=no,location=no,status=no"
     );
-    if (!popup) return;
+    // Popup blocked (returns null, or a closed/undefined window) — fall back to a
+    // full-page redirect so the button always does *something* instead of looking
+    // dead. This flow returns to /chat instead of the popup's /auth/success.
+    if (!popup || popup.closed || typeof popup.closed === "undefined") {
+      window.location.href = `/api/auth/${platform}/login`;
+      return;
+    }
     const handler = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
       if (e.data?.type === "prismarity_auth_success" || e.data?.type === "prismarity_auth_error") {
@@ -232,7 +248,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
     window.addEventListener("message", handler);
   }, [router]);
 
-  const disconnect = useCallback(async (platform: "twitch" | "kick") => {
+  const disconnect = useCallback(async (platform: ConnectPlatform) => {
     setDisconnecting(platform);
     try {
       const res = await fetch("/api/auth/disconnect", {
@@ -380,10 +396,22 @@ export function SettingsDialog({ auth, onClose }: Props) {
                 </chakra.button>
               );
             })}
+
+            {/* Brand — pinned to the bottom-left of the panel. */}
+            <Text
+              mt="auto" px="18px" pt="12px"
+              fontFamily="mono"
+              fontSize="11px"
+              fontWeight="700"
+              letterSpacing="0.18em"
+              style={{ color: C.faint }}
+            >
+              PRISMARITY
+            </Text>
           </Flex>
 
           {/* Content */}
-          <Box flex="1" minW="0" overflowY="auto" p={asDropdown ? "18px" : "28px"} style={{ background: C.bg }}>
+          <Box flex="1" minW="0" overflowY="auto" p={asDropdown ? "18px" : { base: "16px", md: "28px" }} style={{ background: C.bg }}>
 
             {category === "accounts" && (
               <Box>
@@ -413,17 +441,14 @@ export function SettingsDialog({ auth, onClose }: Props) {
 
                 <Box my="12px" />
 
-                {/* Placeholder for the upcoming YouTube integration */}
-                <Flex
-                  align="center" gap="10px" px="10px" py="11px" borderRadius="8px"
-                  style={{ background: C.raised, opacity: 0.55 }}
-                >
-                  <PlatformIcon platform="youtube" size={13} />
-                  <Text fontSize="12px" style={{ color: C.text }}>YouTube</Text>
-                  <Text fontSize="11px" ml="auto" fontFamily="mono" style={{ color: C.faint }}>
-                    Coming soon
-                  </Text>
-                </Flex>
+                <PlatformSection
+                  platform="youtube"
+                  color={C.youtube}
+                  displayName={auth.youtube?.displayName ?? null}
+                  disconnecting={disconnecting}
+                  onDisconnect={disconnect}
+                  onConnect={() => openPopup("youtube")}
+                />
               </Box>
             )}
 
@@ -484,8 +509,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
                     <Text fontSize="12px" fontWeight="600" style={{ color: C.muted }}>Prismarity Beacon Extension</Text>
                   </Flex>
                   <Text fontSize="11px" lineHeight="1.7" style={{ color: C.faint }}>
-                    Install the companion extension from the <code style={{ color: C.muted }}>extension/</code> folder in the project.
-                    It watches your active tab for Twitch and Kick streams and signals Prismarity automatically.
+                    Install the extension from your browser&apos;s web store.
                   </Text>
 
                   {/* Pairing key — paste into the extension popup once so its
@@ -496,9 +520,9 @@ export function SettingsDialog({ auth, onClose }: Props) {
                   <Text fontSize="11px" lineHeight="1.6" mb="8px" style={{ color: C.faint }}>
                     Paste this into the extension popup to link it to your account. Keep it private.
                   </Text>
-                  <Flex align="center" gap="8px">
+                  <Flex align="center" gap="8px" flexWrap="wrap">
                     <Box
-                      flex="1" borderRadius="6px" px="10px" py="7px"
+                      flex="1 1 140px" minW="120px" borderRadius="6px" px="10px" py="7px"
                       fontFamily="monospace" fontSize="11px"
                       overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap"
                       style={{ background: C.field, border: `1px solid ${C.fieldLine}`, color: C.muted }}
@@ -559,23 +583,14 @@ export function SettingsDialog({ auth, onClose }: Props) {
             {category === "about" && (
               <Box>
                 <Text fontSize="18px" fontWeight="700" mb="6px" style={{ color: C.text }}>Prismarity</Text>
-                <Text fontSize="13px" mb="20px" style={{ color: C.muted }}>
-                  A multi-platform streaming dashboard for Twitch and Kick.
+                <Text fontSize="13px" mb="20px" lineHeight="1.7" style={{ color: C.muted }}>
+                  One place to watch and chat across Twitch, Kick and YouTube. Connect your
+                  accounts, follow your channels, and jump between streams without juggling tabs.
                 </Text>
                 <Box mb="20px" style={{ height: "1px", background: C.line }} />
-                <Text fontSize="12px" lineHeight="2" style={{ color: C.faint }}>
-                  Authentication uses OAuth 2.0 with PKCE. Tokens are encrypted at rest using AES-256-GCM.
-                  No credentials are ever sent to third-party servers.
-                </Text>
-                <Box my="20px" style={{ height: "1px", background: C.line }} />
-                <Text fontSize="11px" fontWeight="700" mb="8px" style={{ color: C.muted, letterSpacing: "0.06em" }}>
-                  PLATFORM NOTES
-                </Text>
-                <Text fontSize="12px" lineHeight="2" style={{ color: C.faint }}>
-                  Twitch and Kick expose different data. Twitch provides your followed channels through
-                  its official API; Kick&apos;s public API does not, so your Kick follows can&apos;t be
-                  listed automatically — reach Kick channels through search instead. When a channel you
-                  follow on Twitch also exists on Kick, both are linked so you see the unified view.
+                <Text fontSize="12px" lineHeight="1.8" style={{ color: C.faint }}>
+                  Your accounts stay secure — sign-in happens through each platform&apos;s official
+                  login and your details are never shared with anyone else.
                 </Text>
               </Box>
             )}

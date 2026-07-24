@@ -5,6 +5,7 @@ import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { useChat } from "../_ctx/chat";
 import { useSession } from "../_ctx/session";
 import { PlatformIcon } from "./PlatformIcon";
+import { useYouTubePresence } from "../_hooks/useYouTubePresence";
 import type { SearchResult } from "../types";
 
 // ⌘K-style channel search. Opens as a centered overlay; picking a result
@@ -65,6 +66,8 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
   }, [query]);
 
   const visible = results.filter((r) => (r.twitch && twitchOn) || (r.kick && kickOn));
+  // YouTube existence for a third badge (socials lookup, no live scrape).
+  const ytPresence = useYouTubePresence(visible.map((r) => r.handle));
 
   function isActive(r: SearchResult): boolean {
     if (r.twitch && activeChannel) return activeChannel.id === r.twitch.id;
@@ -146,9 +149,9 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
                     onClick={() => handleSelect(r)}
                     display="flex"
                     alignItems="center"
-                    gap="11px"
+                    gap={{ base: "8px", sm: "11px" }}
                     w="100%"
-                    px="16px"
+                    px={{ base: "12px", sm: "16px" }}
                     py="10px"
                     bg={isActive(r) ? "raised" : "transparent"}
                     color={isActive(r) ? "text" : "muted"}
@@ -157,8 +160,10 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
                     _hover={{ bg: "raised", color: "text" }}
                   >
                     <Flex align="center" gap="4px" flex="none">
+                      {/* Existence badges — one per platform the streamer is on. */}
                       {showTwitch && <PlatformIcon platform="twitch" size={15} />}
                       {showKick && <PlatformIcon platform="kick" size={14} />}
+                      {ytPresence[r.handle]?.url && <PlatformIcon platform="youtube" size={14} />}
                     </Flex>
                     <Text flex="1" minW="0" fontSize="13px" textAlign="left" truncate>
                       {r.displayName}
@@ -166,12 +171,13 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
                     {isLive ? (
                       <Flex align="center" gap="5px" flex="none">
                         <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
-                        <Text fontFamily="mono" fontSize="10px" fontWeight="600" color="#FF5C5C">
+                        {/* Tight widths keep just the dot; the word returns at ≥sm. */}
+                        <Text hideBelow="sm" fontFamily="mono" fontSize="10px" fontWeight="600" color="#FF5C5C">
                           LIVE
                         </Text>
                       </Flex>
                     ) : (
-                      <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">
+                      <Text hideBelow="sm" fontFamily="mono" fontSize="10px" color="faint" flex="none">
                         offline
                       </Text>
                     )}

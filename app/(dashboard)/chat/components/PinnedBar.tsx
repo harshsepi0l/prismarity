@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import type { PinItem } from "../../types";
 import { useChatPins } from "../../_ctx/chat";
@@ -10,6 +10,24 @@ import { BadgeChip } from "./ChatMessage";
 const HYPE = "#F5A0FF"; // hype-train accent (bright twitch-pink)
 const GOLD = "#F5C518"; // golden kappa train
 const TW = PLATFORM_COLOR.twitch;
+
+// Countdown-bar windows: a transient event drains over its 30s life; the Hype
+// Train shows remaining time against a nominal 5-min level window (refills when a
+// contribution extends the expiry, which is the real behaviour).
+const EVENT_WINDOW_MS = 30_000;
+const HYPE_WINDOW_MS = 300_000;
+
+// The depleting timer for one item — its remaining fraction and accent — or null
+// for the persistent mod-pin, which never expires.
+function timerFor(item: PinItem, now: number): { pct: number; accent: string } | null {
+  if (item.kind === "message") return null;
+  const [expiresAt, windowMs, accent] =
+    item.kind === "hype_train"
+      ? [item.hype.expiresAt, HYPE_WINDOW_MS, item.hype.isGolden ? GOLD : HYPE]
+      : [item.expiresAt, EVENT_WINDOW_MS, item.platform === "kick" ? PLATFORM_COLOR.kick : TW];
+  const pct = Math.max(0, Math.min(100, ((expiresAt - now) / windowMs) * 100));
+  return { pct, accent };
+}
 
 // The pin/banner stack. Every active item (the mod-pin plus live events — Hype
 // Train, announcements, raids, gifted subs) renders as its own notification row,
@@ -22,6 +40,18 @@ export default function PinnedBar() {
   const [hiddenId, setHiddenId] = useState<string | null>(null);
 
   const items = pinItems.filter((it) => !(it.kind === "message" && it.id === hiddenId));
+
+  // Local clock to animate the countdown bars while any timed item is present.
+  const anyTimed = items.some((it) => it.kind !== "message");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!anyTimed) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [anyTimed]);
+
   if (items.length === 0) return null;
 
   return (
@@ -31,6 +61,7 @@ export default function PinnedBar() {
           key={item.id}
           item={item}
           first={i === 0}
+          timer={timerFor(item, now)}
           expanded={item.kind === "message" && expandedId === item.id}
           onToggleExpand={() => setExpandedId((prev) => (prev === item.id ? null : item.id))}
           onHide={() => setHiddenId(item.id)}
@@ -43,12 +74,14 @@ export default function PinnedBar() {
 function PinRow({
   item,
   first,
+  timer,
   expanded,
   onToggleExpand,
   onHide,
 }: {
   item: PinItem;
   first: boolean;
+  timer: { pct: number; accent: string } | null;
   expanded: boolean;
   onToggleExpand: () => void;
   onHide: () => void;
@@ -61,10 +94,33 @@ function PinRow({
       gap="6px"
       px={{ base: "12px", md: "22px" }}
       py="7px"
-      bg={item.kind === "hype_train" ? "rgba(245,160,255,0.09)" : "rgba(166,108,255,0.08)"}
+      position="relative"
+      bg={
+        item.kind === "hype_train"
+          ? "rgba(245,160,255,0.09)"
+          : item.kind !== "message" && item.platform === "kick"
+            ? "rgba(91,227,125,0.08)"
+            : "rgba(166,108,255,0.08)"
+      }
       borderTopWidth={first ? "0" : "1px"}
       borderColor="line"
     >
+      {timer && (
+        <Box
+          position="absolute"
+          top="0"
+          left="0"
+          h="2px"
+          borderRadius="0 2px 2px 0"
+          style={{
+            width: `${timer.pct}%`,
+            background: timer.accent,
+            // Ease between the 1s clock steps so the drain reads as continuous.
+            transition: "width 1s linear",
+          }}
+          aria-hidden
+        />
+      )}
       <Flex align="center" gap="10px">
         {isMessage ? (
           <Flex align="center" gap="8px" minW="0" flex="1">
@@ -175,32 +231,51 @@ function ItemContent({ item }: { item: PinItem }) {
   }
 
   if (item.kind === "raid") {
+    const pc = item.platform === "kick" ? PLATFORM_COLOR.kick : TW;
     return (
       <Flex align="center" gap="9px" minW="0" flex="1">
-        <Box as="span" flex="none" color={TW} display="inline-flex">
+        <Box as="span" flex="none" color={pc} display="inline-flex">
           <RaidIcon />
         </Box>
+        <PlatformIcon platform={item.platform} size={12} color={pc} />
         <Text fontSize="13px" color="text" lineClamp={1} minW="0">
-          <chakra.span fontWeight="700" color={TW}>
+          <chakra.span fontWeight="700" color={pc}>
             {item.from}
           </chakra.span>{" "}
-          raided with {item.viewers.toLocaleString()} viewers
+          {item.platform === "kick" ? "hosted" : "raided"} with {item.viewers.toLocaleString()} viewers
         </Text>
       </Flex>
     );
   }
 
   if (item.kind === "gift_sub") {
+    const pc = item.platform === "kick" ? PLATFORM_COLOR.kick : TW;
     return (
       <Flex align="center" gap="9px" minW="0" flex="1">
-        <Box as="span" flex="none" color={TW} display="inline-flex">
+        <Box as="span" flex="none" color={pc} display="inline-flex">
           <GiftIcon />
         </Box>
+        <PlatformIcon platform={item.platform} size={12} color={pc} />
         <Text fontSize="13px" color="text" lineClamp={1} minW="0">
-          <chakra.span fontWeight="700" color={TW}>
+          <chakra.span fontWeight="700" color={pc}>
             {item.gifter}
           </chakra.span>{" "}
           gifted {item.count.toLocaleString()} sub{item.count === 1 ? "" : "s"}
+        </Text>
+      </Flex>
+    );
+  }
+
+  if (item.kind === "sub") {
+    const pc = PLATFORM_COLOR.kick;
+    return (
+      <Flex align="center" gap="9px" minW="0" flex="1">
+        <PlatformIcon platform="kick" size={13} color={pc} />
+        <Text fontSize="13px" color="text" lineClamp={1} minW="0">
+          <chakra.span fontWeight="700" color={pc}>
+            {item.user}
+          </chakra.span>{" "}
+          subscribed{item.months > 1 ? ` · ${item.months} months` : ""}
         </Text>
       </Flex>
     );

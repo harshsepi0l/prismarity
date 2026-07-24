@@ -11,7 +11,7 @@ import { useLayout } from "../_ctx/layout";
 import { useChat, useChatSignal } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
 
-export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null };
+export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null; youtube: { displayName: string } | null };
 
 function CombinedIcon() {
   return (
@@ -43,6 +43,55 @@ function ActiveChannelPill() {
   const { isMobile } = useLayout();
   const [aboutOpen, setAboutOpen] = useState(false);
 
+  // The tuned streamer's OWN YouTube channel, pulled from their Twitch About-
+  // panel social links (GQL) — same "same person, across platforms" idea as the
+  // Twitch/Kick icons. Link only; we don't fetch YouTube live status here.
+  const streamerLogin = activeChannel?.login ?? null;
+  const [streamerYouTube, setStreamerYouTube] = useState<string | null>(null);
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setStreamerYouTube(null);
+    if (!streamerLogin) return;
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    fetch(`/api/twitch/socials?login=${encodeURIComponent(streamerLogin)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { socials?: { name: string; title: string; url: string }[] } | null) => {
+        if (cancelled || !j?.socials) return;
+        const yt = j.socials.find(
+          (s) => /youtube\.com|youtu\.be/i.test(s.url) || /youtube/i.test(s.name)
+        );
+        setStreamerYouTube(yt?.url ?? null);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [streamerLogin]);
+
+  // Whether that YouTube channel is live right now (scrape-based, best-effort —
+  // /api/youtube/live). Lets the YouTube icon light up on live like Twitch/Kick;
+  // any failure just reads as offline, so it degrades to a muted link.
+  const [streamerYouTubeLive, setStreamerYouTubeLive] = useState(false);
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setStreamerYouTubeLive(false);
+    if (!streamerYouTube) return;
+    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/youtube/live?url=${encodeURIComponent(streamerYouTube!)}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const j = (await res.json()) as { live?: boolean };
+        if (!cancelled) setStreamerYouTubeLive(!!j.live);
+      } catch {
+        /* ignore — stays offline */
+      }
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [streamerYouTube]);
+
   const hasSelection = !!activeChannel || !!activeKickOnly;
 
   if (!hasSelection) {
@@ -68,18 +117,21 @@ function ActiveChannelPill() {
     );
   }
 
-  // Stats rows exist per platform feed the selection spans.
-  const live = platforms.filter((p) => p.isLive);
+  // Stats rows exist per platform feed the selection spans. YouTube is the
+  // connected account's OWN channel (not part of the tuned Twitch/Kick
+  // selection), so it's excluded from the pill.
+  const tuned = platforms.filter((p) => p.platform !== "youtube");
+  const live = tuned.filter((p) => p.isLive);
   const isLive = live.length > 0;
   const name =
-    activeChannel?.displayName ?? platforms[0]?.channelName ?? activeKickOnly!;
+    activeChannel?.displayName ?? tuned[0]?.channelName ?? activeKickOnly!;
   const avatar =
-    (isLive ? live : platforms).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
+    (isLive ? live : tuned).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
   const viewers = live.reduce((sum, p) => sum + p.viewers, 0);
 
-  // Per-platform presence + live state. The icon lights up in the platform's
-  // color only when it is actually live there; a present-but-offline platform
-  // is dimmed so it never implies a stream that isn't happening.
+  // Per-platform live state — each icon lights up in the platform's brand color
+  // only when the streamer is actually LIVE there; offline → dim grey. (YouTube
+  // has no live signal available, so it stays a muted link — see below.)
   const twitchP = platforms.find((p) => p.platform === "twitch");
   const kickP = platforms.find((p) => p.platform === "kick");
   const twitchLogin = activeChannel?.login ?? null;
@@ -144,6 +196,22 @@ function ActiveChannelPill() {
             _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
           >
             <PlatformIcon platform="kick" color={kickP.isLive ? PLATFORM_COLOR.kick : "#3a4152"} size={12} />
+          </chakra.a>
+        )}
+        {streamerYouTube && (
+          // The tuned streamer's YouTube (from their Twitch socials). Lights up
+          // brand-red when they're live on YouTube (scrape-based), dim grey when
+          // offline/unknown — same live-based rule as the Twitch/Kick icons.
+          <chakra.a
+            href={streamerYouTube}
+            target="_blank" rel="noreferrer"
+            title={`Open ${name} on YouTube${streamerYouTubeLive ? " (live)" : ""}`}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            display="inline-flex" flex="none"
+            transition="opacity .12s"
+            _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
+          >
+            <PlatformIcon platform="youtube" color={streamerYouTubeLive ? PLATFORM_COLOR.youtube : "#3a4152"} size={12} />
           </chakra.a>
         )}
       </Flex>
@@ -241,8 +309,7 @@ function ActiveChannelPill() {
 // ── Pixel-sprite logo geometry (computed once at module load) ──
 const PX = 8; // grid cell — chunky low-res blocks
 const PX_GAP = 0.8; // hairline between pixels
-const psnap = (v: number) => Math.round(v / PX) * PX;
-// Chunky pixel "P" (3×4 grid): bowl on top, stem down.
+// Chunky pixel "P" (3×4 grid): bowl on top, stem down — the atom's nucleus.
 const P_MATRIX = ["111", "101", "111", "100"];
 const P_W = P_MATRIX[0].length;
 const P_H = P_MATRIX.length;
@@ -254,15 +321,27 @@ P_MATRIX.forEach((row, y) =>
     if (v === "1") P_PIXELS.push([P_OX + x * PX, P_OY + y * PX]);
   })
 );
-// One tilted orbit, rasterised onto the same grid → a stepped pixel ring.
-const O_CX = 60, O_CY = 60, O_RX = 30, O_RY = 11, O_ROT = -18;
-const RING_PIXELS: [number, number][] = (() => {
-  const rad = (O_ROT * Math.PI) / 180, cs = Math.cos(rad), sn = Math.sin(rad);
+// Grid-snap helper — rasterises an orbit onto the same pixel grid as the letter.
+const psnap = (v: number) => Math.round(v / PX) * PX;
+
+// Three orbits tilted like an atom: Twitch on the "\" diagonal, Kick on the "/"
+// diagonal, YouTube vertical (top↔bottom). Each has its OWN ellipse (rx×ry) so
+// the tilted pair (Twitch/Kick) and the vertical one nest cleanly — tuned in the
+// orbit tuner. Each ellipse is rasterised at its tilt into a stepped pixel ring;
+// a comet snaps along it.
+const YOUTUBE_COLOR = "#FF3D46";
+
+function orbitPath(rx: number, ry: number): string {
+  return `M${60 - rx},60 a${rx},${ry} 0 1,1 ${2 * rx},0 a${rx},${ry} 0 1,1 ${-2 * rx},0`;
+}
+
+function rasterizeRing(rot: number, rx: number, ry: number): [number, number][] {
+  const rad = (rot * Math.PI) / 180, cs = Math.cos(rad), sn = Math.sin(rad);
   const seen = new Set<string>();
   const out: [number, number][] = [];
   for (let a = 0; a < 360; a += 3) {
-    const t = (a * Math.PI) / 180, ex = O_RX * Math.cos(t), ey = O_RY * Math.sin(t);
-    const X = psnap(O_CX + ex * cs - ey * sn), Y = psnap(O_CY + ex * sn + ey * cs);
+    const t = (a * Math.PI) / 180, ex = rx * Math.cos(t), ey = ry * Math.sin(t);
+    const X = psnap(60 + ex * cs - ey * sn), Y = psnap(60 + ex * sn + ey * cs);
     const k = `${X},${Y}`;
     if (!seen.has(k)) {
       seen.add(k);
@@ -270,34 +349,53 @@ const RING_PIXELS: [number, number][] = (() => {
     }
   }
   return out;
-})();
-const ORBIT_PATH = `M${O_CX - O_RX},${O_CY} a${O_RX},${O_RY} 0 1,1 ${2 * O_RX},0 a${O_RX},${O_RY} 0 1,1 ${-2 * O_RX},0`;
-const ORBIT_STEPS = RING_PIXELS.length;
+}
 
-// One orbiting electron: a bright pixel head plus a short stepped comet trail,
-// travelling the orbit path via CSS steps() so it snaps pixel-to-pixel. Dims and
-// pauses when its platform isn't connected.
+// Per-orbit ellipse + phase, tuned in the orbit tuner so the comets converge on
+// the vertical midline above the P. delaySec is the top-centre crossing phase ×
+// the 5s lap. Kick `reverse`s its spin so Twitch and Kick counter-rotate (mirror)
+// through their shared meeting point instead of tracking in lockstep — reversing
+// flips its phase, so its delay is the reverse-equivalent of the tuner's value.
+const ORBITS = [
+  { platform: "twitch" as const, color: PLATFORM_COLOR.twitch, rot: 45, rx: 32, ry: 11.75, delaySec: -4.130, reverse: false },
+  { platform: "kick" as const, color: PLATFORM_COLOR.kick, rot: -45, rx: 32, ry: 11.75, delaySec: -1.630, reverse: true },
+  { platform: "youtube" as const, color: YOUTUBE_COLOR, rot: 90, rx: 26, ry: 9.55, delaySec: 0, reverse: false },
+].map((o) => {
+  const ring = rasterizeRing(o.rot, o.rx, o.ry);
+  return { ...o, ring, steps: ring.length, path: orbitPath(o.rx, o.ry) };
+});
+
+// One orbiting particle: a bright pixel head plus a short stepped comet trail,
+// travelling its tilted orbit via CSS steps() so it snaps pixel-to-pixel. Dims
+// and pauses when its platform isn't connected.
 const TRAIL = 6; // head + 5 trailing pixels
 function Electron({
   color,
+  rot,
+  steps,
   durSec,
   delaySec,
-  on,
+  path,
+  reverse,
 }: {
   color: string;
+  rot: number;
+  steps: number;
   durSec: number;
   delaySec: number;
-  on: boolean;
+  path: string;
+  reverse: boolean;
 }) {
-  // One grid step of the animation — offset each trail pixel by this so it lands
-  // one cell BEHIND the head (otherwise every trail pixel stacks on the head).
-  const stepDur = durSec / ORBIT_STEPS;
+  const stepDur = durSec / steps;
   return (
-    <g transform={`rotate(${O_ROT} ${O_CX} ${O_CY})`}>
+    <g transform={`rotate(${rot} 60 60)`}>
       {Array.from({ length: TRAIL }).map((_, k) => {
         const head = k === 0;
         const s = head ? 1 : 0.78;
         const off = (s * PX) / 2;
+        // The trail sits BEHIND the head along its direction of travel: earlier
+        // in the animation for a forward spin, later for a reversed one.
+        const trailDelay = reverse ? delaySec + k * stepDur : delaySec - k * stepDur;
         return (
           <rect
             key={k}
@@ -307,16 +405,16 @@ function Electron({
             height={s * PX}
             fill={color}
             shapeRendering="crispEdges"
-            opacity={on ? 1 - k * 0.15 : 0.13}
+            opacity={1 - k * 0.15}
             style={{
-              offsetPath: `path('${ORBIT_PATH}')`,
+              offsetPath: `path('${path}')`,
               offsetRotate: "0deg",
               animationName: "pel-orbit",
               animationDuration: `${durSec}s`,
-              animationTimingFunction: `steps(${ORBIT_STEPS}, end)`,
+              animationTimingFunction: `steps(${steps}, end)`,
               animationIterationCount: "infinite",
-              animationDelay: `${(delaySec - k * stepDur).toFixed(3)}s`,
-              animationPlayState: on ? "running" : "paused",
+              animationDirection: reverse ? "reverse" : "normal",
+              animationDelay: `${trailDelay.toFixed(3)}s`,
               filter: head ? `drop-shadow(0 0 2px ${color})` : undefined,
             }}
           />
@@ -326,16 +424,17 @@ function Electron({
   );
 }
 
-// Profile button — the Prismarity mark: a pixel-art "P" with two electrons
-// (Twitch violet, Kick green) orbiting it on a stepped pixel ring, each trailing
-// a short comet. An electron dims + pauses when its platform isn't connected.
-// Opens settings on click.
+// Profile button — the Prismarity mark: a bold pixel-art "P" nucleus with a
+// colored comet (Twitch "\", Kick "/", YouTube vertical) orbiting it for each
+// CONNECTED platform. No faint/grey rings — scattered low-opacity pixels read as
+// noise and hurt readability at this size; a platform that isn't connected
+// simply shows nothing. Opens settings on click.
 function ProfileButton({
   onClick,
   connected,
 }: {
   onClick: () => void;
-  connected: { twitch: boolean; kick: boolean };
+  connected: { twitch: boolean; kick: boolean; youtube: boolean };
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -363,17 +462,25 @@ function ProfileButton({
       }}
     >
       <svg width="30" height="30" viewBox="24 24 72 72" fill="none" aria-hidden style={{ overflow: "visible" }}>
-        {/* stepped pixel orbit ring, behind the letter */}
-        {RING_PIXELS.map(([x, y], i) => (
-          <rect key={`r${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#7C889E" opacity={0.22} shapeRendering="crispEdges" />
-        ))}
-        {/* the pixel P */}
+        {/* the bold pixel P nucleus — the whole mark when nothing is connected */}
         {P_PIXELS.map(([x, y], i) => (
           <rect key={`p${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#E9ECF7" shapeRendering="crispEdges" />
         ))}
-        {/* the two electrons, on top so they always read */}
-        <Electron color={PLATFORM_COLOR.twitch} durSec={5} delaySec={0} on={connected.twitch} />
-        <Electron color={PLATFORM_COLOR.kick} durSec={5} delaySec={-2.5} on={connected.kick} />
+        {/* one colored comet per CONNECTED platform — nothing shown otherwise */}
+        {ORBITS.map((o) =>
+          !connected[o.platform] ? null : (
+            <Electron
+              key={`e-${o.platform}`}
+              color={o.color}
+              rot={o.rot}
+              steps={o.steps}
+              durSec={5}
+              delaySec={o.delaySec}
+              path={o.path}
+              reverse={o.reverse}
+            />
+          )
+        )}
       </svg>
     </chakra.button>
   );
@@ -384,7 +491,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ auth }: TopBarProps) {
-  const { chatLayout, setChatLayout, searchOpen, setSearchOpen, setNavOpen, navMode, cycleNavMode, panelMode, togglePanel } = useLayout();
+  const { chatLayout, setChatLayout, searchOpen, setSearchOpen, setNavOpen, navMode, cycleNavMode, panelMode, togglePanel, isMobile, setPanelOpen } = useLayout();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ⌘K / Ctrl+K opens the channel search.
@@ -457,19 +564,8 @@ export function TopBar({ auth }: TopBarProps) {
           </chakra.button>
           <ProfileButton
             onClick={() => setSettingsOpen(true)}
-            connected={{ twitch: !!auth.twitch, kick: !!auth.kick }}
+            connected={{ twitch: !!auth.twitch, kick: !!auth.kick, youtube: !!auth.youtube }}
           />
-          <Text
-            hideBelow="sm"
-            fontFamily="mono"
-            fontSize="13px"
-            fontWeight="700"
-            letterSpacing="0.18em"
-            color="text"
-            flex="none"
-          >
-            PRISMARITY
-          </Text>
         </Flex>
 
         {/* Center: what you're tuned into */}
@@ -497,18 +593,18 @@ export function TopBar({ auth }: TopBarProps) {
             {chatLayout === "combined" ? <CombinedIcon /> : <SplitIcon />}
           </chakra.button>
 
-          {/* Desktop: show/hide the right stats panel. */}
+          {/* Desktop: show/hide the docked stats panel. Mobile: open it as an
+              overlay drawer that takes over the chat (like the NavRail drawer). */}
           <chakra.button
-            hideBelow="md"
             type="button"
-            title={panelMode === "hidden" ? "Show stats panel" : "Hide stats panel"}
+            title={isMobile ? "Show stats panel" : panelMode === "hidden" ? "Show stats panel" : "Hide stats panel"}
             aria-label="Toggle stats panel"
-            onClick={togglePanel}
+            onClick={() => (isMobile ? setPanelOpen(true) : togglePanel())}
             display="flex" alignItems="center" justifyContent="center"
             w="30px" h="30px" borderRadius="7px" flex="none"
             transition="background .12s, border-color .12s"
             style={
-              panelMode === "expanded"
+              !isMobile && panelMode === "expanded"
                 ? { background: "rgba(166,108,255,0.14)", border: "1px solid rgba(166,108,255,0.45)" }
                 : { background: "transparent", border: "1px solid #232a38" }
             }

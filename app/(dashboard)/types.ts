@@ -40,7 +40,19 @@ export interface ChatMessage {
   // Badge refs the sender held, normalized across platforms: Twitch's
   // {set_id, id} as-is; Kick's {type, count} as {setId: type, id: String(count)}.
   badges?: { setId: string; id: string }[];
+  // When set, this is not a chatter line but a system notice injected into the
+  // feed (e.g. a Hype Train starting or levelling up). Rendered as a centered
+  // event row and excluded from chatter/rate stats.
+  system?: SystemNotice;
 }
+
+// A non-chat event surfaced inline in the message feed. The row is coloured by
+// the carrier ChatMessage's `platform`, so only the semantic data lives here.
+export type SystemNotice =
+  | { kind: "hype_train"; event: "start" | "level"; level: number; isGolden: boolean }
+  | { kind: "raid"; from: string; viewers: number }
+  | { kind: "gift_sub"; gifter: string; count: number }
+  | { kind: "sub"; user: string; months: number };
 
 // A chatter picked from the feed (click their name) to look up in UserCard.
 export interface UserSelection {
@@ -62,11 +74,13 @@ export interface HypeTrain {
 }
 
 // Transient live events surfaced as banners in the cycle bar. `at` is when we
-// received it, used to age them out.
+// received it, used to age them out. `platform` attributes the event so the UI
+// can brand it (Twitch EventSub vs Kick's Pusher socket).
 export type LiveEvent =
-  | { id: string; kind: "announcement"; user: string; color: string | null; text: string; at: number }
-  | { id: string; kind: "raid"; from: string; viewers: number; at: number }
-  | { id: string; kind: "gift_sub"; gifter: string; count: number; at: number };
+  | { id: string; kind: "announcement"; platform: "twitch"; user: string; color: string | null; text: string; at: number }
+  | { id: string; kind: "raid"; platform: "twitch" | "kick"; from: string; viewers: number; at: number }
+  | { id: string; kind: "gift_sub"; platform: "twitch" | "kick"; gifter: string; count: number; at: number }
+  | { id: string; kind: "sub"; platform: "kick"; user: string; months: number; at: number };
 
 // One entry in the cycleable pin/banner bar — the merged view of the real
 // mod-pin plus live events.
@@ -82,6 +96,7 @@ export type PinItem =
       badges: { setId: string; id: string }[];
     }
   | { kind: "hype_train"; id: string; hype: HypeTrain }
-  | { kind: "announcement"; id: string; user: string; color: string | null; text: string }
-  | { kind: "raid"; id: string; from: string; viewers: number }
-  | { kind: "gift_sub"; id: string; gifter: string; count: number };
+  | { kind: "announcement"; id: string; platform: "twitch"; user: string; color: string | null; text: string; expiresAt: number }
+  | { kind: "raid"; id: string; platform: "twitch" | "kick"; from: string; viewers: number; expiresAt: number }
+  | { kind: "gift_sub"; id: string; platform: "twitch" | "kick"; gifter: string; count: number; expiresAt: number }
+  | { kind: "sub"; id: string; platform: "kick"; user: string; months: number; expiresAt: number };

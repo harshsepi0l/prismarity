@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { buildBeaconToken } from "@/lib/beacon";
+import { buildBeaconToken, ensureBeaconSecret, rotateBeaconSecret } from "@/lib/beacon";
 import { getCurrentUser } from "@/lib/auth/session";
-import { ensureBeaconSecret, rotateBeaconSecret } from "@/lib/auth/store";
 
 export const runtime = "nodejs";
 

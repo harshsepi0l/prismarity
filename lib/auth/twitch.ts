@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import type { Connection } from "./types";
 import { encrypt } from "./crypto";
-import { getSettings, normalizeBaseUrl } from "@/lib/settings/store";
+import { getSettings, getBaseUrl } from "@/lib/settings/store";
 
 const AUTHORIZE_URL = "https://id.twitch.tv/oauth2/authorize";
 const TOKEN_URL = "https://id.twitch.tv/oauth2/token";
@@ -59,9 +59,7 @@ export async function getCredentials(): Promise<{
   const s = await getSettings();
   const clientId = s.twitchClientId || process.env.TWITCH_CLIENT_ID || DEFAULT_CLIENT_ID;
   const clientSecret = process.env.TWITCH_CLIENT_SECRET || "";
-  const base = normalizeBaseUrl(
-    s.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
-  );
+  const base = await getBaseUrl();
   return { clientId, clientSecret, redirectUri: `${base}/api/auth/twitch/callback` };
 }
 

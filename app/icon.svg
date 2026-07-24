@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <rect x="0" y="0" width="120" height="120" rx="26" fill="#0E1118"/>
+  <!-- pixel "P" nucleus -->
+  <rect x="48" y="44" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <rect x="56" y="44" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <rect x="64" y="44" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <rect x="48" y="52" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <rect x="64" y="52" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <rect x="48" y="60" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <rect x="56" y="60" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <rect x="64" y="60" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <rect x="48" y="68" width="7.2" height="7.2" fill="#E9ECF7"/>
+  <!-- three brand-colored orbit comets (Twitch, Kick, YouTube) -->
+  <rect x="34.8" y="34.8" width="8" height="8" fill="#A66CFF"/>
+  <rect x="77.2" y="34.8" width="8" height="8" fill="#5BE37D"/>
+  <rect x="56.0" y="86.0" width="8" height="8" fill="#FF3D46"/>
+</svg>

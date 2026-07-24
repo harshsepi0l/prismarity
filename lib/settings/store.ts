@@ -1,25 +1,17 @@
-import { promises as fs } from "fs";
-import path from "path";
-
 interface Settings {
   twitchClientId: string;
   twitchClientSecretEnc: string;
   kickClientId: string;
   kickClientSecretEnc: string;
+  youtubeClientId: string;
   baseUrl: string;
 }
 
-const DEFAULTS: Settings = {
-  twitchClientId: "",
-  twitchClientSecretEnc: "",
-  kickClientId: "",
-  kickClientSecretEnc: "",
-  baseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? "",
-};
-
-const DATA_DIR = path.join(process.cwd(), ".data");
-const FILE = path.join(DATA_DIR, "settings.json");
-const CACHE_TTL = 5 * 60_000;
+// Config is ENV-DRIVEN and read-only. There is no writable settings store — the
+// runtime write UI was removed (an unauthenticated write could poison baseUrl →
+// open redirect after login), and a serverless host has no persistent filesystem
+// anyway. Client IDs / base URL come from env; client secrets are read directly
+// from env by the auth layer (never surfaced here).
 
 // Reduce a configured base URL to just its origin (scheme + host + port),
 // dropping any stray path — e.g. a mistakenly pasted "/api/auth/twitch/callback"
@@ -33,43 +25,48 @@ export function normalizeBaseUrl(base: string): string {
   }
 }
 
-let _cache: Settings | null = null;
-let _cacheAt = 0;
+// The public origin used to build OAuth redirect URLs. Resolution order:
+//   1. NEXT_PUBLIC_BASE_URL, if it's a real (non-localhost) value — for custom
+//      domains you want to pin. (It's inlined at build; a localhost value is
+//      ignored so a stray/leftover setting can't drag us back to localhost.)
+//   2. The HOST THE USER ACTUALLY HIT — x-forwarded-host / host from the request
+//      (Vercel sets these to the real public domain). This is what makes the
+//      OAuth redirect_uri always match the domain the login started on, with
+//      zero env config, across previews + custom domains. Safe because OAuth
+//      only allows redirect_uris registered on the app anyway.
+//   3. VERCEL_PROJECT_PRODUCTION_URL (Vercel runtime), then localhost.
+async function resolveBaseUrl(): Promise<string> {
+  const explicit = process.env.NEXT_PUBLIC_BASE_URL;
+  if (explicit && !explicit.includes("localhost")) return normalizeBaseUrl(explicit);
 
-async function read(): Promise<Settings> {
   try {
-    const raw = JSON.parse(await fs.readFile(FILE, "utf8")) as Partial<Settings>;
-    return {
-      ...DEFAULTS,
-      ...raw,
-      // Always prefer the env var for baseUrl — file-based value may be stale
-      // or simply absent on Azure's ephemeral filesystem.
-      baseUrl: normalizeBaseUrl(process.env.NEXT_PUBLIC_BASE_URL ?? raw.baseUrl ?? DEFAULTS.baseUrl),
-    };
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const host = h.get("x-forwarded-host") || h.get("host");
+    if (host) {
+      const proto = h.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
+      return normalizeBaseUrl(`${proto}://${host}`);
+    }
   } catch {
-    return { ...DEFAULTS };
+    /* not inside a request (e.g. build) — fall through */
   }
-}
 
-// The public origin to build user-facing redirect URLs from. Must NOT be
-// derived from the incoming request: behind a proxy/container (e.g. Azure)
-// req.url carries the internal host:port, which then leaks into Location headers.
-export async function getBaseUrl(): Promise<string> {
-  const s = await getSettings();
-  return normalizeBaseUrl(
-    s.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
-  );
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (vercel) return normalizeBaseUrl(`https://${vercel}`);
+  return "http://localhost:3000";
 }
 
 export async function getSettings(): Promise<Settings> {
-  if (_cache && Date.now() - _cacheAt < CACHE_TTL) return _cache;
-  _cache = await read();
-  _cacheAt = Date.now();
-  return _cache;
+  return {
+    twitchClientId: process.env.TWITCH_CLIENT_ID ?? "",
+    twitchClientSecretEnc: "",
+    kickClientId: process.env.KICK_CLIENT_ID ?? "",
+    kickClientSecretEnc: "",
+    youtubeClientId: process.env.YOUTUBE_CLIENT_ID ?? "",
+    baseUrl: await resolveBaseUrl(),
+  };
 }
 
-export async function writeSettings(s: Settings): Promise<void> {
-  _cache = null;
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(s, null, 2), "utf8");
+export async function getBaseUrl(): Promise<string> {
+  return resolveBaseUrl();
 }

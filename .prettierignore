@@ -1,0 +1,13 @@
+# Prettier automatically ignores .gitignore'd paths (node_modules, .next, build, out, coverage).
+# List only tracked files that should NOT be reformatted.
+
+# lockfiles
+package-lock.json
+
+# generated / vendored
+*.min.js
+*.min.css
+
+# data & certs
+/.data/
+*.pem

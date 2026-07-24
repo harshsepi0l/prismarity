@@ -1,4 +1,16 @@
-const PRISMARITY = "http://localhost:3000/api/beacon";
+// The Prismarity origin the beacon POSTs to. Configurable from the popup (stored
+// as `origin`) so the same extension works against local dev and your deployed
+// Vercel URL. Defaults to localhost until you set it.
+const DEFAULT_ORIGIN = "http://localhost:3000";
+
+function normalizeOrigin(raw) {
+  const v = (raw || "").trim().replace(/\/+$/, "").replace(/\/api\/beacon$/, "");
+  return v || DEFAULT_ORIGIN;
+}
+
+function beaconUrl(origin) {
+  return `${normalizeOrigin(origin)}/api/beacon`;
+}
 
 // Pages to skip on each platform — everything that isn't a live channel page.
 const TWITCH_SKIP = new Set([
@@ -48,14 +60,14 @@ function signal(tabId) {
     if (key === lastSent) return;
     lastSent = key;
 
-    chrome.storage.local.get(["token"], ({ token }) => {
+    chrome.storage.local.get(["token", "origin"], ({ token, origin }) => {
       if (!token) {
         // Detected a stream but the extension isn't paired yet — surface that in
         // the popup and don't bother the server with an unauthenticated write.
         setStatus({ ...stream, paired: false, sentOk: false });
         return;
       }
-      fetch(PRISMARITY, {
+      fetch(beaconUrl(origin), {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Beacon-Token": token },
         body: JSON.stringify(stream),
@@ -90,7 +102,7 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 // A freshly pasted pairing key should re-signal the current stream immediately,
 // not wait for the next tab switch.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.token) {
+  if (area === "local" && (changes.token || changes.origin)) {
     lastSent = "";
     checkActiveTab();
   }

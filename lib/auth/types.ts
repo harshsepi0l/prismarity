@@ -1,5 +1,5 @@
-// Shared auth types. Multi-platform from the start; only Twitch is implemented
-// in this phase. TODO: implement YouTube and Kick connections.
+// Shared auth types. Multi-platform: Twitch, Kick and YouTube are all
+// implemented (YouTube read-only — live status + subscriber count, no chat yet).
 export type Platform = "twitch" | "youtube" | "kick";
 
 // Role is PER CHANNEL and DERIVED server-side — never chosen by the client.
@@ -19,13 +19,10 @@ export interface Connection {
   expiresIn: number; // seconds until the access token expires
 }
 
-// One Prismarity user -> many connected platform accounts.
+// One Prismarity user -> many connected platform accounts. The whole record is
+// serialised into the encrypted session cookie (see lib/auth/session.ts).
 export interface User {
   id: string;
   createdAt: number;
   connections: Connection[];
-  // Random per-user secret backing the beacon pairing token. Regenerated on
-  // rotation, which invalidates any extension still holding the old token.
-  // Created lazily the first time the pairing key is viewed.
-  beaconSecret?: string;
 }
