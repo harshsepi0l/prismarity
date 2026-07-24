@@ -16,7 +16,7 @@ import MentionAutocomplete from "./composer/MentionAutocomplete";
 import SendTargets from "./composer/SendTargets";
 
 export default function Composer() {
-  const { activeChannel, activeKick, activeKickOnly, activeYouTube, getMentionCandidates, liveByPlatform } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, activeYouTube, ownYouTube, getMentionCandidates, liveByPlatform } = useChat();
   const emotes = useEmotes();
   const categories = useEmoteCategories();
   const { sendTargets, toggleSendTarget } = useSession();
@@ -25,8 +25,13 @@ export default function Composer() {
   const { sending, error, errorPlatform, followCountdown, startFollowCountdown, send, clearError } =
     useChatSend();
 
-  // The name shown in placeholders/status — Twitch channel, else the Kick slug.
-  const channelName = activeChannel?.displayName ?? activeKick?.slug ?? activeKickOnly ?? null;
+  // The name shown in placeholders/status — Twitch channel, else the Kick slug,
+  // else your own YouTube channel when it's the standalone selection.
+  const channelName =
+    activeChannel?.displayName ??
+    activeKick?.slug ??
+    activeKickOnly ??
+    (activeYouTube?.own ? ownYouTube?.channelName ?? "your channel" : null);
 
   const richInputRef = useRef<RichInputHandle>(null);
   const [text, setText] = useState("");
@@ -52,7 +57,7 @@ export default function Composer() {
 
   // Identifies the active channel selection — used to reset transient composer
   // state on switch, and to guard the async restore-on-failure below.
-  const selectionKey = activeChannel?.id ?? activeKick?.slug ?? activeKickOnly ?? null;
+  const selectionKey = activeChannel?.id ?? activeKick?.slug ?? activeKickOnly ?? (activeYouTube?.own ? "youtube-own" : null);
   const selectionKeyRef = useRef(selectionKey);
 
   // ── emote ":shortcode" autocomplete ──────────────────────

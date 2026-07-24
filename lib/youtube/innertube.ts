@@ -26,6 +26,15 @@ export interface InnertubeChatPage {
   timeoutMs: number; // how long the page says to wait before the next poll
 }
 
+// Poll outcome, so callers can tell "chat is over" from "temporary hiccup":
+//   ok        → a page (may be empty); advance the cursor.
+//   ended     → the chat genuinely closed (200 but no continuationContents).
+//   transient → a network/HTTP/parse error; KEEP the cursor and retry.
+export type InnertubeChatResult =
+  | { status: "ok"; page: InnertubeChatPage }
+  | { status: "ended" }
+  | { status: "transient" };
+
 // Pull the first balanced {...} object literal that follows `marker`. More robust
 // than a regex against YouTube's huge, nested ytInitialData blob (which contains
 // escaped braces inside strings).
@@ -181,12 +190,13 @@ function mapRenderer(r: TextRenderer): YouTubeChatMessage | null {
   };
 }
 
-// One InnerTube poll. Returns the batch of new messages + the next continuation.
-// null when the chat is over / the token is dead (caller stops or re-inits).
+// One InnerTube poll. Distinguishes a real end-of-chat (so the caller stops)
+// from a transient error (so the caller retries with the SAME cursor instead of
+// losing its place and re-scraping).
 export async function getLiveChatPage(
   continuation: string,
   config: InnertubeConfig
-): Promise<InnertubeChatPage | null> {
+): Promise<InnertubeChatResult> {
   try {
     const res = await fetch(
       `https://www.youtube.com/youtubei/v1/live_chat/get_live_chat?key=${encodeURIComponent(config.apiKey)}&prettyPrint=false`,
@@ -200,7 +210,9 @@ export async function getLiveChatPage(
         cache: "no-store",
       }
     );
-    if (!res.ok) return null;
+    // A 4xx here is usually a dead/rotated continuation → re-init (ended); a 5xx
+    // or 429 is transient → retry with the same cursor.
+    if (!res.ok) return res.status >= 500 || res.status === 429 ? { status: "transient" } : { status: "ended" };
     const json = (await res.json()) as {
       continuationContents?: {
         liveChatContinuation?: {
@@ -210,7 +222,7 @@ export async function getLiveChatPage(
       };
     };
     const lc = json.continuationContents?.liveChatContinuation;
-    if (!lc) return null; // chat ended — no continuationContents
+    if (!lc) return { status: "ended" }; // no continuationContents → chat closed
 
     const messages: YouTubeChatMessage[] = [];
     for (const a of lc.actions ?? []) {
@@ -220,8 +232,8 @@ export async function getLiveChatPage(
       if (m) messages.push(m);
     }
     const { continuation: next, timeoutMs } = firstContinuation(lc.continuations?.[0]);
-    return { messages, continuation: next, timeoutMs };
+    return { status: "ok", page: { messages, continuation: next, timeoutMs } };
   } catch {
-    return null;
+    return { status: "transient" }; // network/parse error → keep cursor, retry
   }
 }

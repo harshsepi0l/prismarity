@@ -35,6 +35,9 @@ interface YouTubeChatApiMessage {
 
 interface YouTubeChatResponse {
   live?: boolean;
+  // Transient upstream error: retry soon WITHOUT dropping the cursor. Distinct
+  // from live:false (chat ended/offline), which does re-init.
+  retry?: boolean;
   messages?: YouTubeChatApiMessage[];
   cursor?: string | null;
   pollingIntervalMillis?: number;
@@ -43,11 +46,20 @@ interface YouTubeChatResponse {
 // While enabled but not currently live, re-check this slowly so a stream that
 // starts (or a chat that briefly errored) reconnects on its own.
 const OFFLINE_RECHECK_MS = 10_000;
+// Backoff after a transient upstream error — quick enough to catch back up, slow
+// enough not to hammer the scrape path.
+const RETRY_MS = 3_000;
+// Never poll faster than this even if the server hands back a tiny interval.
+const MIN_POLL_MS = 1_000;
 
 // Drip pacing bounds: fast enough that a big backlog doesn't lag far behind the
 // live edge, slow enough that a lone message doesn't feel frozen for a full poll.
 const DRIP_MIN_MS = 150;
 const DRIP_MAX_MS = 900;
+// Cap on undelivered messages. A chat faster than the drip floor (~6.7 msg/s)
+// would otherwise grow the queue and lag unboundedly; past this we drop the
+// OLDEST surplus to stay near the live edge (they'd be stale on screen anyway).
+const QUEUE_CAP = 400;
 
 // What to read (both via InnerTube): the connected account's OWN broadcast (the
 // server resolves its video id), or a tuned streamer's simulcast identified by
@@ -63,6 +75,10 @@ export function useYouTubeChat() {
   const [status, setStatus] = useState<ConnectionStatus>("idle");
 
   const enabledRef = useRef(false);
+  // Bumped on every connect(); a poll captures it at start and bails after its
+  // await if it changed, so a slow in-flight response from a PREVIOUS target
+  // can't write its cursor/messages into the new one or start a rival loop.
+  const genRef = useRef(0);
   // videoId for a tuned target; null means own (server resolves the video id).
   const videoIdRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,6 +129,7 @@ export function useYouTubeChat() {
   const pollRef = useRef<() => void>(() => {});
   pollRef.current = async () => {
     if (!enabledRef.current) return;
+    const myGen = genRef.current;
     const q = new URLSearchParams();
     if (videoIdRef.current) q.set("videoId", videoIdRef.current); // tuned
     else q.set("own", "1"); // own — server resolves the video id
@@ -121,12 +138,18 @@ export function useYouTubeChat() {
     let schedule = OFFLINE_RECHECK_MS;
     try {
       const res = await fetch(`/api/youtube/chat?${q.toString()}`);
-      if (!enabledRef.current) return;
+      // Bail if the target changed (or teardown happened) while we were awaiting
+      // — this response belongs to a stale generation.
+      if (!enabledRef.current || genRef.current !== myGen) return;
       if (res.ok) {
         const data = (await res.json()) as YouTubeChatResponse;
-        if (data.live) {
+        if (genRef.current !== myGen) return;
+        if (data.retry) {
+          // Transient upstream error — keep the cursor, back off briefly, retry.
+          schedule = RETRY_MS;
+        } else if (data.live) {
           cursorRef.current = data.cursor ?? cursorRef.current;
-          schedule = data.pollingIntervalMillis ?? 5_000;
+          schedule = Math.max(MIN_POLL_MS, data.pollingIntervalMillis ?? 5_000);
           setStatus("connected");
 
           for (const m of data.messages ?? []) {
@@ -142,6 +165,11 @@ export function useYouTubeChat() {
               timestamp: m.publishedAt,
               nativeEmotes: m.nativeEmotes,
             });
+          }
+          // Cap undelivered backlog: on a chat faster than the drip floor, drop
+          // the oldest surplus so memory/lag stay bounded near the live edge.
+          if (queueRef.current.length > QUEUE_CAP) {
+            queueRef.current = queueRef.current.slice(-QUEUE_CAP);
           }
           // Bound the dedupe set on very busy chats.
           if (seenRef.current.size > 1000) {
@@ -166,11 +194,11 @@ export function useYouTubeChat() {
       }
     } catch {
       // Network error — keep the cursor and retry on the offline cadence.
-      if (!enabledRef.current) return;
+      if (!enabledRef.current || genRef.current !== myGen) return;
       setStatus("connecting");
     }
 
-    if (enabledRef.current) {
+    if (enabledRef.current && genRef.current === myGen) {
       timerRef.current = setTimeout(() => pollRef.current(), schedule);
     }
   };
@@ -180,6 +208,7 @@ export function useYouTubeChat() {
   const connect = useCallback(
     (target: YouTubeChatTarget | null) => {
       clearTimers();
+      genRef.current++; // invalidate any in-flight poll from a previous target
       enabledRef.current = !!target;
       videoIdRef.current = target && !target.own ? target.videoId : null;
       cursorRef.current = null;

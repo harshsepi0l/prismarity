@@ -31,9 +31,14 @@ export interface OwnBroadcast {
 }
 
 // Cache the active broadcast per user so we don't re-run liveBroadcasts.list on
-// every poll. Short TTL so a new stream is picked up. Per warm instance.
+// every poll. A live broadcast's id/chat id are stable, so hold a positive
+// result for 60s; but hold a NEGATIVE result (offline, or a transient failure)
+// only briefly, so a just-started stream — or recovery from a blip — is picked
+// up for read AND send within seconds instead of being wrongly "offline" for a
+// full minute. Per warm instance.
 const ownBroadcastCache = new Map<string, { info: OwnBroadcast | null; ts: number }>();
 const OWN_BROADCAST_TTL_MS = 60_000;
+const OWN_BROADCAST_NEGATIVE_TTL_MS = 5_000;
 
 // The user's currently-active broadcast (video id + chat id), or null when
 // they're not live (or never enabled live streaming → 403, treated as offline).
@@ -41,7 +46,10 @@ const OWN_BROADCAST_TTL_MS = 60_000;
 // directly; the liveChatId rides along for sending.
 export async function getOwnBroadcast(user: User): Promise<OwnBroadcast | null> {
   const cached = ownBroadcastCache.get(user.id);
-  if (cached && Date.now() - cached.ts < OWN_BROADCAST_TTL_MS) return cached.info;
+  if (cached) {
+    const ttl = cached.info ? OWN_BROADCAST_TTL_MS : OWN_BROADCAST_NEGATIVE_TTL_MS;
+    if (Date.now() - cached.ts < ttl) return cached.info;
+  }
 
   const token = await getValidYouTubeToken(user);
   if (!token) return null;

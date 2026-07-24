@@ -10,6 +10,7 @@ import { BeaconSignal } from "./BeaconSignal";
 import { useLayout } from "../_ctx/layout";
 import { useChat, useChatSignal } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
+import { fetchStreamerYouTubeUrl } from "../_lib/streamerYouTube";
 
 export type AuthInfo = { twitch: { displayName: string } | null; kick: { displayName: string } | null; youtube: { displayName: string } | null };
 
@@ -54,16 +55,9 @@ function ActiveChannelPill() {
     if (!streamerLogin) return;
     /* eslint-enable react-hooks/set-state-in-effect */
     let cancelled = false;
-    fetch(`/api/twitch/socials?login=${encodeURIComponent(streamerLogin)}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: { socials?: { name: string; title: string; url: string }[] } | null) => {
-        if (cancelled || !j?.socials) return;
-        const yt = j.socials.find(
-          (s) => /youtube\.com|youtu\.be/i.test(s.url) || /youtube/i.test(s.name)
-        );
-        setStreamerYouTube(yt?.url ?? null);
-      })
-      .catch(() => {});
+    fetchStreamerYouTubeUrl(streamerLogin)
+      .then((url) => { if (!cancelled) setStreamerYouTube(url); })
+      .catch(() => { /* transient — leave whatever we had */ });
     return () => { cancelled = true; };
   }, [streamerLogin]);
 

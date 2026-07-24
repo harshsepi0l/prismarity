@@ -98,7 +98,7 @@ const EMPTY_DERIVED: Derived = {
 const StatsContext = createContext<LiveStats | null>(null);
 
 export function StatsProvider({ children }: { children: React.ReactNode }) {
-  const { activeChannel, activeKick, activeKickOnly, ownChannel, ownKick, cheerLeaders, giftLeaders } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, activeYouTubeOwn, ownChannel, ownKick, cheerLeaders, giftLeaders } = useChat();
   const { messages } = useChatMessages();
   const { connectedPlatforms, activeFilters } = useSession();
 
@@ -517,7 +517,9 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   //     that isn't the connected account's.
   const viewingOwnChannel =
     (!!activeChannel && !!ownChannel && activeChannel.id === ownChannel.id) ||
-    (!!activeKickOnly && !!ownKick && activeKickOnly.toLowerCase() === ownKick.slug.toLowerCase());
+    (!!activeKickOnly && !!ownKick && activeKickOnly.toLowerCase() === ownKick.slug.toLowerCase()) ||
+    // Standalone own-YouTube selection (no Twitch/Kick side) — still "your channel".
+    activeYouTubeOwn;
   if (viewingOwnChannel && connectedPlatforms.has("youtube") && youtubeServer) {
     platforms.push({
       platform: "youtube",
