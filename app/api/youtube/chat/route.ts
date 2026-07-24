@@ -48,8 +48,12 @@ export async function GET(req: NextRequest) {
     innertubeCfg = config;
     continuation = init.continuation;
   }
-  const page = await getLiveChatPage(continuation, config);
-  if (!page) return NextResponse.json({ live: false });
+  const result = await getLiveChatPage(continuation, config);
+  // Transient upstream error → tell the client to retry WITHOUT dropping its
+  // cursor (distinct from a genuine end-of-chat, which is `live: false`).
+  if (result.status === "transient") return NextResponse.json({ retry: true });
+  if (result.status === "ended") return NextResponse.json({ live: false });
+  const { page } = result;
   return NextResponse.json({
     live: true,
     messages: page.messages,
@@ -70,7 +74,7 @@ export async function POST(req: NextRequest) {
   if (!message) return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
 
   const liveChatId = body.liveChatId || (await getOwnLiveChatId(user));
-  if (!liveChatId) return NextResponse.json({ ok: false, error: "no_channel" });
+  if (!liveChatId) return NextResponse.json({ ok: false, error: "no_channel" }, { status: 400 });
 
   const result = await sendLiveChatMessage(user, liveChatId, message);
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });

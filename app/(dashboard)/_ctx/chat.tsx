@@ -16,6 +16,7 @@ import { useTwitchChat, type CheerLeader, type GiftLeader } from "../chat/useTwi
 import type { PinnedMessage } from "@/lib/twitch/pins";
 import { useKickChat } from "../chat/useKickChat";
 import { useYouTubeChat, type YouTubeChatTarget } from "../chat/useYouTubeChat";
+import { fetchStreamerYouTubeUrl } from "../_lib/streamerYouTube";
 import { nextSeq } from "../chat/seq";
 import { participantRole, isKnownBot, type ParticipantRole } from "../chat/participantRole";
 
@@ -462,25 +463,23 @@ export function ChatProvider({
   // have no YouTube link to resolve.
   const tunedLogin = activeChannel?.login ?? null;
   useEffect(() => {
-    if (!youtubeConnected || !tunedLogin) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTunedYouTube(null);
-      return;
-    }
+    // Clear the previous streamer's YouTube chat the instant the selection
+    // changes — never leave a stale channel's chat active while the new resolve
+    // is pending or if it fails silently. (This runs only on selection change,
+    // not on the 60s re-poll below, so steady-state doesn't flicker.)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTunedYouTube(null);
+    if (!youtubeConnected || !tunedLogin) return;
     let cancelled = false;
     async function resolve() {
       try {
-        const sres = await fetch(`/api/twitch/socials?login=${encodeURIComponent(tunedLogin!)}`, { cache: "no-store" });
-        if (!sres.ok) return;
-        const sj = (await sres.json()) as { socials?: { name: string; url: string }[] };
-        const yt = sj.socials?.find(
-          (s) => /youtube\.com|youtu\.be/i.test(s.url) || /youtube/i.test(s.name)
-        );
-        if (!yt?.url) {
-          if (!cancelled) setTunedYouTube(null);
+        const ytUrl = await fetchStreamerYouTubeUrl(tunedLogin!);
+        if (cancelled) return;
+        if (!ytUrl) {
+          setTunedYouTube(null); // definitively no YouTube link
           return;
         }
-        const rres = await fetch(`/api/youtube/resolve?url=${encodeURIComponent(yt.url)}`, { cache: "no-store" });
+        const rres = await fetch(`/api/youtube/resolve?url=${encodeURIComponent(ytUrl)}`, { cache: "no-store" });
         if (!rres.ok) return;
         const rj = (await rres.json()) as { live?: boolean; videoId?: string; liveChatId?: string | null };
         if (cancelled) return;
@@ -488,7 +487,7 @@ export function ChatProvider({
           rj.live && rj.videoId ? { videoId: rj.videoId, liveChatId: rj.liveChatId ?? null } : null
         );
       } catch {
-        /* network — keep whatever we had */
+        /* transient network/HTTP — keep whatever we had (last good on a re-poll) */
       }
     }
     resolve();
