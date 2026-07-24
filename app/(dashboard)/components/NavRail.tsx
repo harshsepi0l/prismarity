@@ -7,6 +7,7 @@ import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { useLayout, NAV_RAIL_WIDTH } from "../_ctx/layout";
 import { useChat } from "../_ctx/chat";
 import { useSession } from "../_ctx/session";
+import { useStats } from "../_ctx/stats";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import { SectionLabel } from "./ui";
@@ -331,22 +332,29 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
 
 // ── Own channel button ───────────────────────────────────────────────────────
 
+// Compact count, e.g. 12400 → "12.4K" (YouTube subscriber display).
+const compact = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+
 const OwnChannelButton = memo(function OwnChannelButton({
   platform,
   name,
   avatar,
   isLive,
   viewers,
+  rightLabel,
   active,
   collapsed,
   category,
   onClick,
 }: {
-  platform: "twitch" | "kick";
+  platform: "twitch" | "kick" | "youtube";
   name: string;
   avatar: string | null;
   isLive: boolean;
   viewers?: number;
+  // Overrides the viewers/offline text on the right (YouTube shows sub count —
+  // it has no viewer feed and isn't chat-selectable).
+  rightLabel?: string;
   active: boolean;
   collapsed: boolean;
   category?: string; // "now playing" category, when live
@@ -378,10 +386,10 @@ const OwnChannelButton = memo(function OwnChannelButton({
           _hover={{ bg: "raised", color: "text", maxW: "360px", zIndex: 6 }}
         >
           {AvatarEl}
-          <Text flex="none" fontSize="12px" fontWeight="700" color="text">{name}</Text>
-          {/* Collapsed: plate inline to the right of the pfp/name. */}
-          {ticker && <NowPlayingPlate game={category!} />}
-          {isLive && viewers != null && (
+          <Text flex="none" fontSize="12px">{name}</Text>
+          {rightLabel ? (
+            <Text flex="none" fontFamily="mono" fontSize="10px" color="muted">{rightLabel}</Text>
+          ) : isLive && viewers != null && (
             <Text flex="none" fontFamily="mono" fontSize="10px" color="muted">
               {viewers.toLocaleString()}
             </Text>
@@ -401,18 +409,21 @@ const OwnChannelButton = memo(function OwnChannelButton({
       transition="background .12s, color .12s"
       _hover={{ bg: "raised", "& [data-name]": { color: "text", fontWeight: "700" } }}
     >
-      {/* Name line — avatar ring carries "live"; no bar, no dot. */}
-      <Flex align="center" gap="9px" minW="0" w="100%">
-        {AvatarEl}
-        <Text
-          data-name flex="1" minW="0" fontSize="13px"
-          fontWeight={active || isLive ? "700" : "500"}
-          color={active || isLive ? "text" : "muted"} textAlign="left" truncate
-        >
-          {name}
-        </Text>
-        {isLive ? (
-          <Text fontFamily="mono" fontSize="11px" color="muted" flex="none">
+      {/* Platform identity edge — boxy bordered chip; lit only when live. */}
+      <Box
+        w={EDGE_WIDTH} alignSelf="stretch" borderRadius={EDGE_RADIUS} flex="none"
+        style={{ background: isLive ? color : "#2a3140", opacity: isLive ? 1 : 0.5, border: EDGE_BORDER }}
+        transition="opacity .12s, background .12s"
+      />
+      {AvatarEl}
+      <Text flex="1" minW="0" fontSize="13px" fontWeight={active ? "500" : "400"} color={active ? "text" : "muted"} textAlign="left" truncate>
+        {name}
+      </Text>
+      {rightLabel ? (
+        <Text fontFamily="mono" fontSize="11px" color="muted" flex="none">{rightLabel}</Text>
+      ) : isLive ? (
+        <Flex align="center" gap="4px" flex="none">
+          <Text fontFamily="mono" fontSize="11px" color="muted">
             {viewers != null ? viewers.toLocaleString() : ""}
           </Text>
         ) : (
@@ -632,7 +643,12 @@ export function NavRail() {
   const ownTwitchActive = !!ownChannel && activeChannel?.id === ownChannel.id;
   const ownKickActive = !!ownKick && activeKickOnly === ownKick.slug.toLowerCase();
 
-  const hasOwnChannels = !!ownChannel || !!ownKick;
+  // Your own YouTube channel (read-only presence — not chat-selectable). Its
+  // live status + subscriber count come from the stats context; clicking opens
+  // the channel on YouTube.
+  const ownYouTube = useStats().platforms.find((p) => p.platform === "youtube") ?? null;
+
+  const hasOwnChannels = !!ownChannel || !!ownKick || !!ownYouTube;
 
   const content = (
     <>
@@ -678,6 +694,22 @@ export function NavRail() {
                     active={ownKickActive}
                     collapsed={collapsed}
                     onClick={selectOwnKick}
+                  />
+                )}
+                {ownYouTube && (
+                  <OwnChannelButton
+                    platform="youtube"
+                    name={ownYouTube.channelName}
+                    avatar={ownYouTube.profileImageUrl}
+                    isLive={ownYouTube.isLive}
+                    rightLabel={ownYouTube.followers != null ? `${compact(ownYouTube.followers)} subs` : undefined}
+                    active={false}
+                    collapsed={collapsed}
+                    onClick={() => {
+                      if (ownYouTube.channelId) {
+                        window.open(`https://www.youtube.com/channel/${ownYouTube.channelId}`, "_blank", "noopener,noreferrer");
+                      }
+                    }}
                   />
                 )}
               </Flex>

@@ -16,6 +16,9 @@ import { useSession } from "./session";
 // chips — toggling a platform off drops it from the combined roll-up.
 export interface PlatformLive {
   platform: Platform;
+  // Platform channel id — used to link out (YouTube own-channel nav entry).
+  // Optional; Twitch/Kick rows don't set it.
+  channelId?: string;
   channelName: string;
   profileImageUrl: string | null;
   included: boolean;
@@ -521,6 +524,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   if (viewingOwnChannel && connectedPlatforms.has("youtube") && youtubeServer) {
     platforms.push({
       platform: "youtube",
+      channelId: youtubeServer.channelId,
       channelName: youtubeServer.channelName,
       profileImageUrl: youtubeServer.profileImageUrl,
       included: activeFilters.has("youtube"),
