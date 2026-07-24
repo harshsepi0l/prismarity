@@ -48,16 +48,44 @@ export function detectLive(body: string): boolean {
   return canonicalWatch && liveFlag;
 }
 
-// The live video's id, from the canonical watch link on the /live page. Only
-// meaningful when detectLive is true (offline pages have no canonical /watch).
-// Feeds the InnerTube live-chat reader for a tuned streamer's simulcast.
+// The live video's id, pulled from the canonical watch link on the /live page.
+// Only meaningful when detectLive is true (offline pages have no canonical
+// /watch). Feeds videos.list → activeLiveChatId so we can read the chat.
 export function extractVideoId(body: string): string | null {
   const m = body.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]+)"/);
   return m ? m[1] : null;
 }
 
+// Concurrent viewer count from a live watch page's embedded data. Live streams
+// expose the raw number in `originalViewCount`; we fall back to the human
+// "12,345 watching now" string in the viewCount runs. null when neither is
+// present (offline pages, or markup we don't recognise).
+export function extractConcurrentViewers(body: string): number | null {
+  const raw = body.match(/"originalViewCount":"(\d+)"/);
+  if (raw) return parseInt(raw[1], 10);
+  const watching = body.match(/([\d,]+)\s*watching now/i);
+  if (watching) return parseInt(watching[1].replace(/,/g, ""), 10);
+  return null;
+}
+
+// Public subscriber count from the embedded ytInitialData. YouTube only exposes
+// a ROUNDED count (3 sig figs) on the page — same as the Data API for channels
+// you don't own — so "1.23M subscribers" → 1_230_000. Matches the contiguous
+// "<count> subscribers" label (accessibility/simpleText forms); null when the
+// markup doesn't carry it. Best-effort, like the rest of this scraper.
+export function extractSubscribers(body: string): number | null {
+  const m = body.match(/([\d,.]+)\s*([KMB])?\s*subscribers/i);
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(/,/g, ""));
+  if (!isFinite(n)) return null;
+  const mult = m[2] ? { K: 1e3, M: 1e6, B: 1e9 }[m[2].toUpperCase() as "K" | "M" | "B"] : 1;
+  return Math.round(n * mult);
+}
+
 export interface YouTubeLiveInfo {
   live: boolean;
+  viewers: number | null; // concurrent viewers when live and scrapable
+  subscribers: number | null; // rounded public subscriber count when scrapable
   videoId: string | null; // the live video's id when live (for live-chat resolve)
 }
 
@@ -66,17 +94,15 @@ export interface YouTubeLiveInfo {
 const cache = new Map<string, { info: YouTubeLiveInfo; ts: number }>();
 const TTL_MS = 30_000;
 
-// Live status + the live video id for a channel URL (best-effort scrape). The
-// URL is host-guarded inside toLiveUrl (SSRF). Every failure path reads as
-// offline so callers degrade gracefully.
+// Live status + concurrent viewers for a channel URL (best-effort scrape).
 export async function getYouTubeLiveInfo(channelUrl: string): Promise<YouTubeLiveInfo> {
   const liveUrl = toLiveUrl(channelUrl);
-  if (!liveUrl) return { live: false, videoId: null };
+  if (!liveUrl) return { live: false, viewers: null, subscribers: null, videoId: null };
 
   const hit = cache.get(liveUrl);
   if (hit && Date.now() - hit.ts < TTL_MS) return hit.info;
 
-  let info: YouTubeLiveInfo = { live: false, videoId: null };
+  let info: YouTubeLiveInfo = { live: false, viewers: null, subscribers: null, videoId: null };
   try {
     const res = await fetch(liveUrl, {
       headers: {
@@ -90,7 +116,12 @@ export async function getYouTubeLiveInfo(channelUrl: string): Promise<YouTubeLiv
     if (res.ok) {
       const body = await res.text();
       const live = detectLive(body);
-      info = { live, videoId: live ? extractVideoId(body) : null };
+      info = {
+        live,
+        viewers: live ? extractConcurrentViewers(body) : null,
+        subscribers: extractSubscribers(body),
+        videoId: live ? extractVideoId(body) : null,
+      };
     }
   } catch {
     /* network error / blocked → treat as not live */

@@ -36,7 +36,10 @@ function extractText(root: Node): string {
   let out = "";
   for (const n of root.childNodes) {
     if (n.nodeType === Node.TEXT_NODE) {
-      out += n.textContent ?? "";
+      // Normalize the non-breaking space we place after an emote (it keeps the
+      // caret from stranding on a collapsed trailing space) back to a plain
+      // space for the outgoing message.
+      out += (n.textContent ?? "").replace(/\u00A0/g, " ");
     } else if (n instanceof HTMLImageElement && n.dataset.emote) {
       out += n.dataset.emote;
     } else if (n instanceof HTMLBRElement) {
@@ -87,7 +90,7 @@ function spliceEmote(
   textNode.textContent = before;
 
   const img = makeImg(code, url);
-  const space = document.createTextNode(" ");
+  const space = document.createTextNode("\u00A0");
 
   parent.insertBefore(img, textNode.nextSibling);
   parent.insertBefore(space, img.nextSibling);
@@ -181,7 +184,7 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
       if (!el) return;
       el.focus();
       const img = makeImg(code, url);
-      const space = document.createTextNode(" ");
+      const space = document.createTextNode("\u00A0");
       const sel = window.getSelection();
       if (sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);

@@ -7,12 +7,142 @@ import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import { useLayout, NAV_RAIL_WIDTH } from "../_ctx/layout";
 import { useChat } from "../_ctx/chat";
 import { useSession } from "../_ctx/session";
-import { useStats } from "../_ctx/stats";
 import { ResizeHandle } from "./ResizeHandle";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import { SectionLabel } from "./ui";
 import { useYouTubePresence } from "../_hooks/useYouTubePresence";
+import { useTwitchCategories } from "../_hooks/useTwitchCategories";
 import type { SearchResult } from "../types";
+
+// Retro "now playing" plate — a solid toned-down goldenrod badge (black border,
+// hard drop shadow) that sits on its own line under the streamer's name. The
+// category text crawls within the plate (breaking-news style) only when it
+// overflows its capped width; short names hug the badge and sit still. Width is
+// fit-content up to 100%: a neat pill for short games, a ticker for long.
+const PLATE_INK = "#0B0B0B";
+const PLATE_BG = "#CBA23C"; // toned-down goldenrod — solid, no gradient
+
+function NowPlayingPlate({ game }: { game: string }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLSpanElement>(null);
+  const [shift, setShift] = useState(0);
+  const label = `Playing — ${game}`;
+
+  useEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const over = Math.ceil(inner.scrollWidth - outer.clientWidth);
+    setShift(over > 2 ? over : 0);
+  }, [label]);
+
+  // ~22px/sec crawl, floored so short overflows still read as deliberate.
+  const dur = Math.max(4, shift / 22);
+  const animStyle: React.CSSProperties =
+    shift > 0
+      ? ({ "--tkr": `-${shift}px`, animation: `nav-ticker ${dur}s ease-in-out infinite alternate` } as React.CSSProperties)
+      : {};
+
+  return (
+    <Box
+      display="inline-flex"
+      alignItems="center"
+      w="fit-content"
+      minW="0"
+      maxW="100%"
+      h="18px"
+      px="8px"
+      borderWidth="1.5px"
+      borderColor={PLATE_INK}
+      borderRadius="5px"
+      style={{
+        background: PLATE_BG,
+        boxShadow: "2px 2px 0 rgba(0,0,0,0.5)",
+      }}
+    >
+      <Box ref={outerRef} overflow="hidden" minW="0" maxW="100%">
+        <chakra.span
+          ref={innerRef}
+          display="inline-block"
+          whiteSpace="nowrap"
+          fontFamily="mono"
+          fontSize="10px"
+          fontWeight="700"
+          letterSpacing="0.02em"
+          style={{ color: PLATE_INK, ...animStyle }}
+        >
+          {label}
+        </chakra.span>
+      </Box>
+    </Box>
+  );
+}
+
+// White L-connector: drops from under the streamer avatar and turns right into
+// the "now playing" plate on the line below, so the badge reads as hanging off
+// the pfp. Rendered as the first child of the plate line, aligned under the pfp.
+function PlateElbow() {
+  return (
+    <Box
+      flex="none"
+      w="13px" h="11px"
+      mt="-4px" mr="4px"
+      borderLeftWidth="2px" borderBottomWidth="2px"
+      borderColor="white"
+      borderBottomLeftRadius="4px"
+    />
+  );
+}
+
+// Live-platform ring for the avatar — the single source of "live" now that the
+// edge bar and red dots are gone. Solid in the one platform's colour; split into
+// EQUAL conic wedges when a streamer is live on several at once. Grey when offline
+// so every avatar keeps the same footprint and the colour simply lights up.
+const OFFLINE_RING = "#2a3140";
+const RING_GAP = "#0E1118"; // == bg token: a crisp inset between ring and pfp
+
+function ringPaint(liveColors: string[]): string {
+  if (liveColors.length === 0) return OFFLINE_RING;
+  if (liveColors.length === 1) return liveColors[0];
+  const n = liveColors.length;
+  const stops = liveColors
+    .map((c, i) => `${c} ${(i / n) * 360}deg ${((i + 1) / n) * 360}deg`)
+    .join(", ");
+  return `conic-gradient(from -90deg, ${stops})`;
+}
+
+function RingedAvatar({ src, label, size, ring }: {
+  src: string | null;
+  label: string;
+  size: number;
+  ring: string;
+}) {
+  const outer = size + 6;
+  const gap = { boxShadow: `0 0 0 1.5px ${RING_GAP}` } as React.CSSProperties;
+  return (
+    <Box
+      position="relative" flex="none"
+      w={`${outer}px`} h={`${outer}px`} borderRadius="full"
+      display="flex" alignItems="center" justifyContent="center"
+      style={{ background: ring }}
+    >
+      {src ? (
+        <chakra.img
+          src={src} alt={label} w={`${size}px`} h={`${size}px`}
+          borderRadius="full" objectFit="cover" style={gap}
+        />
+      ) : (
+        <Flex
+          w={`${size}px`} h={`${size}px`} borderRadius="full" bg="raised"
+          align="center" justify="center" fontSize="9px" fontWeight="700" color="muted"
+          style={gap}
+        >
+          {label[0]?.toUpperCase() ?? "?"}
+        </Flex>
+      )}
+    </Box>
+  );
+}
 
 const VODS_ICON = (
   <Box
@@ -199,26 +329,7 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-// Stacks live-platform colors into EQUAL, hard-edged vertical bands (no blend),
-// so a multi-platform edge reads as distinct even segments rather than a smear.
-function equalBands(colors: string[]): string {
-  if (colors.length === 1) return colors[0];
-  const n = colors.length;
-  const stops = colors
-    .map((c, i) => `${c} ${(i / n) * 100}%, ${c} ${((i + 1) / n) * 100}%`)
-    .join(", ");
-  return `linear-gradient(to bottom, ${stops})`;
-}
-
-// Shared look for the platform-identity edge: a boxy, bordered chip.
-const EDGE_RADIUS = "2px";
-const EDGE_WIDTH = "5px";
-const EDGE_BORDER = "1px solid rgba(255,255,255,0.16)";
-
 // ── Own channel button ───────────────────────────────────────────────────────
-
-// Compact count, e.g. 12400 → "12.4K" (YouTube subscriber display).
-const compact = (n: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 
 const OwnChannelButton = memo(function OwnChannelButton({
   platform,
@@ -226,9 +337,9 @@ const OwnChannelButton = memo(function OwnChannelButton({
   avatar,
   isLive,
   viewers,
-  rightLabel,
   active,
   collapsed,
+  category,
   onClick,
 }: {
   platform: "twitch" | "kick" | "youtube";
@@ -236,43 +347,18 @@ const OwnChannelButton = memo(function OwnChannelButton({
   avatar: string | null;
   isLive: boolean;
   viewers?: number;
-  // Overrides the viewers/offline text on the right (YouTube shows sub count —
-  // it has no viewer feed and isn't chat-selectable).
-  rightLabel?: string;
   active: boolean;
   collapsed: boolean;
+  category?: string; // "now playing" category, when live
   onClick: () => void;
 }) {
   const color = PLATFORM_COLOR[platform];
+  const ticker = isLive && !!category;
 
-  // Own account avatar with a platform-colored ring (so Twitch vs Kick still
-  // reads at a glance now that the platform logo is replaced by the pfp).
-  const size = collapsed ? 26 : 22;
+  // Avatar ring is the live indicator: platform colour when live, grey when off.
+  const size = collapsed ? 24 : 22;
   const AvatarEl = (
-    <Box position="relative" flex="none" w={`${size}px`} h={`${size}px`}>
-      {avatar ? (
-        <chakra.img
-          src={avatar} alt={name} w={`${size}px`} h={`${size}px`}
-          borderRadius="full" objectFit="cover"
-          style={{ boxShadow: `0 0 0 1.5px ${active ? color : `${color}80`}` }}
-        />
-      ) : (
-        <Flex
-          w={`${size}px`} h={`${size}px`} borderRadius="full" bg="raised"
-          align="center" justify="center" fontSize="9px" fontWeight="700" color="muted"
-          style={{ boxShadow: `0 0 0 1.5px ${active ? color : `${color}80`}` }}
-        >
-          {name[0]?.toUpperCase()}
-        </Flex>
-      )}
-      {isLive && (
-        <Box
-          position="absolute" bottom="-1px" right="-1px"
-          w="6px" h="6px" borderRadius="full" bg="#FF5C5C"
-          borderWidth="1.5px" borderColor="bg"
-        />
-      )}
-    </Box>
+    <RingedAvatar src={avatar} label={name} size={size} ring={ringPaint(isLive ? [color] : [])} />
   );
 
   if (collapsed) {
@@ -284,18 +370,18 @@ const OwnChannelButton = memo(function OwnChannelButton({
           type="button" onClick={onClick}
           position="absolute" top="0" left="calc(50% - 17px)"
           display="flex" alignItems="center" gap="8px"
-          pl="4px" pr="12px" h="34px"
-          borderRadius="20px" maxW="34px" overflow="hidden" whiteSpace="nowrap"
+          pl="3px" pr="12px" h="34px"
+          borderRadius="18px" maxW="34px" overflow="hidden" whiteSpace="nowrap"
           bg={active ? "raised" : "transparent"} color={active ? "text" : "muted"}
           cursor="pointer" title={name}
           transition="max-width 0.4s ease, background .12s, color .12s"
-          _hover={{ bg: "raised", color: "text", maxW: "300px" }}
+          _hover={{ bg: "raised", color: "text", maxW: "360px", zIndex: 6 }}
         >
           {AvatarEl}
-          <Text flex="none" fontSize="12px">{name}</Text>
-          {rightLabel ? (
-            <Text flex="none" fontFamily="mono" fontSize="10px" color="muted">{rightLabel}</Text>
-          ) : isLive && viewers != null && (
+          <Text flex="none" fontSize="12px" fontWeight="700" color="text">{name}</Text>
+          {/* Collapsed: plate inline to the right of the pfp/name. */}
+          {ticker && <NowPlayingPlate game={category!} />}
+          {isLive && viewers != null && (
             <Text flex="none" fontFamily="mono" fontSize="10px" color="muted">
               {viewers.toLocaleString()}
             </Text>
@@ -308,33 +394,37 @@ const OwnChannelButton = memo(function OwnChannelButton({
   return (
     <chakra.button
       type="button" onClick={onClick}
-      display="flex" alignItems="center" gap="9px"
-      w="100%" pl="6px" pr="8px" py="6px" borderRadius="8px"
+      display="flex" flexDirection="column" justifyContent="center" gap="0"
+      w="100%" pl="6px" pr="8px" py="7px" borderRadius="8px"
       bg={active ? "raised" : "transparent"}
       cursor="pointer"
       transition="background .12s, color .12s"
-      _hover={{ bg: "raised" }}
+      _hover={{ bg: "raised", "& [data-name]": { color: "text", fontWeight: "700" } }}
     >
-      {/* Platform identity edge — boxy bordered chip; lit only when live. */}
-      <Box
-        w={EDGE_WIDTH} alignSelf="stretch" borderRadius={EDGE_RADIUS} flex="none"
-        style={{ background: isLive ? color : "#2a3140", opacity: isLive ? 1 : 0.5, border: EDGE_BORDER }}
-        transition="opacity .12s, background .12s"
-      />
-      {AvatarEl}
-      <Text flex="1" minW="0" fontSize="13px" fontWeight={active ? "500" : "400"} color={active ? "text" : "muted"} textAlign="left" truncate>
-        {name}
-      </Text>
-      {rightLabel ? (
-        <Text fontFamily="mono" fontSize="11px" color="muted" flex="none">{rightLabel}</Text>
-      ) : isLive ? (
-        <Flex align="center" gap="4px" flex="none">
-          <Text fontFamily="mono" fontSize="11px" color="muted">
+      {/* Name line — avatar ring carries "live"; no bar, no dot. */}
+      <Flex align="center" gap="9px" minW="0" w="100%">
+        {AvatarEl}
+        <Text
+          data-name flex="1" minW="0" fontSize="13px"
+          fontWeight={active || isLive ? "700" : "500"}
+          color={active || isLive ? "text" : "muted"} textAlign="left" truncate
+        >
+          {name}
+        </Text>
+        {isLive ? (
+          <Text fontFamily="mono" fontSize="11px" color="muted" flex="none">
             {viewers != null ? viewers.toLocaleString() : ""}
           </Text>
+        ) : (
+          <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">offline</Text>
+        )}
+      </Flex>
+      {/* Plate line — white elbow drops from under the pfp into the plate. */}
+      {ticker && (
+        <Flex align="center" mt="4px" pl="13px" minW="0" maxW="100%">
+          <PlateElbow />
+          <NowPlayingPlate game={category!} />
         </Flex>
-      ) : (
-        <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">offline</Text>
       )}
     </chakra.button>
   );
@@ -346,46 +436,34 @@ const OwnChannelButton = memo(function OwnChannelButton({
 // context, but these keep the same props). Handlers take the result so callers
 // pass STABLE context callbacks instead of per-render closures.
 const WatchedChannelButton = memo(function WatchedChannelButton({
-  result, active, collapsed, youtubeLive, onSelect, onRemove,
+  result, active, collapsed, youtubeLive, category, onSelect, onRemove,
 }: {
   result: SearchResult;
   active: boolean;
   collapsed: boolean;
   youtubeLive?: boolean; // live on their YouTube (from Twitch socials + scrape)
+  category?: string; // Twitch "now playing" category, when live
   onSelect: (result: SearchResult) => void;
   onRemove?: (result: SearchResult) => void; // omitted for followed channels (not removable)
 }) {
   const avatar = result.profileImageUrl;
-  const initial = result.displayName[0]?.toUpperCase() ?? "?";
 
-  // Platform identity edge — lights up per platform the streamer is LIVE on:
-  // purple (Twitch), green (Kick), red (YouTube). Multiple live → gradient;
-  // offline everywhere → dim grey, so the colored bar always means "live here".
+  // The avatar ring is the live indicator — one platform's colour, or EQUAL conic
+  // wedges when live on several at once (purple Twitch, green Kick, red YouTube);
+  // grey when offline everywhere.
   const liveTwitch = !!result.twitch?.isLive;
   const liveKick = !!result.kick?.isLive;
   const liveYoutube = !!youtubeLive;
   const isLive = liveTwitch || liveKick || liveYoutube;
-  const OFFLINE_EDGE = "#2a3140";
+  const ticker = isLive && !!category;
   const liveColors = [
     liveTwitch ? PLATFORM_COLOR.twitch : null,
     liveKick ? PLATFORM_COLOR.kick : null,
     liveYoutube ? PLATFORM_COLOR.youtube : null,
   ].filter((c): c is string => !!c);
-  const edge = liveColors.length === 0 ? OFFLINE_EDGE : equalBands(liveColors);
-
+  const size = collapsed ? 24 : 22;
   const Avatar = (
-    <Box position="relative" flex="none" w="22px" h="22px">
-      {avatar ? (
-        <chakra.img src={avatar} alt={result.displayName} w="22px" h="22px" borderRadius="full" objectFit="cover" />
-      ) : (
-        <Flex w="22px" h="22px" borderRadius="full" bg="raised" align="center" justify="center" fontSize="9px" fontWeight="700" color="muted">
-          {initial}
-        </Flex>
-      )}
-      {isLive && (
-        <Box position="absolute" bottom="-1px" right="-1px" w="6px" h="6px" borderRadius="full" bg="#FF5C5C" borderWidth="1.5px" borderColor="bg" />
-      )}
-    </Box>
+    <RingedAvatar src={avatar} label={result.displayName} size={size} ring={ringPaint(liveColors)} />
   );
 
   if (!collapsed) {
@@ -393,23 +471,26 @@ const WatchedChannelButton = memo(function WatchedChannelButton({
       <Box position="relative" role="group">
         <chakra.button
           type="button" onClick={() => onSelect(result)}
-          display="flex" alignItems="center" justifyContent="flex-start"
-          gap="8px" w="100%" pl="6px" py="5px" pr="28px"
+          display="flex" flexDirection="column" justifyContent="center"
+          gap="0" w="100%" pl="6px" py="7px" pr="28px"
           borderRadius="8px" bg={active ? "raised" : "transparent"} color={active ? "text" : "muted"}
           cursor="pointer" transition="background .12s, color .12s"
-          _hover={{ bg: "raised", color: "text" }}
+          _hover={{ bg: "raised", color: "text", "& [data-name]": { color: "text", fontWeight: "700" } }}
         >
-          <Box
-            w={EDGE_WIDTH} alignSelf="stretch" borderRadius={EDGE_RADIUS} flex="none"
-            style={{ background: edge, opacity: isLive ? 1 : 0.5, border: EDGE_BORDER }}
-            transition="opacity .12s, background .12s"
-          />
-          {Avatar}
-          <Text flex="1" minW="0" fontSize="12px" textAlign="left" truncate>{result.displayName}</Text>
-          {/* Live is shown by the dot on the avatar (see `Avatar`), so the right
-              side only labels the offline state — no redundant live dot here. */}
-          {!isLive && (
-            <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">offline</Text>
+          {/* Name line — avatar ring carries "live"; no bar, no dot. */}
+          <Flex align="center" gap="8px" minW="0" w="100%">
+            {Avatar}
+            <Text data-name flex="1" minW="0" fontSize="12px" fontWeight={active || isLive ? "700" : "500"} color={active || isLive ? "text" : "muted"} textAlign="left" truncate>{result.displayName}</Text>
+            {!isLive && (
+              <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">offline</Text>
+            )}
+          </Flex>
+          {/* Plate line — white elbow drops from under the pfp into the plate. */}
+          {ticker && (
+            <Flex align="center" mt="4px" pl="13px" minW="0" maxW="100%">
+              <PlateElbow />
+              <NowPlayingPlate game={category!} />
+            </Flex>
           )}
         </chakra.button>
         {onRemove && (
@@ -437,16 +518,18 @@ const WatchedChannelButton = memo(function WatchedChannelButton({
         type="button" onClick={() => onSelect(result)}
         position="absolute" top="0" left="calc(50% - 17px)"
         display="flex" alignItems="center" gap="8px"
-        pl="6px" pr="10px" h="34px"
-        borderRadius="20px" maxW="34px" overflow="hidden" whiteSpace="nowrap"
+        pl="3px" pr="10px" h="34px"
+        borderRadius="18px" maxW="34px" overflow="hidden" whiteSpace="nowrap"
         bg={active ? "raised" : "transparent"} color={active ? "text" : "muted"}
         cursor="pointer"
         transition="max-width 0.4s ease, background .12s, color .12s"
-        _hover={{ bg: "raised", color: "text", maxW: "300px" }}
+        _hover={{ bg: "raised", color: "text", maxW: "360px", zIndex: 6 }}
       >
         {Avatar}
-        <Text flex="none" fontSize="12px">{result.displayName}</Text>
-        {/* No live dot here — the avatar already carries it. */}
+        <Text flex="none" fontSize="12px" fontWeight="700" color="text">{result.displayName}</Text>
+        {/* Collapsed: plate inline to the right of the pfp/name, revealed as the
+            pill expands on hover. */}
+        {ticker && <NowPlayingPlate game={category!} />}
       </chakra.button>
     </Box>
   );
@@ -493,6 +576,23 @@ export function NavRail() {
   );
   const ytLive = useYouTubePresence(sidebarLogins, { live: true });
 
+  // "Now playing" categories for the visible Twitch channels (own included) —
+  // one bulk Get Streams call, keyed by lowercased login (== handle).
+  const categoryLogins = useMemo(() => {
+    const arr = [...followedVisible, ...visibleWatched].map((r) => r.handle);
+    if (ownChannel) arr.push(ownChannel.login.toLowerCase());
+    return arr;
+  }, [followedVisible, visibleWatched, ownChannel]);
+  const categories = useTwitchCategories(categoryLogins);
+
+  // Followed/Recent load from client-only state after mount, so they never SSR.
+  // The own-channel row is the one exception (it derives from server props), so
+  // it WOULD hydrate — and any Emotion className drift there shows up as a
+  // mismatch. Gate the whole channel list on mount so no row is server-rendered;
+  // the list is then purely client-side and there's nothing to hydrate.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // Stable handlers so the memo'd channel buttons keep the same props across the
   // NavRail re-renders that the chat context triggers on every message.
   const selectOwnTwitch = useCallback(() => {
@@ -536,10 +636,6 @@ export function NavRail() {
   const ownKickActive = !!ownKick && activeKickOnly === ownKick.slug.toLowerCase();
   const ownYouTubeActive = !!ownYouTube && activeYouTubeOwn;
 
-  // Subscriber count for the own-YouTube row's side label — from the stats
-  // context (present when you're viewing your own channel). Best-effort nicety.
-  const ownYouTubeSubs = useStats().platforms.find((p) => p.platform === "youtube")?.followers ?? null;
-
   const hasOwnChannels = !!ownChannel || !!ownKick || !!ownYouTube;
 
   const content = (
@@ -559,7 +655,7 @@ export function NavRail() {
             pr={collapsed ? "0" : "2px"}
           >
           {/* Own channels */}
-          {hasOwnChannels && (
+          {mounted && hasOwnChannels && (
             <Box mb="18px">
               {!collapsed && <SectionLabel>YOUR CHANNELS</SectionLabel>}
               <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
@@ -572,6 +668,7 @@ export function NavRail() {
                     viewers={ownChannel.viewerCount}
                     active={ownTwitchActive}
                     collapsed={collapsed}
+                    category={categories[ownChannel.login.toLowerCase()]?.game}
                     onClick={selectOwnTwitch}
                   />
                 )}
@@ -593,7 +690,6 @@ export function NavRail() {
                     name={ownYouTube.channelName}
                     avatar={ownYouTube.profileImageUrl}
                     isLive={ownYouTube.isLive}
-                    rightLabel={ownYouTubeSubs != null ? `${compact(ownYouTubeSubs)} subs` : undefined}
                     active={ownYouTubeActive}
                     collapsed={collapsed}
                     onClick={selectOwnYouTube}
@@ -604,7 +700,7 @@ export function NavRail() {
           )}
 
           {/* Followed channels — from Twitch, Kick-linked where present */}
-          {followedChannels.length > 0 && (
+          {mounted && followedChannels.length > 0 && (
             <Box mb="12px">
               {!collapsed && <SectionLabel>FOLLOWED</SectionLabel>}
               <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
@@ -619,6 +715,7 @@ export function NavRail() {
                       active={active}
                       collapsed={collapsed}
                       youtubeLive={ytLive[result.handle]?.isLive}
+                      category={categories[result.handle]?.game}
                       onSelect={selectSearchResult}
                     />
                   );
@@ -640,7 +737,7 @@ export function NavRail() {
           )}
 
           {/* Recent — channels you opened from search but don't follow */}
-          {visibleWatched.length > 0 && (
+          {mounted && visibleWatched.length > 0 && (
             <Box mb="12px">
               {!collapsed && <SectionLabel>RECENT</SectionLabel>}
               <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
@@ -655,6 +752,7 @@ export function NavRail() {
                       active={active}
                       collapsed={collapsed}
                       youtubeLive={ytLive[result.handle]?.isLive}
+                      category={categories[result.handle]?.game}
                       onSelect={selectSearchResult}
                       onRemove={handleRemoveWatched}
                     />
