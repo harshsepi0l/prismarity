@@ -48,19 +48,35 @@ export function detectLive(body: string): boolean {
   return canonicalWatch && liveFlag;
 }
 
+// The live video's id, from the canonical watch link on the /live page. Only
+// meaningful when detectLive is true (offline pages have no canonical /watch).
+// Feeds the InnerTube live-chat reader for a tuned streamer's simulcast.
+export function extractVideoId(body: string): string | null {
+  const m = body.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]+)"/);
+  return m ? m[1] : null;
+}
+
+export interface YouTubeLiveInfo {
+  live: boolean;
+  videoId: string | null; // the live video's id when live (for live-chat resolve)
+}
+
 // Small in-memory cache so repeated polls (and multiple viewers) don't refetch
 // a ~1.2MB page every time. Best-effort on serverless (per warm instance).
-const cache = new Map<string, { live: boolean; ts: number }>();
+const cache = new Map<string, { info: YouTubeLiveInfo; ts: number }>();
 const TTL_MS = 30_000;
 
-export async function isYouTubeChannelLive(channelUrl: string): Promise<boolean> {
+// Live status + the live video id for a channel URL (best-effort scrape). The
+// URL is host-guarded inside toLiveUrl (SSRF). Every failure path reads as
+// offline so callers degrade gracefully.
+export async function getYouTubeLiveInfo(channelUrl: string): Promise<YouTubeLiveInfo> {
   const liveUrl = toLiveUrl(channelUrl);
-  if (!liveUrl) return false;
+  if (!liveUrl) return { live: false, videoId: null };
 
   const hit = cache.get(liveUrl);
-  if (hit && Date.now() - hit.ts < TTL_MS) return hit.live;
+  if (hit && Date.now() - hit.ts < TTL_MS) return hit.info;
 
-  let live = false;
+  let info: YouTubeLiveInfo = { live: false, videoId: null };
   try {
     const res = await fetch(liveUrl, {
       headers: {
@@ -73,12 +89,17 @@ export async function isYouTubeChannelLive(channelUrl: string): Promise<boolean>
     });
     if (res.ok) {
       const body = await res.text();
-      live = detectLive(body);
+      const live = detectLive(body);
+      info = { live, videoId: live ? extractVideoId(body) : null };
     }
   } catch {
     /* network error / blocked → treat as not live */
   }
 
-  cache.set(liveUrl, { live, ts: Date.now() });
-  return live;
+  cache.set(liveUrl, { info, ts: Date.now() });
+  return info;
+}
+
+export async function isYouTubeChannelLive(channelUrl: string): Promise<boolean> {
+  return (await getYouTubeLiveInfo(channelUrl)).live;
 }

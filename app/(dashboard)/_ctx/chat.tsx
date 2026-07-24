@@ -158,6 +158,7 @@ export function ChatProvider({
     liveEvents,
   } = useTwitchChat();
   const { messages: kickMessages, status: kickStatus, connect: connectKick } = useKickChat();
+  const { messages: youtubeMessages, status: youtubeStatus, connect: connectYouTube } = useYouTubeChat();
 
   const kickConnected = !!kickSlug;
 
@@ -805,7 +806,7 @@ export function ChatProvider({
       // integers with epoch-ms timestamps, which would pin it wrongly.
       .sort((a, b) => (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER))
       .slice(-300);
-  }, [activeChannel, activeKickOnly, twitchMessages, kickMessages, selfMessages]);
+  }, [activeChannel, activeKickOnly, activeYouTubeOwn, twitchMessages, kickMessages, youtubeMessages, selfMessages]);
 
   // ── @-mention participant registry ───────────────────────
   // A rolling record of who has chatted (per platform), kept in a ref so the

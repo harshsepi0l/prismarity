@@ -536,10 +536,9 @@ export function NavRail() {
   const ownKickActive = !!ownKick && activeKickOnly === ownKick.slug.toLowerCase();
   const ownYouTubeActive = !!ownYouTube && activeYouTubeOwn;
 
-  // Your own YouTube channel (read-only presence — not chat-selectable). Its
-  // live status + subscriber count come from the stats context; clicking opens
-  // the channel on YouTube.
-  const ownYouTube = useStats().platforms.find((p) => p.platform === "youtube") ?? null;
+  // Subscriber count for the own-YouTube row's side label — from the stats
+  // context (present when you're viewing your own channel). Best-effort nicety.
+  const ownYouTubeSubs = useStats().platforms.find((p) => p.platform === "youtube")?.followers ?? null;
 
   const hasOwnChannels = !!ownChannel || !!ownKick || !!ownYouTube;
 
@@ -594,14 +593,10 @@ export function NavRail() {
                     name={ownYouTube.channelName}
                     avatar={ownYouTube.profileImageUrl}
                     isLive={ownYouTube.isLive}
-                    rightLabel={ownYouTube.followers != null ? `${compact(ownYouTube.followers)} subs` : undefined}
-                    active={false}
+                    rightLabel={ownYouTubeSubs != null ? `${compact(ownYouTubeSubs)} subs` : undefined}
+                    active={ownYouTubeActive}
                     collapsed={collapsed}
-                    onClick={() => {
-                      if (ownYouTube.channelId) {
-                        window.open(`https://www.youtube.com/channel/${ownYouTube.channelId}`, "_blank", "noopener,noreferrer");
-                      }
-                    }}
+                    onClick={selectOwnYouTube}
                   />
                 )}
               </Flex>
