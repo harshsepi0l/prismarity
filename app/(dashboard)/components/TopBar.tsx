@@ -491,7 +491,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ auth }: TopBarProps) {
-  const { chatLayout, setChatLayout, searchOpen, setSearchOpen, setNavOpen, navMode, cycleNavMode, panelMode, togglePanel, isMobile, setPanelOpen } = useLayout();
+  const { chatLayout, setChatLayout, searchOpen, setSearchOpen, setNavOpen, navMode, cycleNavMode, panelMode, togglePanel } = useLayout();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ⌘K / Ctrl+K opens the channel search.
@@ -566,6 +566,17 @@ export function TopBar({ auth }: TopBarProps) {
             onClick={() => setSettingsOpen(true)}
             connected={{ twitch: !!auth.twitch, kick: !!auth.kick, youtube: !!auth.youtube }}
           />
+          <Text
+            hideBelow="sm"
+            fontFamily="mono"
+            fontSize="13px"
+            fontWeight="700"
+            letterSpacing="0.18em"
+            color="text"
+            flex="none"
+          >
+            PRISMARITY
+          </Text>
         </Flex>
 
         {/* Center: what you're tuned into */}
@@ -593,18 +604,18 @@ export function TopBar({ auth }: TopBarProps) {
             {chatLayout === "combined" ? <CombinedIcon /> : <SplitIcon />}
           </chakra.button>
 
-          {/* Desktop: show/hide the docked stats panel. Mobile: open it as an
-              overlay drawer that takes over the chat (like the NavRail drawer). */}
+          {/* Desktop: show/hide the right stats panel. */}
           <chakra.button
+            hideBelow="md"
             type="button"
-            title={isMobile ? "Show stats panel" : panelMode === "hidden" ? "Show stats panel" : "Hide stats panel"}
+            title={panelMode === "hidden" ? "Show stats panel" : "Hide stats panel"}
             aria-label="Toggle stats panel"
-            onClick={() => (isMobile ? setPanelOpen(true) : togglePanel())}
+            onClick={togglePanel}
             display="flex" alignItems="center" justifyContent="center"
             w="30px" h="30px" borderRadius="7px" flex="none"
             transition="background .12s, border-color .12s"
             style={
-              !isMobile && panelMode === "expanded"
+              panelMode === "expanded"
                 ? { background: "rgba(166,108,255,0.14)", border: "1px solid rgba(166,108,255,0.45)" }
                 : { background: "transparent", border: "1px solid #232a38" }
             }

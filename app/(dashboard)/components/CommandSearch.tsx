@@ -149,9 +149,9 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
                     onClick={() => handleSelect(r)}
                     display="flex"
                     alignItems="center"
-                    gap={{ base: "8px", sm: "11px" }}
+                    gap="11px"
                     w="100%"
-                    px={{ base: "12px", sm: "16px" }}
+                    px="16px"
                     py="10px"
                     bg={isActive(r) ? "raised" : "transparent"}
                     color={isActive(r) ? "text" : "muted"}
@@ -171,13 +171,12 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
                     {isLive ? (
                       <Flex align="center" gap="5px" flex="none">
                         <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
-                        {/* Tight widths keep just the dot; the word returns at ≥sm. */}
-                        <Text hideBelow="sm" fontFamily="mono" fontSize="10px" fontWeight="600" color="#FF5C5C">
+                        <Text fontFamily="mono" fontSize="10px" fontWeight="600" color="#FF5C5C">
                           LIVE
                         </Text>
                       </Flex>
                     ) : (
-                      <Text hideBelow="sm" fontFamily="mono" fontSize="10px" color="faint" flex="none">
+                      <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">
                         offline
                       </Text>
                     )}
