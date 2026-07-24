@@ -50,13 +50,6 @@ const config = defineConfig({
       // Logo electrons travel their orbit path (offset-distance 0→100%); paired
       // with a steps() timing they snap pixel-to-pixel along the sprite grid.
       "pel-orbit": { from: { offsetDistance: "0%" }, to: { offsetDistance: "100%" } },
-      // "Now playing" ticker — slides the overflowing category label left by
-      // --tkr px and (with `alternate`) back, like a breaking-news crawl. The
-      // shift distance is measured per-label and passed via the CSS var.
-      "nav-ticker": {
-        "0%, 8%": { transform: "translateX(0)" },
-        "92%, 100%": { transform: "translateX(var(--tkr, 0px))" },
-      },
     },
     tokens: {
       colors: {
