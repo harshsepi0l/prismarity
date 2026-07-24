@@ -6,6 +6,7 @@ import { getValidYouTubeToken, youtubeConnection, YOUTUBE_API } from "./client";
 // equivalent (mapped into PlatformLive.followers) — YouTube "subscribers" are
 // the free follow relationship, not paid subs.
 export interface YouTubeStats {
+  channelId: string;
   channelName: string;
   profileImageUrl: string | null;
   isLive: boolean;
@@ -23,6 +24,7 @@ export async function getYouTubeOwnStats(user: User): Promise<YouTubeStats | nul
   const headers = { Authorization: `Bearer ${token}` };
 
   const stats: YouTubeStats = {
+    channelId: conn.platformUserId,
     channelName: conn.displayName,
     profileImageUrl: null,
     isLive: false,

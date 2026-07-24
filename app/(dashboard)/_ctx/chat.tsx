@@ -18,10 +18,6 @@ import { useKickChat } from "../chat/useKickChat";
 import { useYouTubeChat, type YouTubeChatTarget } from "../chat/useYouTubeChat";
 import { fetchStreamerYouTubeUrl } from "../_lib/streamerYouTube";
 import { nextSeq } from "../chat/seq";
-
-// How long a transient banner event (raid, gift-sub, announcement) lingers in
-// the pin stack before its timer bar empties and it's dropped.
-const EVENT_TTL_MS = 30_000;
 import { participantRole, isKnownBot, type ParticipantRole } from "../chat/participantRole";
 
 // Chat session state lives in the dashboard layout, ABOVE the routes, so the
@@ -159,24 +155,9 @@ export function ChatProvider({
     connect: connectTwitch,
     cheerLeaders,
     giftLeaders,
-    liveEvents: twitchLiveEvents,
+    liveEvents,
   } = useTwitchChat();
-  const {
-    messages: kickMessages,
-    status: kickStatus,
-    connect: connectKick,
-    liveEvents: kickLiveEvents,
-  } = useKickChat();
-  const {
-    messages: youtubeMessages,
-    status: youtubeStatus,
-    connect: connectYouTube,
-  } = useYouTubeChat();
-  // Twitch (EventSub) + Kick (Pusher) alerts, one stream for the banner & feed.
-  const liveEvents = useMemo(
-    () => [...twitchLiveEvents, ...kickLiveEvents],
-    [twitchLiveEvents, kickLiveEvents]
-  );
+  const { messages: kickMessages, status: kickStatus, connect: connectKick } = useKickChat();
 
   const kickConnected = !!kickSlug;
 
@@ -270,14 +251,6 @@ export function ChatProvider({
   const [selfMessages, setSelfMessages] = useState<ChatMessage[]>([]);
   const [pinnedData, setPinnedData] = useState<PinnedMessage | null>(null);
   const [hypeTrain, setHypeTrain] = useState<HypeTrain | null>(null);
-  // System notices injected into the feed (Hype Train begin/level-up). Kept
-  // separate from socket/self messages and merged into `messages` by seq.
-  const [eventMessages, setEventMessages] = useState<ChatMessage[]>([]);
-  // Last Hype Train we surfaced a line for, to diff begin vs level-up across polls.
-  const prevHypeRef = useRef<HypeTrain | null>(null);
-  // liveEvent ids already injected into the feed, so a re-render of the growing
-  // liveEvents array doesn't re-add a raid/gift-sub line.
-  const injectedEventIdsRef = useRef<Set<string>>(new Set());
   const [beaconMode, setBeaconModeState] = useState(false);
   const lastBeaconRef = useRef<string | null>(null);
 
@@ -677,9 +650,6 @@ export function ChatProvider({
     setSelfMessages([]);
     setPinnedData(null);
     setHypeTrain(null);
-    setEventMessages([]);
-    prevHypeRef.current = null;
-    injectedEventIdsRef.current = new Set();
   }, [selectionKey]);
 
   // ── pinned message + banner bar (Twitch, read-only) ──────
@@ -718,82 +688,22 @@ export function ChatProvider({
     };
   }, [activeChannel, pollBanner]);
 
-  // Surface Hype Train activity inline in the feed. hypeTrain is poll-derived,
-  // so we diff each poll against the last: first sighting → "start" (covers both
-  // a fresh train and tuning in mid-train), a higher level → "level". Cleared to
-  // null on channel switch, so switching never fires a false start.
-  useEffect(() => {
-    const prev = prevHypeRef.current;
-    prevHypeRef.current = hypeTrain;
-    if (!hypeTrain) return;
-    const event: "start" | "level" | null = !prev
-      ? "start"
-      : hypeTrain.level > prev.level
-        ? "level"
-        : null;
-    if (!event) return;
-    const notice: ChatMessage = {
-      id: `hype-${event}-L${hypeTrain.level}-${hypeTrain.expiresAt}`,
-      platform: "twitch",
-      user: "",
-      text: "",
-      timestamp: Date.now(),
-      seq: nextSeq(),
-      system: { kind: "hype_train", event, level: hypeTrain.level, isGolden: hypeTrain.isGolden },
-    };
-    // Guard against a duplicate id (same level re-polled) so re-renders don't stack.
-    setEventMessages((cur) =>
-      cur.some((m) => m.id === notice.id) ? cur : [...cur.slice(-30), notice]
-    );
-  }, [hypeTrain]);
-
-  // Surface raids and gifted-sub bombs inline too. liveEvents arrives in real time
-  // (EventSub) and accumulates, so we inject only ids we haven't seen yet.
-  useEffect(() => {
-    const seen = injectedEventIdsRef.current;
-    const fresh: ChatMessage[] = [];
-    for (const ev of liveEvents) {
-      if (ev.kind === "announcement" || seen.has(ev.id)) continue;
-      seen.add(ev.id);
-      fresh.push({
-        id: `evt-${ev.id}`,
-        platform: ev.platform,
-        user: "",
-        text: "",
-        timestamp: ev.at,
-        seq: nextSeq(),
-        system:
-          ev.kind === "raid"
-            ? { kind: "raid", from: ev.from, viewers: ev.viewers }
-            : ev.kind === "gift_sub"
-              ? { kind: "gift_sub", gifter: ev.gifter, count: ev.count }
-              : { kind: "sub", user: ev.user, months: ev.months },
-      });
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (fresh.length) setEventMessages((cur) => [...cur, ...fresh].slice(-30));
-  }, [liveEvents]);
-
-  // Age out transient banner events + drain the Hype Train's timer bar. Nothing
-  // re-renders on time alone, so this 1s clock ticks while any expiring item is
-  // live, driving both the pinItems cutoffs and the countdown bars. Starts at 0
-  // (everything reads as fresh) until the first tick — fine, they just arrived.
+  // Age out transient banner events (announcements, raids). liveEvents changes
+  // when new ones arrive, but expiry alone wouldn't re-render — this clock ticks
+  // while any are in flight so the pinItems memo re-evaluates. Starts at 0 (all
+  // events read as fresh) until the first tick, which is fine — they just arrived.
   const [now, setNow] = useState(0);
-  const anyTimed = liveEvents.length > 0 || hypeTrain !== null;
   useEffect(() => {
-    if (!anyTimed) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    if (liveEvents.length === 0) return;
+    const id = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(id);
-  }, [anyTimed]);
+  }, [liveEvents.length]);
 
   // The merged, cycleable bar: active Hype Train first, then the mod-pin, then
   // recent (<30s) transient events in arrival order.
   const pinItems = useMemo<PinItem[]>(() => {
     const items: PinItem[] = [];
-    // The Hype Train drains toward its real expiry — drop it locally once that
-    // passes (the next poll confirms the end) rather than waiting on the poll.
-    if (hypeTrain && (now === 0 || hypeTrain.expiresAt > now))
-      items.push({ kind: "hype_train", id: "hype-train", hype: hypeTrain });
+    if (hypeTrain) items.push({ kind: "hype_train", id: "hype-train", hype: hypeTrain });
     if (pinnedData) {
       items.push({
         kind: "message",
@@ -807,16 +717,13 @@ export function ChatProvider({
       });
     }
     for (const ev of liveEvents) {
-      if (now - ev.at > EVENT_TTL_MS) continue;
-      const expiresAt = ev.at + EVENT_TTL_MS;
+      if (now - ev.at > 30_000) continue;
       if (ev.kind === "announcement") {
-        items.push({ kind: "announcement", id: ev.id, platform: ev.platform, user: ev.user, color: ev.color, text: ev.text, expiresAt });
+        items.push({ kind: "announcement", id: ev.id, user: ev.user, color: ev.color, text: ev.text });
       } else if (ev.kind === "raid") {
-        items.push({ kind: "raid", id: ev.id, platform: ev.platform, from: ev.from, viewers: ev.viewers, expiresAt });
-      } else if (ev.kind === "gift_sub") {
-        items.push({ kind: "gift_sub", id: ev.id, platform: ev.platform, gifter: ev.gifter, count: ev.count, expiresAt });
+        items.push({ kind: "raid", id: ev.id, from: ev.from, viewers: ev.viewers });
       } else {
-        items.push({ kind: "sub", id: ev.id, platform: ev.platform, user: ev.user, months: ev.months, expiresAt });
+        items.push({ kind: "gift_sub", id: ev.id, gifter: ev.gifter, count: ev.count });
       }
     }
     return items;
@@ -892,13 +799,13 @@ export function ChatProvider({
             Math.abs(m.timestamp - sm.timestamp) < 15_000
         )
     );
-    return [...socket, ...selfMessages, ...eventMessages]
-      // Fail-safe: a message missing `seq` (should never happen — all producers
-      // stamp it) sorts to the END rather than mixing seq-domain integers with
-      // epoch-ms timestamps, which would pin it wrongly.
+    return [...socket, ...selfMessages]
+      // Fail-safe: a message missing `seq` (should never happen — all three
+      // producers stamp it) sorts to the END rather than mixing seq-domain
+      // integers with epoch-ms timestamps, which would pin it wrongly.
       .sort((a, b) => (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER))
       .slice(-300);
-  }, [activeChannel, activeKickOnly, activeYouTubeOwn, twitchMessages, kickMessages, youtubeMessages, selfMessages, eventMessages]);
+  }, [activeChannel, activeKickOnly, twitchMessages, kickMessages, selfMessages]);
 
   // ── @-mention participant registry ───────────────────────
   // A rolling record of who has chatted (per platform), kept in a ref so the

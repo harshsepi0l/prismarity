@@ -152,7 +152,6 @@ export function useTwitchChat(): UseTwitchChatReturn {
       {
         id: `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         kind: "gift_sub",
-        platform: "twitch",
         gifter,
         count,
         at: Date.now(),
@@ -267,7 +266,6 @@ export function useTwitchChat(): UseTwitchChatReturn {
                   {
                     id: `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
                     kind: "announcement",
-                    platform: "twitch",
                     user: e.chatter_user_name,
                     color: e.announcement?.color ?? e.color ?? null,
                     text,
@@ -286,7 +284,6 @@ export function useTwitchChat(): UseTwitchChatReturn {
               {
                 id: `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
                 kind: "raid",
-                platform: "twitch",
                 from,
                 viewers,
                 at: Date.now(),

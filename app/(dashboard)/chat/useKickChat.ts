@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { ChatMessage, ConnectionStatus, LiveEvent } from "../types";
+import type { ChatMessage, ConnectionStatus } from "../types";
 import { nextSeq } from "./seq";
 
 const PUSHER_KEY = "32cbd69e4b950bf97679";
@@ -20,28 +20,6 @@ interface KickChatPayload {
   };
 }
 
-// Alert-event payloads on the SAME chatrooms.{id}.v2 socket (KickLib groups
-// these as chatroom events). Field names are reverse-engineered from Kick's
-// undocumented Pusher stream — VERIFY against a live socket before trusting;
-// every handler tolerates missing fields and unknown events are ignored.
-interface KickGiftedSubsPayload { gifter_username?: string; gifted_usernames?: string[] }
-interface KickSubscriptionPayload { username?: string; months?: number }
-interface KickHostPayload { host_username?: string; number_viewers?: number }
-
-// Distributive Omit so a LiveEvent variant keeps its own fields (a plain
-// Omit<union> collapses to the shared keys only).
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
-type NewLiveEvent = DistributiveOmit<LiveEvent, "id" | "at">;
-
-// Pusher `data` is usually a JSON string, occasionally an already-parsed object.
-function parseEventData<T>(data: unknown): T | null {
-  try {
-    return typeof data === "string" ? (JSON.parse(data) as T) : (data as T);
-  } catch {
-    return null;
-  }
-}
-
 function parseKickContent(raw: string): { text: string; nativeEmotes?: Record<string, string> } {
   const re = /\[emote:(\d+):([^\]]+)\]/g;
   const map: Record<string, string> = {};
@@ -56,7 +34,6 @@ function parseKickContent(raw: string): { text: string; nativeEmotes?: Record<st
 
 export function useKickChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>("idle");
 
   // Stable refs so callbacks can read/write without going stale.
@@ -140,37 +117,8 @@ export function useKickChat() {
           setMessages((prev) => [...prev.slice(-199), msg]);
           break;
         }
-
-        // ── alert events (same socket, reverse-engineered names/shapes) ──
-        case "App\\Events\\GiftedSubscriptionsEvent": {
-          const p = parseEventData<KickGiftedSubsPayload>(frame.data);
-          const count = p?.gifted_usernames?.length ?? 0;
-          if (!p?.gifter_username || count === 0) break;
-          pushEvent({ kind: "gift_sub", platform: "kick", gifter: p.gifter_username, count });
-          break;
-        }
-        case "App\\Events\\SubscriptionEvent": {
-          const p = parseEventData<KickSubscriptionPayload>(frame.data);
-          if (!p?.username) break;
-          pushEvent({ kind: "sub", platform: "kick", user: p.username, months: p.months ?? 1 });
-          break;
-        }
-        case "App\\Events\\StreamHostEvent": {
-          const p = parseEventData<KickHostPayload>(frame.data);
-          if (!p?.host_username) break;
-          pushEvent({ kind: "raid", platform: "kick", from: p.host_username, viewers: p.number_viewers ?? 0 });
-          break;
-        }
       }
     };
-
-    // Append a live event with a fresh id/timestamp, bounded to the last 10.
-    function pushEvent(ev: NewLiveEvent) {
-      setLiveEvents((prev) => [
-        ...prev.slice(-9),
-        { ...ev, id: `kick-evt-${Date.now()}-${Math.random().toString(36).slice(2)}`, at: Date.now() } as LiveEvent,
-      ]);
-    }
 
     ws.onerror = () => { /* onclose always fires next; handle retry there */ };
 
@@ -199,7 +147,6 @@ export function useKickChat() {
     roomRef.current = chatroomId;
     retryCountRef.current = 0;
     setMessages([]);
-    setLiveEvents([]);
 
     if (!chatroomId) {
       setStatus("idle");
@@ -210,5 +157,5 @@ export function useKickChat() {
 
   useEffect(() => () => teardown(), [teardown]);
 
-  return { messages, status, connect, liveEvents } as const;
+  return { messages, status, connect } as const;
 }
