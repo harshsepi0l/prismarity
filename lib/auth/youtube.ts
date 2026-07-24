@@ -8,14 +8,18 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels";
 
 // Scopes:
-//  youtube.readonly -> read the connected account's own channel: identity,
-//                      subscriber count (statistics) and live status
-//                      (liveBroadcasts). Read-only is all we need for the
-//                      "live or not" + "subscribers" features — no chat yet.
+//  youtube.force-ssl -> read AND write. We need it to POST live-chat messages
+//                       (liveChatMessages.insert); the read-only scope can't
+//                       send. It still covers everything readonly did (identity,
+//                       subscriber count, live status, live-chat READ), so the
+//                       stats/live features are unaffected. NOTE: connections
+//                       authorized under the old youtube.readonly scope must
+//                       reconnect once before sending works — their token lacks
+//                       the write grant and insert returns 403 until re-consent.
 //
 // Google issues a refresh token only when access_type=offline AND the user is
 // prompted for consent, so getAuthorizeUrl forces prompt=consent (see below).
-export const SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"];
+export const SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"];
 
 // Cookies bridging /login → /callback: CSRF state + PKCE verifier.
 export const STATE_COOKIE = "prismarity_youtube_state";

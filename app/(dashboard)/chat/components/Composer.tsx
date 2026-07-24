@@ -16,7 +16,7 @@ import MentionAutocomplete from "./composer/MentionAutocomplete";
 import SendTargets from "./composer/SendTargets";
 
 export default function Composer() {
-  const { activeChannel, activeKick, activeKickOnly, getMentionCandidates, liveByPlatform } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, activeYouTube, ownYouTube, getMentionCandidates, liveByPlatform } = useChat();
   const emotes = useEmotes();
   const categories = useEmoteCategories();
   const { sendTargets, toggleSendTarget } = useSession();
@@ -25,8 +25,13 @@ export default function Composer() {
   const { sending, error, errorPlatform, followCountdown, startFollowCountdown, send, clearError } =
     useChatSend();
 
-  // The name shown in placeholders/status — Twitch channel, else the Kick slug.
-  const channelName = activeChannel?.displayName ?? activeKick?.slug ?? activeKickOnly ?? null;
+  // The name shown in placeholders/status — Twitch channel, else the Kick slug,
+  // else your own YouTube channel when it's the standalone selection.
+  const channelName =
+    activeChannel?.displayName ??
+    activeKick?.slug ??
+    activeKickOnly ??
+    (activeYouTube?.own ? ownYouTube?.channelName ?? "your channel" : null);
 
   const richInputRef = useRef<RichInputHandle>(null);
   const [text, setText] = useState("");
@@ -39,6 +44,11 @@ export default function Composer() {
   const available: Platform[] = [];
   if (activeChannel && liveByPlatform.twitch) available.push("twitch");
   if (activeKick && liveByPlatform.kick) available.push("kick");
+  // YouTube: send to whatever live chat we're reading — the own broadcast, or a
+  // tuned streamer's simulcast once its send target (liveChatId) resolved (which
+  // needs YouTube connected). A tuned chat without a liveChatId stays read-only.
+  const youtubeSendable = !!activeYouTube && (activeYouTube.own || !!activeYouTube.liveChatId);
+  if (youtubeSendable && liveByPlatform.youtube) available.push("youtube");
   // Armed targets among the available platforms; default is all-on.
   const deliverable = available.filter((p) => sendTargets.has(p));
   // (Offline platforms are excluded from `available` above, so nothing armed is
@@ -47,7 +57,7 @@ export default function Composer() {
 
   // Identifies the active channel selection — used to reset transient composer
   // state on switch, and to guard the async restore-on-failure below.
-  const selectionKey = activeChannel?.id ?? activeKick?.slug ?? activeKickOnly ?? null;
+  const selectionKey = activeChannel?.id ?? activeKick?.slug ?? activeKickOnly ?? (activeYouTube?.own ? "youtube-own" : null);
   const selectionKeyRef = useRef(selectionKey);
 
   // ── emote ":shortcode" autocomplete ──────────────────────
