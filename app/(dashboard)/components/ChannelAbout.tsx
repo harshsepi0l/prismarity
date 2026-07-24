@@ -114,7 +114,7 @@ function PlatformSection({ p, href }: { p: PlatformLive; href: string | null }) 
       {(p.isLive || p.followers != null || p.subs != null) && (
         <Flex gap="18px" wrap="wrap">
           {p.isLive && <Stat label="VIEWERS" value={fmt(p.viewers)} />}
-          {p.followers != null && <Stat label={p.platform === "youtube" ? "SUBSCRIBERS" : "FOLLOWERS"} value={fmt(p.followers)} />}
+          {p.followers != null && <Stat label="FOLLOWERS" value={fmt(p.followers)} />}
           {p.subs != null && <Stat label="SUBS" value={fmt(p.subs)} />}
           {p.isLive && p.uptimeMs != null && <Stat label="UPTIME" value={formatUptime(p.uptimeMs)} />}
         </Flex>
@@ -172,26 +172,20 @@ export function ChannelAbout({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; };
   }, [twitchLogin]);
 
-  // Drop only the connected account's OWN standalone YouTube row — it's not
-  // part of the tuned selection this card describes. The watched streamer's
-  // simulcast YouTube row (ownAccount === false) stays and renders alongside
-  // Twitch/Kick.
-  const tuned = platforms.filter((p) => !p.ownAccount);
+  // YouTube is the connected account's own channel, not part of the tuned
+  // Twitch/Kick selection this card describes — exclude it here.
+  const tuned = platforms.filter((p) => p.platform !== "youtube");
   const live = tuned.filter((p) => p.isLive);
   const name = activeChannel?.displayName ?? tuned[0]?.channelName ?? activeKickOnly ?? "";
   const avatar = (live[0] ?? tuned[0])?.profileImageUrl ?? null;
 
   const kickSlug = activeKick?.slug ?? activeKickOnly ?? null;
-  // The watched streamer's YouTube link, pulled from their Twitch About socials
-  // (same source stats.tsx uses to resolve the simulcast row).
-  const youtubeUrl =
-    socials.find((s) => /youtube\.com|youtu\.be/i.test(s.url) || /youtube/i.test(s.name))?.url ?? null;
   const hrefFor = (p: PlatformLive): string | null =>
     p.platform === "twitch"
       ? twitchLogin ? `https://twitch.tv/${twitchLogin}` : null
       : p.platform === "kick"
         ? kickSlug ? `https://kick.com/${kickSlug}` : null
-        : youtubeUrl;
+        : null;
 
   const since = twitchProfile?.createdAt ? new Date(twitchProfile.createdAt).getFullYear() : null;
   const btype = twitchProfile?.broadcasterType;

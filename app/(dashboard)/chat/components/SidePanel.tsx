@@ -239,17 +239,9 @@ function PlatformRow({
           {p.isLive ? (
             <Flex align="center" gap="6px" flex="none">
               <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
-              {/* Some live sources have no viewer count (e.g. a scraped YouTube
-                  simulcast) — show a LIVE label rather than a misleading "0". */}
-              {p.viewers > 0 ? (
-                <Text fontFamily="mono" fontSize="13px" fontWeight="600" color="text">
-                  {p.viewers.toLocaleString()}
-                </Text>
-              ) : (
-                <Text fontFamily="mono" fontSize="11px" fontWeight="600" color="#FF5C5C">
-                  LIVE
-                </Text>
-              )}
+              <Text fontFamily="mono" fontSize="13px" fontWeight="600" color="text">
+                {p.viewers.toLocaleString()}
+              </Text>
             </Flex>
           ) : (
             <Text fontFamily="mono" fontSize="10px" color="faint" flex="none">

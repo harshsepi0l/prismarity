@@ -16,6 +16,9 @@ import { useSession } from "./session";
 // chips — toggling a platform off drops it from the combined roll-up.
 export interface PlatformLive {
   platform: Platform;
+  // Platform channel id — used to link out (YouTube own-channel nav entry).
+  // Optional; Twitch/Kick rows don't set it.
+  channelId?: string;
   channelName: string;
   profileImageUrl: string | null;
   included: boolean;
@@ -34,10 +37,6 @@ export interface PlatformLive {
   verified: boolean;
   // Chat mode restrictions for this platform's current channel.
   chatMode: { followerOnly: boolean; followerMinutes: number; subOnly: boolean } | null;
-  // True only for the connected account's OWN standalone YouTube row (which
-  // isn't part of the tuned Twitch/Kick selection). Lets the tuned About card
-  // drop it while keeping the watched streamer's simulcast YouTube row.
-  ownAccount: boolean;
 }
 
 export interface LiveStats {
@@ -98,7 +97,7 @@ const EMPTY_DERIVED: Derived = {
 const StatsContext = createContext<LiveStats | null>(null);
 
 export function StatsProvider({ children }: { children: React.ReactNode }) {
-  const { activeChannel, activeKick, activeKickOnly, ownChannel, ownKick, cheerLeaders, giftLeaders } = useChat();
+  const { activeChannel, activeKick, cheerLeaders, giftLeaders } = useChat();
   const { messages } = useChatMessages();
   const { connectedPlatforms, activeFilters } = useSession();
 
@@ -374,44 +373,6 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [connectedPlatforms]);
 
-  // The WATCHED streamer's own YouTube — resolved from their Twitch About-panel
-  // social links (same "same person across platforms" idea as the Twitch/Kick
-  // icons), then a best-effort live scrape. Lets the per-platform panel surface
-  // a streamer who's multi-streaming to YouTube (e.g. Twitch + YouTube at once).
-  // Only a Twitch selection carries socials, so Kick-only picks have no source.
-  const twitchLogin = activeChannel?.login ?? null;
-  const [streamerYt, setStreamerYt] = useState<{ live: boolean; viewers: number | null; subscribers: number | null } | null>(null);
-  useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setStreamerYt(null);
-    if (!twitchLogin) return;
-    /* eslint-enable react-hooks/set-state-in-effect */
-    let cancelled = false;
-    async function load() {
-      try {
-        const s = await fetch(`/api/twitch/socials?login=${encodeURIComponent(twitchLogin!)}`, { cache: "no-store" });
-        if (!s.ok) return;
-        const sj = (await s.json()) as { socials?: { name: string; url: string }[] };
-        const yt = sj.socials?.find(
-          (x) => /youtube\.com|youtu\.be/i.test(x.url) || /youtube/i.test(x.name)
-        );
-        if (!yt) {
-          if (!cancelled) setStreamerYt(null);
-          return;
-        }
-        const r = await fetch(`/api/youtube/live?url=${encodeURIComponent(yt.url)}`, { cache: "no-store" });
-        if (!r.ok) return;
-        const rj = (await r.json()) as { live?: boolean; viewers?: number | null; subscribers?: number | null };
-        if (!cancelled) setStreamerYt({ live: !!rj.live, viewers: rj.viewers ?? null, subscribers: rj.subscribers ?? null });
-      } catch {
-        /* ignore — no YouTube row */
-      }
-    }
-    load();
-    const id = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [twitchLogin]);
-
   // Latest inputs for the off-render-path computation.
   const messagesRef = useRef(messages);
   const twitchStartedRef = useRef<string | null>(null);
@@ -434,7 +395,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       let perMin = 0;
 
       for (const m of msgs) {
-        if (m.platform === "self" || m.system) continue;
+        if (m.platform === "self") continue;
         if (m.timestamp > now - 60_000) perMin++;
         if (m.timestamp > now - 300_000) active.add(m.user);
         seen.add(m.user);
@@ -480,7 +441,6 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
             subOnly: twitchChatSettings.subOnly,
           }
         : null,
-      ownAccount: false,
     });
   }
   if (activeKick) {
@@ -503,24 +463,17 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       chatMode: km
         ? { followerOnly: km.followerOnly, followerMinutes: km.followerMinutes, subOnly: km.subOnly }
         : null,
-      ownAccount: false,
     });
   }
 
-  // YouTube row. Two distinct sources:
-  //   • Your OWN channel — full stats (live + subscriber count) from the YouTube
-  //     Data API, but only when you're tuned into yourself (the "your channel
-  //     across platforms" view). It must not show next to someone else.
-  //   • The WATCHED streamer's channel — when they're multi-streaming to YouTube
-  //     (resolved from their Twitch socials + a live scrape). Live status +
-  //     concurrent viewers only; no subs/followers are available for a channel
-  //     that isn't the connected account's.
-  const viewingOwnChannel =
-    (!!activeChannel && !!ownChannel && activeChannel.id === ownChannel.id) ||
-    (!!activeKickOnly && !!ownKick && activeKickOnly.toLowerCase() === ownKick.slug.toLowerCase());
-  if (viewingOwnChannel && connectedPlatforms.has("youtube") && youtubeServer) {
+  // YouTube — the connected account's own channel. Standalone (not part of the
+  // tuned Twitch/Kick selection): shows only "live or not" and the subscriber
+  // count, which is surfaced as `followers` (YouTube subscribers are the free
+  // follow relationship). No viewer/chat data yet.
+  if (connectedPlatforms.has("youtube") && youtubeServer) {
     platforms.push({
       platform: "youtube",
+      channelId: youtubeServer.channelId,
       channelName: youtubeServer.channelName,
       profileImageUrl: youtubeServer.profileImageUrl,
       included: activeFilters.has("youtube"),
@@ -535,26 +488,6 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       chatters: null,
       verified: false,
       chatMode: null,
-      ownAccount: true,
-    });
-  } else if (!viewingOwnChannel && streamerYt?.live && activeChannel) {
-    platforms.push({
-      platform: "youtube",
-      channelName: activeChannel.displayName,
-      profileImageUrl: activeChannel.profileImageUrl ?? null,
-      included: activeFilters.has("youtube"),
-      isLive: true,
-      viewers: streamerYt.viewers ?? 0,
-      peakViewers: 0,
-      uptimeMs: null,
-      title: "",
-      category: "",
-      followers: streamerYt.subscribers,
-      subs: null,
-      chatters: null,
-      verified: false,
-      chatMode: null,
-      ownAccount: false,
     });
   }
 
