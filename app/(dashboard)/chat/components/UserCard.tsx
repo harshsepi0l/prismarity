@@ -184,6 +184,11 @@ export function UserCard({ selection, onClose, messages }: UserCardProps) {
               Couldn&apos;t load profile info.
             </Text>
           )
+        ) : selection.platform === "youtube" ? (
+          <Text fontSize="12px" color="faint" textAlign="center" mb="16px">
+            YouTube doesn&apos;t expose a public profile-lookup API — showing
+            what&apos;s available from chat.
+          </Text>
         ) : (
           <Text fontSize="12px" color="faint" textAlign="center" mb="16px">
             Kick doesn&apos;t expose a public profile-lookup API — showing what&apos;s

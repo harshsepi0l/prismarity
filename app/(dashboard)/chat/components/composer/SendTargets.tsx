@@ -7,6 +7,7 @@ import type { Platform } from "../../../types";
 const SEND_PLATFORMS: { id: Platform; color: string }[] = [
   { id: "twitch", color: "#A66CFF" },
   { id: "kick", color: "#5BE37D" },
+  { id: "youtube", color: "#FF4E45" },
 ];
 
 interface SendTargetsProps {

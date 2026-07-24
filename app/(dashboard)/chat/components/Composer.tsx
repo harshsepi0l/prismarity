@@ -16,7 +16,7 @@ import MentionAutocomplete from "./composer/MentionAutocomplete";
 import SendTargets from "./composer/SendTargets";
 
 export default function Composer() {
-  const { activeChannel, activeKick, activeKickOnly, getMentionCandidates, liveByPlatform } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, activeYouTube, getMentionCandidates, liveByPlatform } = useChat();
   const emotes = useEmotes();
   const categories = useEmoteCategories();
   const { sendTargets, toggleSendTarget } = useSession();
@@ -39,6 +39,11 @@ export default function Composer() {
   const available: Platform[] = [];
   if (activeChannel && liveByPlatform.twitch) available.push("twitch");
   if (activeKick && liveByPlatform.kick) available.push("kick");
+  // YouTube: send to whatever live chat we're reading — the own broadcast, or a
+  // tuned streamer's simulcast once its send target (liveChatId) resolved (which
+  // needs YouTube connected). A tuned chat without a liveChatId stays read-only.
+  const youtubeSendable = !!activeYouTube && (activeYouTube.own || !!activeYouTube.liveChatId);
+  if (youtubeSendable && liveByPlatform.youtube) available.push("youtube");
   // Armed targets among the available platforms; default is all-on.
   const deliverable = available.filter((p) => sendTargets.has(p));
   // (Offline platforms are excluded from `available` above, so nothing armed is

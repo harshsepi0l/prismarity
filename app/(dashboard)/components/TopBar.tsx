@@ -37,7 +37,7 @@ function SplitIcon() {
 // in here: the signal art scans while beacon is armed with no channel (or while
 // a beacon-selected channel is still connecting) and holds strong once live.
 function ActiveChannelPill() {
-  const { activeChannel, activeKick, activeKickOnly, beaconMode } = useChat();
+  const { activeChannel, activeKick, activeKickOnly, activeYouTubeOwn, ownYouTube, beaconMode } = useChat();
   const signalStatus = useChatSignal();
   const { platforms, collab } = useStats();
   const { isMobile } = useLayout();
@@ -92,7 +92,7 @@ function ActiveChannelPill() {
     return () => { cancelled = true; clearInterval(id); };
   }, [streamerYouTube]);
 
-  const hasSelection = !!activeChannel || !!activeKickOnly;
+  const hasSelection = !!activeChannel || !!activeKickOnly || activeYouTubeOwn;
 
   if (!hasSelection) {
     if (!beaconMode) {
@@ -124,9 +124,10 @@ function ActiveChannelPill() {
   const live = tuned.filter((p) => p.isLive);
   const isLive = live.length > 0;
   const name =
-    activeChannel?.displayName ?? tuned[0]?.channelName ?? activeKickOnly!;
+    activeChannel?.displayName ?? tuned[0]?.channelName ?? activeKickOnly ?? ownYouTube?.channelName ?? "";
   const avatar =
-    (isLive ? live : tuned).find((p) => p.profileImageUrl)?.profileImageUrl ?? null;
+    (isLive ? live : tuned).find((p) => p.profileImageUrl)?.profileImageUrl ??
+    (activeYouTubeOwn ? ownYouTube?.profileImageUrl ?? null : null);
   const viewers = live.reduce((sum, p) => sum + p.viewers, 0);
 
   // Per-platform live state — each icon lights up in the platform's brand color
@@ -213,6 +214,17 @@ function ActiveChannelPill() {
           >
             <PlatformIcon platform="youtube" color={streamerYouTubeLive ? PLATFORM_COLOR.youtube : "#3a4152"} size={12} />
           </chakra.a>
+        )}
+        {activeYouTubeOwn && ownYouTube && (
+          // The connected account's OWN YouTube channel (read-only live chat).
+          // No channel URL here, so it's an indicator, not a link — lit brand-red
+          // when live, dim grey when offline.
+          <Box
+            display="inline-flex" flex="none"
+            title={`Your YouTube channel${ownYouTube.isLive ? " (live)" : ""}`}
+          >
+            <PlatformIcon platform="youtube" color={ownYouTube.isLive ? PLATFORM_COLOR.youtube : "#3a4152"} size={12} />
+          </Box>
         )}
       </Flex>
 
@@ -491,7 +503,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ auth }: TopBarProps) {
-  const { chatLayout, setChatLayout, searchOpen, setSearchOpen, setNavOpen, navMode, cycleNavMode, panelMode, togglePanel, isMobile, setPanelOpen } = useLayout();
+  const { chatLayout, setChatLayout, searchOpen, setSearchOpen, setNavOpen, navMode, cycleNavMode, panelMode, togglePanel } = useLayout();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ⌘K / Ctrl+K opens the channel search.
@@ -566,6 +578,17 @@ export function TopBar({ auth }: TopBarProps) {
             onClick={() => setSettingsOpen(true)}
             connected={{ twitch: !!auth.twitch, kick: !!auth.kick, youtube: !!auth.youtube }}
           />
+          <Text
+            hideBelow="sm"
+            fontFamily="mono"
+            fontSize="13px"
+            fontWeight="700"
+            letterSpacing="0.18em"
+            color="text"
+            flex="none"
+          >
+            PRISMARITY
+          </Text>
         </Flex>
 
         {/* Center: what you're tuned into */}
@@ -593,18 +616,18 @@ export function TopBar({ auth }: TopBarProps) {
             {chatLayout === "combined" ? <CombinedIcon /> : <SplitIcon />}
           </chakra.button>
 
-          {/* Desktop: show/hide the docked stats panel. Mobile: open it as an
-              overlay drawer that takes over the chat (like the NavRail drawer). */}
+          {/* Desktop: show/hide the right stats panel. */}
           <chakra.button
+            hideBelow="md"
             type="button"
-            title={isMobile ? "Show stats panel" : panelMode === "hidden" ? "Show stats panel" : "Hide stats panel"}
+            title={panelMode === "hidden" ? "Show stats panel" : "Hide stats panel"}
             aria-label="Toggle stats panel"
-            onClick={() => (isMobile ? setPanelOpen(true) : togglePanel())}
+            onClick={togglePanel}
             display="flex" alignItems="center" justifyContent="center"
             w="30px" h="30px" borderRadius="7px" flex="none"
             transition="background .12s, border-color .12s"
             style={
-              !isMobile && panelMode === "expanded"
+              panelMode === "expanded"
                 ? { background: "rgba(166,108,255,0.14)", border: "1px solid rgba(166,108,255,0.45)" }
                 : { background: "transparent", border: "1px solid #232a38" }
             }

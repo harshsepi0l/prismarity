@@ -8,11 +8,6 @@ import { useBadges, resolveBadgeImage } from "../../_ctx/badges";
 // "self" messages have no platform brand color — a neutral grey stands in.
 const SELF_COLOR = "#8B93A7";
 
-// Hype-notice accents (kept in sync with PinnedBar). Raid/gift/sub rows are
-// coloured by the source platform instead, so Twitch reads purple and Kick green.
-const HYPE = "#F5A0FF";
-const GOLD = "#F5C518";
-
 const PLATFORM_TAG: Record<string, string> = {
   twitch: "TW",
   youtube: "YT",
@@ -171,59 +166,6 @@ export default memo(function ChatMessage({
       ),
     [message.text, message.nativeEmotes, emotes, platformColor]
   );
-  // System notice (Hype Train / raid / gifted subs) — a centered event row, not a
-  // chatter line. Placed after the hooks above so hook order stays stable.
-  if (message.system) {
-    const notice = message.system;
-    let icon = "🚋";
-    let accent: string = HYPE;
-    let text = "";
-    let sub: string | null = null;
-    if (notice.kind === "hype_train") {
-      accent = notice.isGolden ? GOLD : HYPE;
-      const label = notice.isGolden ? "Golden Kappa Train" : "Hype Train";
-      text = notice.event === "start" ? `${label} is rolling` : `${label} reached Level ${notice.level}`;
-      if (notice.event === "start" && notice.level > 1) sub = `LVL ${notice.level}`;
-    } else {
-      accent = message.platform === "kick" ? PLATFORM_COLOR.kick : PLATFORM_COLOR.twitch;
-      if (notice.kind === "raid") {
-        icon = "🚀";
-        text = `${notice.from} raided`;
-        sub = `${notice.viewers.toLocaleString()} ${notice.viewers === 1 ? "viewer" : "viewers"}`;
-      } else if (notice.kind === "gift_sub") {
-        icon = "🎁";
-        text = `${notice.gifter} gifted ${notice.count} ${notice.count === 1 ? "sub" : "subs"}`;
-      } else {
-        icon = "⭐";
-        text = notice.months > 1 ? `${notice.user} subscribed · ${notice.months} mo` : `${notice.user} subscribed`;
-      }
-    }
-    return (
-      <Flex
-        align="center"
-        justify="center"
-        gap="8px"
-        py="8px"
-        px="12px"
-        borderRadius="8px"
-        borderWidth="1px"
-        style={{ borderColor: `${accent}55`, background: `${accent}14` }}
-      >
-        <Text fontSize="14px" flex="none" aria-hidden>
-          {icon}
-        </Text>
-        <Text fontSize="12.5px" fontWeight="700" color={accent}>
-          {text}
-        </Text>
-        {sub && (
-          <Text fontFamily="mono" fontSize="10px" fontWeight="700" color={accent} opacity={0.85}>
-            {sub}
-          </Text>
-        )}
-      </Flex>
-    );
-  }
-
   const tag = PLATFORM_TAG[message.platform] ?? "??";
 
   // For self-messages in split view: show only the relevant platform's name/icon.

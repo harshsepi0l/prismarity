@@ -32,7 +32,10 @@ export default function ChatPage() {
     (p) =>
       connectedPlatforms.has(p) &&
       ((p === "twitch" && !!activeChannel && liveByPlatform.twitch) ||
-        (p === "kick" && (!!activeKick || !!activeKickOnly) && liveByPlatform.kick))
+        (p === "kick" && (!!activeKick || !!activeKickOnly) && liveByPlatform.kick) ||
+        // YouTube is read-only and own-channel only; liveByPlatform.youtube already
+        // folds in "own YT selected AND live".
+        (p === "youtube" && !!liveByPlatform.youtube))
   );
 
   // The subset you're actually watching — drives which columns/messages show.
