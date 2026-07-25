@@ -24,7 +24,9 @@ function timerFor(item: PinItem, now: number): { pct: number; accent: string } |
   const [expiresAt, windowMs, accent] =
     item.kind === "hype_train"
       ? [item.hype.expiresAt, HYPE_WINDOW_MS, item.hype.isGolden ? GOLD : HYPE]
-      : [item.expiresAt, EVENT_WINDOW_MS, item.platform === "kick" ? PLATFORM_COLOR.kick : TW];
+      : item.kind === "hype_incoming"
+        ? [item.hype.expiresAt, HYPE_WINDOW_MS, item.hype.isGolden ? GOLD : HYPE]
+        : [item.expiresAt, EVENT_WINDOW_MS, item.platform === "kick" ? PLATFORM_COLOR.kick : TW];
   const pct = Math.max(0, Math.min(100, ((expiresAt - now) / windowMs) * 100));
   return { pct, accent };
 }
@@ -96,7 +98,7 @@ function PinRow({
       py="7px"
       position="relative"
       bg={
-        item.kind === "hype_train"
+        item.kind === "hype_train" || item.kind === "hype_incoming"
           ? "rgba(245,160,255,0.09)"
           : item.kind !== "message" && item.platform === "kick"
             ? "rgba(91,227,125,0.08)"
@@ -225,6 +227,30 @@ function ItemContent({ item }: { item: PinItem }) {
         )}
         <Text fontFamily="mono" fontSize="11px" color="muted" flex="none">
           {hype.total.toLocaleString()} pts
+        </Text>
+      </Flex>
+    );
+  }
+
+  if (item.kind === "hype_incoming") {
+    const { hype } = item;
+    const accent = hype.isGolden ? GOLD : HYPE;
+    const pct = hype.goal > 0 ? Math.min(100, Math.round((hype.progress / hype.goal) * 100)) : 0;
+    return (
+      <Flex align="center" gap="10px" minW="0" flex="1">
+        <Box as="span" flex="none" color={accent} display="inline-flex" opacity={0.85}>
+          <TrainIcon />
+        </Box>
+        <Text fontFamily="mono" fontSize="11px" fontWeight="700" letterSpacing="0.08em" color={accent} flex="none">
+          {hype.isGolden ? "GOLDEN HYPE" : "HYPE TRAIN"} INCOMING
+        </Text>
+        {hype.goal > 0 && (
+          <Box flex="1" minW="40px" maxW="220px" h="6px" borderRadius="3px" bg="raised" overflow="hidden">
+            <Box h="100%" w={`${pct}%`} bg={accent} opacity={0.75} transition="width .3s" />
+          </Box>
+        )}
+        <Text fontFamily="mono" fontSize="11px" color="muted" flex="none">
+          {hype.progress}/{hype.goal}
         </Text>
       </Flex>
     );

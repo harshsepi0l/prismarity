@@ -7,6 +7,7 @@ import { useSession } from "../_ctx/session";
 import { PlatformIcon } from "./PlatformIcon";
 import { useYouTubePresence } from "../_hooks/useYouTubePresence";
 import type { SearchResult } from "../types";
+import { c } from "../../theme-colors";
 
 // ⌘K-style channel search. Opens as a centered overlay; picking a result
 // selects the channel and adds it to the WATCHING list. The panel only mounts
@@ -104,8 +105,8 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
       >
         <Flex align="center" gap="11px" px="16px" h="48px" borderBottomWidth="1px" borderColor="line">
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden>
-            <circle cx="9" cy="9" r="6.5" stroke="#8B93A7" strokeWidth="1.6" />
-            <path d="M14 14 L18 18" stroke="#8B93A7" strokeWidth="1.6" strokeLinecap="round" />
+            <circle cx="9" cy="9" r="6.5" stroke={c.muted} strokeWidth="1.6" />
+            <path d="M14 14 L18 18" stroke={c.muted} strokeWidth="1.6" strokeLinecap="round" />
           </svg>
           <chakra.input
             ref={inputRef}

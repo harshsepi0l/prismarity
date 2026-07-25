@@ -1,4 +1,5 @@
 import { Box, Text } from "@chakra-ui/react";
+import { c } from "../../theme-colors";
 
 // Shared presentational helpers for the dashboard screens.
 
@@ -34,4 +35,4 @@ export function ScreenHeader({
 }
 
 // Diagonal hatch fill used for placeholder avatars/thumbnails.
-export const HATCH = "repeating-linear-gradient(135deg,#1F2532 0 6px,#171B26 6px 12px)";
+export const HATCH = `repeating-linear-gradient(135deg,${c.raised} 0 6px,${c.panel} 6px 12px)`;

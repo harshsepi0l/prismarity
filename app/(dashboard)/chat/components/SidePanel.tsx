@@ -46,7 +46,7 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
       w="38px"
       h="21px"
       borderRadius="full"
-      bg={on ? "#5BE37D" : "#232a38"}
+      bg={on ? "kick" : "fieldLine"}
       transition="background .15s"
       cursor="pointer"
     >

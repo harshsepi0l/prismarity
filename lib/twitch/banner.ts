@@ -1,4 +1,4 @@
-import type { HypeTrain } from "@/app/(dashboard)/types";
+import type { HypeTrain, HypeTrainApproaching } from "@/app/(dashboard)/types";
 import type { PinnedMessage } from "./pins";
 
 // Reads the current pinned message + active Hype Train for ANY channel via
@@ -42,6 +42,13 @@ const QUERY = `query BannerState($id: ID!) {
             progression
           }
         }
+        approaching {
+          id
+          expiresAt
+          goal
+          isGoldenKappaTrain
+          participants
+        }
       }
     }
   }
@@ -78,6 +85,12 @@ interface GqlBanner {
               progression?: number;
             } | null;
           } | null;
+          approaching?: {
+            expiresAt?: string | null;
+            goal?: number | null;
+            isGoldenKappaTrain?: boolean;
+            participants?: string[] | null;
+          } | null;
         } | null;
       } | null;
     } | null;
@@ -87,6 +100,9 @@ interface GqlBanner {
 export interface BannerState {
   pin: PinnedMessage | null;
   hypeTrain: HypeTrain | null;
+  // A train building toward launch, when none is active yet. Mutually exclusive
+  // with hypeTrain: once the train starts, execution takes over.
+  hypeIncoming: HypeTrainApproaching | null;
 }
 
 export async function fetchBannerState(channelId: string): Promise<BannerState> {
@@ -97,7 +113,7 @@ export async function fetchBannerState(channelId: string): Promise<BannerState> 
       cache: "no-store",
       body: JSON.stringify({ operationName: "BannerState", variables: { id: channelId }, query: QUERY }),
     });
-    if (!res.ok) return { pin: null, hypeTrain: null };
+    if (!res.ok) return { pin: null, hypeTrain: null, hypeIncoming: null };
 
     const json = (await res.json()) as GqlBanner;
     const channel = json.data?.user?.channel;
@@ -135,8 +151,21 @@ export async function fetchBannerState(channelId: string): Promise<BannerState> 
       };
     }
 
-    return { pin, hypeTrain };
+    // ── hype train (approaching / incoming) ──
+    // Only meaningful before a train starts; once execution exists it takes over.
+    const appr = channel?.hypeTrain?.approaching;
+    let hypeIncoming: HypeTrainApproaching | null = null;
+    if (!hypeTrain && appr && appr.goal) {
+      hypeIncoming = {
+        progress: appr.participants?.length ?? 0,
+        goal: appr.goal,
+        isGolden: !!appr.isGoldenKappaTrain,
+        expiresAt: appr.expiresAt ? Date.parse(appr.expiresAt) || Date.now() + 300_000 : Date.now() + 300_000,
+      };
+    }
+
+    return { pin, hypeTrain, hypeIncoming };
   } catch {
-    return { pin: null, hypeTrain: null };
+    return { pin: null, hypeTrain: null, hypeIncoming: null };
   }
 }

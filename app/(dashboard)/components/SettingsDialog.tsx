@@ -8,21 +8,13 @@ import { BeaconSignal } from "./BeaconSignal";
 import { clearSessionScopedStorage } from "@/lib/clientStorage";
 import { useChat, useChatSignal } from "../_ctx/chat";
 import { useLayout } from "../_ctx/layout";
+import { useColorMode, type ColorMode } from "../../_ctx/color-mode";
+import { c, alpha as withAlpha } from "../../theme-colors";
 
-const C = {
-  bg: "#0E1118",
-  panel: "#171B26",
-  raised: "#1F2532",
-  field: "#12161F",
-  line: "#1B2130",
-  fieldLine: "#232A38",
-  text: "#D6DAE6",
-  muted: "#8B93A7",
-  faint: "#5C6479",
-  twitch: "#A66CFF",
-  kick: "#5BE37D",
-  youtube: "#FF5C5C",
-};
+// All surface/text colors come from the centralized theme (theme-colors.ts) so
+// this panel re-washes with the rest of the app and flips on light/dark. `C`
+// stays as the local alias the JSX already reads (C.field, C.muted, …).
+const C = c;
 
 // Platforms with an interactive connect/disconnect flow in Settings.
 type ConnectPlatform = "twitch" | "kick" | "youtube";
@@ -43,6 +35,39 @@ const INFO_ICON = (
   </svg>
 );
 
+// Half-filled contrast disc — the light/dark appearance section.
+const THEME_ICON = (
+  <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden>
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M12 3a9 9 0 000 18V3z" fill="currentColor" />
+  </svg>
+);
+
+// The three color-mode choices for the Appearance segmented control.
+const SUN_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </svg>
+);
+const MOON_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
+  </svg>
+);
+const SYSTEM_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="4" width="18" height="12" rx="1.5" />
+    <path d="M8 20h8M12 16v4" strokeLinecap="round" />
+  </svg>
+);
+
+const THEME_OPTIONS: { id: ColorMode; label: string; icon: React.ReactNode }[] = [
+  { id: "light", label: "Light", icon: SUN_ICON },
+  { id: "dark", label: "Dark", icon: MOON_ICON },
+  { id: "system", label: "Auto", icon: SYSTEM_ICON },
+];
+
 // Beacon icon — a dot with two broadcast arcs, used in both the settings panel
 // and the companion browser extension.
 export const BEACON_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -61,7 +86,7 @@ function BeaconIcon({ size = 20, color = "currentColor" }: { size?: number; colo
   );
 }
 
-type Category = "accounts" | "chat" | "about";
+type Category = "accounts" | "chat" | "appearance" | "about";
 
 interface Props {
   auth: {
@@ -144,9 +169,9 @@ function PlatformSection({
           cursor="pointer"
           transition="filter .12s"
           _hover={{ filter: "brightness(1.1)" }}
-          style={{ background: color, color: "#0E1118" }}
+          style={{ background: color, color: C.accentText }}
         >
-          <PlatformIcon platform={platform} color="#0E1118" size={14} />
+          <PlatformIcon platform={platform} color={C.accentText} size={14} />
           Connect with {label}
         </chakra.button>
       )}
@@ -161,6 +186,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const { beaconMode, setBeaconMode } = useChat();
   const signalStatus = useChatSignal();
   const { isCompact } = useLayout();
+  const { mode, resolved, setMode, mounted: themeMounted } = useColorMode();
   // Desktop: anchored dropdown under the prism. Mobile/tablet: centered modal.
   const asDropdown = !isCompact;
 
@@ -278,6 +304,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
   const CATEGORIES: { id: Category; label: string; icon: React.ReactNode }[] = [
     { id: "accounts", label: "Accounts", icon: PERSON_ICON },
     { id: "chat", label: "Chat", icon: CHAT_ICON },
+    { id: "appearance", label: "Appearance", icon: THEME_ICON },
     { id: "about", label: "About", icon: INFO_ICON },
   ];
 
@@ -523,7 +550,7 @@ export function SettingsDialog({ auth, onClose }: Props) {
                   <Flex align="center" gap="8px" flexWrap="wrap">
                     <Box
                       flex="1 1 140px" minW="120px" borderRadius="6px" px="10px" py="7px"
-                      fontFamily="monospace" fontSize="11px"
+                      fontFamily="mono" fontSize="11px"
                       overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap"
                       style={{ background: C.field, border: `1px solid ${C.fieldLine}`, color: C.muted }}
                       // Only expose the value on hover once explicitly revealed —
@@ -577,6 +604,62 @@ export function SettingsDialog({ auth, onClose }: Props) {
                     {pairRotating ? "Regenerating…" : "Regenerate key"}
                   </chakra.button>
                 </Box>
+              </Box>
+            )}
+
+            {category === "appearance" && (
+              <Box>
+                <Text fontSize="13px" mb="20px" lineHeight="1.6" style={{ color: C.muted }}>
+                  Choose how Prismarity looks. Pick a fixed theme, or match your
+                  browser&rsquo;s appearance and switch automatically with it.
+                </Text>
+
+                <Text fontSize="11px" fontWeight="700" letterSpacing="0.14em" mb="10px" style={{ color: C.faint }}>
+                  THEME
+                </Text>
+
+                <Flex gap="8px" flexWrap="wrap">
+                  {THEME_OPTIONS.map((opt) => {
+                    // Until mounted we don't know the stored choice; render neutral
+                    // to avoid a hydration flash of the wrong active pill.
+                    const active = themeMounted && mode === opt.id;
+                    return (
+                      <chakra.button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setMode(opt.id)}
+                        aria-pressed={active}
+                        flex="1 1 100px"
+                        display="flex"
+                        flexDirection="column"
+                        alignItems="center"
+                        gap="7px"
+                        px="12px"
+                        py="14px"
+                        borderRadius="10px"
+                        borderWidth="1.5px"
+                        cursor="pointer"
+                        transition="all .12s"
+                        style={{
+                          color: active ? C.accent : C.muted,
+                          borderColor: active ? C.accent : C.fieldLine,
+                          background: active ? withAlpha(C.accent, 0.1) : C.field,
+                        }}
+                      >
+                        {opt.icon}
+                        <Text fontSize="12px" fontWeight="600" style={{ color: active ? C.text : C.muted }}>
+                          {opt.label}
+                        </Text>
+                      </chakra.button>
+                    );
+                  })}
+                </Flex>
+
+                <Text fontSize="12px" mt="12px" lineHeight="1.6" style={{ color: C.faint }}>
+                  {themeMounted && mode === "system"
+                    ? `Matching your browser’s appearance — currently ${resolved}.`
+                    : `Using the ${themeMounted ? mode : "dark"} theme.`}
+                </Text>
               </Box>
             )}
 

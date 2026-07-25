@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ChatMessage, ConnectionStatus, Platform, SearchResult, PinItem, HypeTrain } from "../types";
+import type { ChatMessage, ConnectionStatus, Platform, SearchResult, PinItem, HypeTrain, HypeTrainApproaching } from "../types";
 import type { FollowedChannel } from "@/lib/twitch/channels";
 import type { Role } from "@/lib/auth/types";
 import { useTwitchChat, type CheerLeader, type GiftLeader } from "../chat/useTwitchChat";
@@ -270,6 +270,8 @@ export function ChatProvider({
   const [selfMessages, setSelfMessages] = useState<ChatMessage[]>([]);
   const [pinnedData, setPinnedData] = useState<PinnedMessage | null>(null);
   const [hypeTrain, setHypeTrain] = useState<HypeTrain | null>(null);
+  // A train building toward launch ("incoming"), surfaced before one is active.
+  const [hypeIncoming, setHypeIncoming] = useState<HypeTrainApproaching | null>(null);
   // System notices injected into the feed (Hype Train begin/level-up). Kept
   // separate from socket/self messages and merged into `messages` by seq.
   const [eventMessages, setEventMessages] = useState<ChatMessage[]>([]);
@@ -677,6 +679,7 @@ export function ChatProvider({
     setSelfMessages([]);
     setPinnedData(null);
     setHypeTrain(null);
+    setHypeIncoming(null);
     setEventMessages([]);
     prevHypeRef.current = null;
     injectedEventIdsRef.current = new Set();
@@ -692,11 +695,13 @@ export function ChatProvider({
     try {
       const res = await fetch(`/api/twitch/banner?channelId=${encodeURIComponent(activeChannel.id)}`);
       if (!res.ok) return;
-      const { pin, hypeTrain: ht } = (await res.json()) as {
+      const { pin, hypeTrain: ht, hypeIncoming: hi } = (await res.json()) as {
         pin: PinnedMessage | null;
         hypeTrain: HypeTrain | null;
+        hypeIncoming: HypeTrainApproaching | null;
       };
       setHypeTrain(ht);
+      setHypeIncoming(hi);
       setPinnedData(pin); // GQL carries text/sender/badges/pinnedBy/sentAt in full
     } catch {
       /* network — keep whatever we last had */
@@ -779,7 +784,7 @@ export function ChatProvider({
   // live, driving both the pinItems cutoffs and the countdown bars. Starts at 0
   // (everything reads as fresh) until the first tick — fine, they just arrived.
   const [now, setNow] = useState(0);
-  const anyTimed = liveEvents.length > 0 || hypeTrain !== null;
+  const anyTimed = liveEvents.length > 0 || hypeTrain !== null || hypeIncoming !== null;
   useEffect(() => {
     if (!anyTimed) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -794,6 +799,9 @@ export function ChatProvider({
     // passes (the next poll confirms the end) rather than waiting on the poll.
     if (hypeTrain && (now === 0 || hypeTrain.expiresAt > now))
       items.push({ kind: "hype_train", id: "hype-train", hype: hypeTrain });
+    // The incoming train (never both — the lib clears it once one is active).
+    else if (hypeIncoming && (now === 0 || hypeIncoming.expiresAt > now))
+      items.push({ kind: "hype_incoming", id: "hype-incoming", hype: hypeIncoming });
     if (pinnedData) {
       items.push({
         kind: "message",
@@ -820,7 +828,7 @@ export function ChatProvider({
       }
     }
     return items;
-  }, [hypeTrain, pinnedData, liveEvents, now]);
+  }, [hypeTrain, hypeIncoming, pinnedData, liveEvents, now]);
 
   // ── live sockets ─────────────────────────────────────────
   // EventSub subscribes by broadcaster id, not login.

@@ -196,7 +196,7 @@ export default function ParticipantsButton({
         color={open ? "text" : "muted"}
         cursor="pointer"
         transition="background .12s, color .12s, border-color .12s"
-        _hover={{ color: "text", borderColor: "#2f3850" }}
+        _hover={{ color: "text", borderColor: "lineStrong" }}
       >
         <PeopleIcon />
         <Chevron open={open} />
@@ -275,7 +275,7 @@ export default function ParticipantsButton({
               borderRadius="8px"
               color="text"
               _placeholder={{ color: "faint" }}
-              _focusVisible={{ borderColor: "#2f3850", boxShadow: "none" }}
+              _focusVisible={{ borderColor: "lineStrong", boxShadow: "none" }}
             />
           </Box>
 

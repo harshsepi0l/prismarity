@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const channelId = req.nextUrl.searchParams.get("channelId")?.trim();
   if (!channelId) {
-    return NextResponse.json({ pin: null, hypeTrain: null });
+    return NextResponse.json({ pin: null, hypeTrain: null, hypeIncoming: null });
   }
   const state = await fetchBannerState(channelId);
   return NextResponse.json(state);

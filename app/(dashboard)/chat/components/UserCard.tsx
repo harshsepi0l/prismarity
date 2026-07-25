@@ -5,6 +5,7 @@ import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType, UserSelection } from "../../types";
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 import { BadgeChip } from "./ChatMessage";
+import { c } from "../../../theme-colors";
 
 interface TwitchUserInfo {
   login: string;
@@ -71,7 +72,7 @@ export function UserCard({ selection, onClose, messages }: UserCardProps) {
 
   if (!selection) return null;
 
-  const color = PLATFORM_COLOR[selection.platform] ?? "#8B93A7";
+  const color = PLATFORM_COLOR[selection.platform] ?? c.muted;
 
   // Latest badges this user is holding, from their most recent message.
   const latestBadges =

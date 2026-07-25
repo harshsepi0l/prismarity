@@ -4,9 +4,10 @@ import type { ChatMessage as ChatMessageType, UserSelection } from "../../types"
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 import { useEmotes } from "../../_ctx/emotes";
 import { useBadges, resolveBadgeImage } from "../../_ctx/badges";
+import { c, alpha, PLATFORM } from "../../../theme-colors";
 
 // "self" messages have no platform brand color — a neutral grey stands in.
-const SELF_COLOR = "#8B93A7";
+const SELF_COLOR = c.muted;
 
 // Hype-notice accents (kept in sync with PinnedBar). Raid/gift/sub rows are
 // coloured by the source platform instead, so Twitch reads purple and Kick green.
@@ -259,10 +260,18 @@ export default memo(function ChatMessage({
       py="7px"
       borderRadius="2px 6px 6px 2px"
       transition="background .12s"
-      bg={message.platform === "kick" ? "#2e4d3bff" : "#2e344d"}
-      _hover={{
-        bg: message.platform === "kick" ? "#2E4A35" : "raised",
-      }}
+      // Platform-tinted rows: a 30% platform wash behind the colored left edge.
+      // Your own sent messages stay neutral; the grey edge + icons already mark them.
+      bg={
+        message.platform === "twitch"
+          ? alpha(PLATFORM.twitch, 0.3)
+          : message.platform === "kick"
+            ? alpha(PLATFORM.kick, 0.3)
+            : message.platform === "youtube"
+              ? alpha(PLATFORM.youtube, 0.3)
+              : "transparent"
+      }
+      _hover={{ bg: "raised" }}
     >
       <Flex align="baseline" gap="9px" mb="2px">
         {message.platform === "self" ? (

@@ -25,9 +25,9 @@ export default function AuthSuccess() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#0E1118",
-        color: "#8B93A7",
-        fontFamily: "var(--font-inter), system-ui, sans-serif",
+        background: "var(--chakra-colors-bg)",
+        color: "var(--chakra-colors-muted)",
+        fontFamily: "var(--font-rounded), ui-rounded, system-ui, sans-serif",
         fontSize: "14px",
       }}
     >
