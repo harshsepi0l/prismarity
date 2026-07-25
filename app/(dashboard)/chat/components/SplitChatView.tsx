@@ -6,6 +6,7 @@ import type { ChatMessage as ChatMessageType, Platform, UserSelection } from "..
 import ChatFeed from "./ChatFeed";
 import { PlatformIcon, PLATFORM_COLOR, PLATFORM_LABEL } from "../../components/PlatformIcon";
 import { useLayout } from "../../_ctx/layout";
+import { accentMix, accentLine } from "../../../theme-colors";
 
 const SPLIT_KEY = "prismarity:chat-split";
 const MIN_RATIO = 0.2;
@@ -49,7 +50,7 @@ export default function SplitChatView({ messages, platforms, onSelectUser }: Spl
           <ColumnHeader platform={left} />
           <ChatFeed messages={messages} activeFilters={new Set([left])} onSelectUser={onSelectUser} />
         </Flex>
-        <Box h="1px" bg="line" flex="none" />
+        <Box h="1px" bg={accentLine} flex="none" />
         <Flex direction="column" flex="1" minH="0" minW="0">
           <ColumnHeader platform={right} />
           <ChatFeed messages={messages} activeFilters={new Set([right])} onSelectUser={onSelectUser} />
@@ -110,7 +111,7 @@ export default function SplitChatView({ messages, platforms, onSelectUser }: Spl
           borderRadius="2px"
           transform="translateX(-50%)"
           pointerEvents="none"
-          bg={active ? "rgba(166,108,255,0.55)" : "line"}
+          bg={active ? accentMix(55) : "line"}
           transition="background .15s"
         />
         {/* Grip pill */}
@@ -127,14 +128,14 @@ export default function SplitChatView({ messages, platforms, onSelectUser }: Spl
           pointerEvents="none"
           bg={active ? "raised" : "transparent"}
           borderWidth="1px"
-          borderColor={active ? "rgba(166,108,255,0.35)" : "transparent"}
+          borderColor={active ? accentMix(35) : "transparent"}
           transition="background .15s, border-color .15s"
         >
           <svg
             width="6"
             height="16"
             viewBox="0 0 6 16"
-            fill="rgba(166,108,255,0.75)"
+            fill={accentMix(75)}
             aria-hidden
             style={{ opacity: active ? 1 : 0, transition: "opacity .15s" }}
           >
@@ -171,7 +172,7 @@ function ColumnHeader({ platform }: { platform: Platform }) {
       h="34px"
       flex="none"
       borderBottomWidth="1px"
-      borderColor="line"
+      borderColor={accentLine}
     >
       <PlatformIcon platform={platform} size={12} color={color} />
       <Text

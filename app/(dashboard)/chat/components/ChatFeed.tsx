@@ -61,7 +61,9 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
     <Box
       ref={containerRef}
       flex="1"
+      minW="0"
       overflowY="auto"
+      overflowX="hidden"
       px={{ base: "12px", md: "22px" }}
       py="4px"
       display="flex"

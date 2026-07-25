@@ -4,15 +4,39 @@ import type { ChatMessage as ChatMessageType, UserSelection } from "../../types"
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 import { useEmotes } from "../../_ctx/emotes";
 import { useBadges, resolveBadgeImage } from "../../_ctx/badges";
-import { c, alpha, PLATFORM } from "../../../theme-colors";
+import { c, alpha, PLATFORM, SIGNAL } from "../../../theme-colors";
 
 // "self" messages have no platform brand color — a neutral grey stands in.
 const SELF_COLOR = c.muted;
 
 // Hype-notice accents (kept in sync with PinnedBar). Raid/gift/sub rows are
 // coloured by the source platform instead, so Twitch reads purple and Kick green.
-const HYPE = "#F5A0FF";
-const GOLD = "#F5C518";
+const HYPE = SIGNAL.hype;
+const GOLD = SIGNAL.hypeGold;
+
+// Row wash behind each message. Light mode uses a deep platform hue (dark purple
+// / green / red) held slightly translucent so the Slate canvas tints through as
+// frosted glass; dark mode keeps a light 30% platform tint over the near-black.
+const ROW_TINT: Record<string, { _light: string; _dark: string }> = {
+  twitch: { _light: alpha("#331A57", 0.8), _dark: alpha(PLATFORM.twitch, 0.3) },
+  kick: { _light: alpha("#143C27", 0.8), _dark: alpha(PLATFORM.kick, 0.3) },
+  youtube: { _light: alpha("#481619", 0.8), _dark: alpha(PLATFORM.youtube, 0.3) },
+};
+
+// Ink for the platform rows — light in both modes: the light-mode row is now a
+// dark hue, and the dark-mode row already sits on near-black. Self rows inherit
+// the normal text ramp (they stay on a transparent background).
+const ROW_INK = { _light: "#EDEDF0", _dark: c.text } as const;
+
+// The frosted-glass treatment. The tint above is held translucent so the canvas
+// shows through; on top of it we layer a diagonal light reflection, a stronger
+// backdrop blur, and a bright top edge + faint inset ring — the cues that sell a
+// real pane of glass when there's no meaningful content behind to blur.
+const GLASS_BLUR = "blur(8px) saturate(1.15)";
+const GLASS_GRADIENT =
+  `linear-gradient(135deg, ${alpha("#FFFFFF", 0.1)} 0%, ${alpha("#FFFFFF", 0.03)} 34%, ${alpha("#FFFFFF", 0)} 60%)`;
+const GLASS_SHEEN =
+  `inset 0 1px 0 ${alpha("#FFFFFF", 0.12)}, inset 0 0 0 1px ${alpha("#FFFFFF", 0.04)}`;
 
 const PLATFORM_TAG: Record<string, string> = {
   twitch: "TW",
@@ -73,14 +97,14 @@ export function BadgeChip({
         fontSize="9px"
         fontWeight="700"
         letterSpacing="0.02em"
-        color="#5BE37D"
+        color={PLATFORM.kick}
         borderWidth="1px"
-        borderColor="#5BE37D44"
+        borderColor={alpha(PLATFORM.kick, 0.27)}
         borderRadius="4px"
         px="4px"
         py="1px"
         flex="none"
-        bg="#5BE37D11"
+        bg={alpha(PLATFORM.kick, 0.07)}
         title={`Level ${badge.id}`}
       >
         Lv.{badge.id}
@@ -226,6 +250,8 @@ export default memo(function ChatMessage({
   }
 
   const tag = PLATFORM_TAG[message.platform] ?? "??";
+  // Platform rows get the tinted glass; self/own messages stay on a bare row.
+  const rowTint = ROW_TINT[message.platform];
 
   // For self-messages in split view: show only the relevant platform's name/icon.
   const selfPlatforms: ("twitch" | "youtube" | "kick")[] =
@@ -258,22 +284,21 @@ export default memo(function ChatMessage({
       pl="14px"
       pr="12px"
       py="7px"
+      minW="0"
+      overflowWrap="anywhere"
       borderRadius="2px 6px 6px 2px"
-      transition="background .12s"
-      // Platform-tinted rows: a 30% platform wash behind the colored left edge.
-      // Your own sent messages stay neutral; the grey edge + icons already mark them.
-      bg={
-        message.platform === "twitch"
-          ? alpha(PLATFORM.twitch, 0.3)
-          : message.platform === "kick"
-            ? alpha(PLATFORM.kick, 0.3)
-            : message.platform === "youtube"
-              ? alpha(PLATFORM.youtube, 0.3)
-              : "transparent"
-      }
-      _hover={{ bg: "raised" }}
+      transition="background .12s, filter .12s"
+      // Platform-tinted rows: a frosted platform pane (translucent deep hue in
+      // light, 30% wash in dark) behind the colored left edge, with light ink and
+      // a top sheen. Your own sent messages stay neutral — the grey edge marks them.
+      bg={rowTint ?? "transparent"}
+      backgroundImage={rowTint ? GLASS_GRADIENT : undefined}
+      color={rowTint ? ROW_INK : undefined}
+      backdropFilter={rowTint ? GLASS_BLUR : undefined}
+      boxShadow={rowTint ? GLASS_SHEEN : undefined}
+      _hover={rowTint ? { filter: "brightness(1.12)" } : { bg: "raised" }}
     >
-      <Flex align="baseline" gap="9px" mb="2px">
+      <Flex align="baseline" gap="9px" mb="2px" minW="0">
         {message.platform === "self" ? (
           // Your sent message — show platform icon(s) for this pane.
           selfPlatforms.length > 0 ? (
@@ -313,7 +338,15 @@ export default memo(function ChatMessage({
         )}
 
         {clickablePlatform === null ? (
-          <Text fontWeight="600" fontSize="14px" color={nameColor}>
+          <Text
+            fontWeight="600"
+            fontSize="14px"
+            color={nameColor}
+            minW="0"
+            overflow="hidden"
+            whiteSpace="nowrap"
+            textOverflow="ellipsis"
+          >
             {displayUser}
           </Text>
         ) : (
@@ -330,13 +363,19 @@ export default memo(function ChatMessage({
             fontSize="14px"
             color={nameColor}
             cursor="pointer"
+            display="block"
+            minW="0"
+            maxW="100%"
+            overflow="hidden"
+            whiteSpace="nowrap"
+            textOverflow="ellipsis"
             _hover={{ textDecoration: "underline" }}
           >
             {displayUser}
           </chakra.button>
         )}
 
-        <Text ml="auto" fontFamily="mono" fontSize="11px" color="faint">
+        <Text ml="auto" pl="8px" flex="none" fontFamily="mono" fontSize="11px" color="faint">
           {time}
         </Text>
       </Flex>

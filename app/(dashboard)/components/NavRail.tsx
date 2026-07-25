@@ -13,7 +13,22 @@ import { SectionLabel } from "./ui";
 import { useYouTubePresence } from "../_hooks/useYouTubePresence";
 import { useTwitchCategories } from "../_hooks/useTwitchCategories";
 import type { SearchResult } from "../types";
-import { c as tc } from "../../theme-colors";
+import { c as tc, accentLine, alpha } from "../../theme-colors";
+
+// NavRail channel-row surfaces. Light mode gives each row the same near-white
+// button background as the TopBar controls, outlined in a greyish-black border
+// (the selected row a touch darker). Dark mode mirrors it: the raised/veil
+// backgrounds with a grey border (translucent white over the near-black rail),
+// the selected row brighter than unselected.
+const navRowBg = (active: boolean) =>
+  // Unselected is a faint veil over the rail — barely above the canvas; the
+  // selected row stays the brighter surface (`field` light / `raised` dark).
+  ({ _light: active ? "field" : alpha("#FFFFFF", 0.18), _dark: active ? "raised" : alpha("#FFFFFF", 0.04) }) as const;
+const navRowBorder = (active: boolean) =>
+  ({
+    _light: active ? alpha("#000000", 0.55) : alpha("#000000", 0.3),
+    _dark: active ? alpha("#FFFFFF", 0.28) : alpha("#FFFFFF", 0.14),
+  }) as const;
 
 // Retro "now playing" plate — a solid toned-down goldenrod badge (black border,
 // hard drop shadow) that sits on its own line under the streamer's name. The
@@ -27,7 +42,7 @@ const PLATE_BG = "#CBA23C"; // toned-down goldenrod — solid, no gradient
 // the label comes back around, like the seam on a news ticker.
 const TICKER_GAP = 44;
 
-function NowPlayingPlate({ game }: { game: string }) {
+function NowPlayingPlate({ game, maxW = "100%" }: { game: string; maxW?: string }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
   // period = one full loop's travel (label width + gap); 0 means it fits, so
@@ -69,7 +84,7 @@ function NowPlayingPlate({ game }: { game: string }) {
       alignItems="center"
       w="fit-content"
       minW="0"
-      maxW="100%"
+      maxW={maxW}
       h="18px"
       px="8px"
       borderWidth="1.5px"
@@ -398,7 +413,7 @@ const OwnChannelButton = memo(function OwnChannelButton({
           {AvatarEl}
           <Text flex="none" fontSize="12px" fontWeight="700" color="text">{name}</Text>
           {/* Collapsed: plate inline to the right of the pfp/name. */}
-          {ticker && <NowPlayingPlate game={category!} />}
+          {ticker && <NowPlayingPlate game={category!} maxW="150px" />}
           {isLive && viewers != null && (
             <Text flex="none" fontFamily="mono" fontSize="10px" color="muted">
               {viewers.toLocaleString()}
@@ -414,9 +429,10 @@ const OwnChannelButton = memo(function OwnChannelButton({
       type="button" onClick={onClick}
       display="flex" flexDirection="column" justifyContent="center" gap="0"
       w="100%" pl="6px" pr="8px" py="7px" borderRadius="8px"
-      bg={active ? "raised" : "transparent"}
+      borderWidth="1px" borderColor={navRowBorder(active)}
+      bg={navRowBg(active)}
       cursor="pointer"
-      transition="background .12s, color .12s"
+      transition="background .12s, color .12s, border-color .12s"
       _hover={{ bg: "raised", "& [data-name]": { color: "text", fontWeight: "700" } }}
     >
       {/* Name line — avatar ring carries "live"; no bar, no dot. */}
@@ -491,8 +507,9 @@ const WatchedChannelButton = memo(function WatchedChannelButton({
           type="button" onClick={() => onSelect(result)}
           display="flex" flexDirection="column" justifyContent="center"
           gap="0" w="100%" pl="6px" py="7px" pr="28px"
-          borderRadius="8px" bg={active ? "raised" : "transparent"} color={active ? "text" : "muted"}
-          cursor="pointer" transition="background .12s, color .12s"
+          borderRadius="8px" borderWidth="1px" borderColor={navRowBorder(active)}
+          bg={navRowBg(active)} color={active ? "text" : "muted"}
+          cursor="pointer" transition="background .12s, color .12s, border-color .12s"
           _hover={{ bg: "raised", color: "text", "& [data-name]": { color: "text", fontWeight: "700" } }}
         >
           {/* Name line — avatar ring carries "live"; no bar, no dot. */}
@@ -547,7 +564,7 @@ const WatchedChannelButton = memo(function WatchedChannelButton({
         <Text flex="none" fontSize="12px" fontWeight="700" color="text">{result.displayName}</Text>
         {/* Collapsed: plate inline to the right of the pfp/name, revealed as the
             pill expands on hover. */}
-        {ticker && <NowPlayingPlate game={category!} />}
+        {ticker && <NowPlayingPlate game={category!} maxW="150px" />}
       </chakra.button>
     </Box>
   );
@@ -676,7 +693,7 @@ export function NavRail() {
           {mounted && hasOwnChannels && (
             <Box mb="18px">
               {!collapsed && <SectionLabel>YOUR CHANNELS</SectionLabel>}
-              <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
+              <Flex direction="column" gap="10px" align={collapsed ? "center" : "stretch"}>
                 {ownChannel && (
                   <OwnChannelButton
                     platform="twitch"
@@ -721,7 +738,7 @@ export function NavRail() {
           {mounted && followedChannels.length > 0 && (
             <Box mb="12px">
               {!collapsed && <SectionLabel>FOLLOWED</SectionLabel>}
-              <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
+              <Flex direction="column" gap="10px" align={collapsed ? "center" : "stretch"}>
                 {followedVisible.map((result) => {
                   const active =
                     (!!result.twitch && activeChannel?.id === result.twitch.id) ||
@@ -758,7 +775,7 @@ export function NavRail() {
           {mounted && visibleWatched.length > 0 && (
             <Box mb="12px">
               {!collapsed && <SectionLabel>RECENT</SectionLabel>}
-              <Flex direction="column" gap="2px" align={collapsed ? "center" : "stretch"}>
+              <Flex direction="column" gap="10px" align={collapsed ? "center" : "stretch"}>
                 {visibleWatched.map((result) => {
                   const active =
                     (!!result.twitch && activeChannel?.id === result.twitch.id) ||
@@ -833,7 +850,7 @@ export function NavRail() {
           as="nav"
           position="fixed" top="0" left="0" bottom="0" zIndex={71}
           w="min(280px, 82vw)" direction="column"
-          bg="bg" borderRightWidth="1px" borderColor="line"
+          bg="bg" borderRightWidth="1px" borderColor={accentLine}
           px="12px" py="20px" gap="0" overflow="hidden"
         >
           {content}
@@ -855,7 +872,7 @@ export function NavRail() {
       w={`${dockedWidth}px`}
       direction="column"
       borderRightWidth={dockedWidth > 0 ? "1px" : "0"}
-      borderColor="line"
+      borderColor={accentLine}
       px={collapsed ? "8px" : "12px"}
       py={dockedWidth > 0 ? "20px" : "0"}
       gap="0"

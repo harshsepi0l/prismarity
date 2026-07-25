@@ -1,5 +1,5 @@
 import { Box, Text } from "@chakra-ui/react";
-import { c } from "../../theme-colors";
+import { c, accentLine } from "../../theme-colors";
 
 // Shared presentational helpers for the dashboard screens.
 
@@ -12,7 +12,7 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function Divider({ my = "24px" }: { my?: string }) {
-  return <Box h="1px" bg="line" my={my} />;
+  return <Box h="1px" bg={accentLine} my={my} />;
 }
 
 export function ScreenHeader({

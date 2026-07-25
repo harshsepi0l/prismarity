@@ -89,7 +89,7 @@ export function UserCard({ selection, onClose, messages }: UserCardProps) {
       inset="0"
       align="center"
       justify="center"
-      bg="rgba(0,0,0,0.5)"
+      bg="overlay"
       zIndex={50}
       onClick={onClose}
     >

@@ -2,13 +2,13 @@
 
 import { useRef, useState } from "react";
 import { Box, Flex } from "@chakra-ui/react";
-import { c } from "../../theme-colors";
+import { c, accentMix } from "../../theme-colors";
 
 // Drag below this width → snap fully closed. Expanding from 0 tracks freely.
 const SNAP_THRESHOLD = 48;
 
 const GRIP_SVG = (
-  <svg width="6" height="16" viewBox="0 0 6 16" fill="rgba(166,108,255,0.75)" aria-hidden>
+  <svg width="6" height="16" viewBox="0 0 6 16" fill={accentMix(80)} aria-hidden>
     <circle cx="1.5" cy="2"  r="1.2" />
     <circle cx="4.5" cy="2"  r="1.2" />
     <circle cx="1.5" cy="8"  r="1.2" />
@@ -80,7 +80,7 @@ export function ResizeHandle({ side, width, onResize }: ResizeHandleProps) {
           left: "50%",
           transform: "translateX(-50%)",
           pointerEvents: "none",
-          background: active ? "rgba(166,108,255,0.5)" : "transparent",
+          background: active ? accentMix(50) : "transparent",
           transition: "background .15s",
         }}
       />
@@ -99,7 +99,7 @@ export function ResizeHandle({ side, width, onResize }: ResizeHandleProps) {
           transform: "translate(-50%, -50%)",
           pointerEvents: "none",
           background: active ? c.raised : "transparent",
-          border: active ? "1px solid rgba(166,108,255,0.35)" : "1px solid transparent",
+          border: active ? `1px solid ${accentMix(38)}` : "1px solid transparent",
           transition: "background .15s, border-color .15s",
         }}
       >

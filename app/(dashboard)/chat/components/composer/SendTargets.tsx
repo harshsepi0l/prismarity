@@ -1,14 +1,11 @@
 "use client";
 
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
-import { PlatformIcon, PLATFORM_LABEL } from "../../../components/PlatformIcon";
+import { PlatformIcon, PLATFORM_COLOR, PLATFORM_LABEL } from "../../../components/PlatformIcon";
+import { alpha, SIGNAL } from "../../../../theme-colors";
 import type { Platform } from "../../../types";
 
-const SEND_PLATFORMS: { id: Platform; color: string }[] = [
-  { id: "twitch", color: "#A66CFF" },
-  { id: "kick", color: "#5BE37D" },
-  { id: "youtube", color: "#FF4E45" },
-];
+const SEND_PLATFORMS: Platform[] = ["twitch", "kick", "youtube"];
 
 interface SendTargetsProps {
   available: Platform[];
@@ -31,7 +28,8 @@ export default function SendTargets({
       <Text fontFamily="mono" fontSize="10px" letterSpacing="0.06em" color="faint" flex="none">
         SEND TO
       </Text>
-      {SEND_PLATFORMS.filter(({ id }) => available.includes(id)).map(({ id, color }) => {
+      {SEND_PLATFORMS.filter((id) => available.includes(id)).map((id) => {
+        const color = PLATFORM_COLOR[id];
         const armed = sendTargets.has(id);
         const offline = liveByPlatform[id] === false;
         const label = PLATFORM_LABEL[id];
@@ -56,14 +54,14 @@ export default function SendTargets({
             py="4px"
             borderRadius="full"
             borderWidth="1px"
-            borderColor={armed ? `${color}66` : "fieldLine"}
-            bg={armed ? `${color}1A` : "transparent"}
+            borderColor={armed ? alpha(color, 0.4) : "fieldLine"}
+            bg={armed ? alpha(color, 0.1) : "transparent"}
             color={armed ? "text" : "faint"}
             opacity={armed ? 1 : 0.7}
             cursor="pointer"
             transition="background .12s, border-color .12s, opacity .12s, filter .12s"
-            style={{ filter: armed && !offline ? `drop-shadow(0 0 4px ${color}55)` : "none" }}
-            _hover={{ opacity: 1, borderColor: `${color}66` }}
+            style={{ filter: armed && !offline ? `drop-shadow(0 0 4px ${alpha(color, 0.33)})` : "none" }}
+            _hover={{ opacity: 1, borderColor: alpha(color, 0.4) }}
           >
             <PlatformIcon platform={id} color={color} size={14} />
             <Text fontSize="11px" fontWeight="600">
@@ -77,7 +75,7 @@ export default function SendTargets({
                 w="7px"
                 h="7px"
                 borderRadius="full"
-                bg="#F5A623"
+                bg={SIGNAL.warn}
                 borderWidth="1.5px"
                 borderColor="bg"
                 pointerEvents="none"

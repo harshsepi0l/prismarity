@@ -3,6 +3,7 @@
 import { Box, Flex, chakra } from "@chakra-ui/react";
 import { useLayout } from "../_ctx/layout";
 import { ResizeHandle } from "./ResizeHandle";
+import { accentLine } from "../../theme-colors";
 
 export function ResizableSidePanel({ children }: { children: React.ReactNode }) {
   const { panelWidth, setPanelWidth, isMobile, panelMode, panelOpen, setPanelOpen } = useLayout();
@@ -15,18 +16,18 @@ export function ResizableSidePanel({ children }: { children: React.ReactNode }) 
     return (
       <>
         <Box
-          position="fixed" inset="0" zIndex={70} bg="rgba(0,0,0,0.55)"
+          position="fixed" inset="0" zIndex={70} bg="overlay"
           onClick={() => setPanelOpen(false)}
         />
         <Flex
           as="aside"
           position="fixed" top="0" right="0" bottom="0" zIndex={71}
           w="min(360px, 88vw)" direction="column"
-          bg="bg" borderLeftWidth="1px" borderColor="line"
+          bg="bg" borderLeftWidth="1px" borderColor={accentLine}
         >
           <Flex
             align="center" justify="space-between" flex="none"
-            px="18px" h="48px" borderBottomWidth="1px" borderColor="line"
+            px="18px" h="48px" borderBottomWidth="1px" borderColor={accentLine}
           >
             <chakra.span fontFamily="mono" fontSize="12px" fontWeight="700" letterSpacing="0.14em" color="muted">
               STATS
@@ -73,7 +74,7 @@ export function ResizableSidePanel({ children }: { children: React.ReactNode }) 
           h="100%"
           overflowY="auto"
           borderLeftWidth="1px"
-          borderColor="line"
+          borderColor={accentLine}
           px="24px"
           pt="14px"
           pb="28px"
