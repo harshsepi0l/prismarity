@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
+import { alpha, PLATFORM } from "../../../../theme-colors";
 
 interface EmoteAutocompleteProps {
   items: [string, string][]; // [code, url]
@@ -53,7 +54,7 @@ export default function EmoteAutocomplete({ items, selectedIdx, onPick }: EmoteA
               flex="none"
               bg={selected ? "raised" : "transparent"}
               outline={selected ? "1px solid" : "none"}
-              outlineColor={selected ? "#A66CFF66" : "transparent"}
+              outlineColor={selected ? alpha(PLATFORM.twitch, 0.4) : "transparent"}
               transition="background .1s"
               _hover={{ bg: "raised" }}
             >

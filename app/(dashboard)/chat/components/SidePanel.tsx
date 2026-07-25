@@ -5,6 +5,7 @@ import { Box, Flex, Text, SimpleGrid, chakra } from "@chakra-ui/react";
 import type { Mode } from "../../_ctx/session";
 import { useStats, formatUptime, type PlatformLive } from "../../_ctx/stats";
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
+import { PLATFORM, SIGNAL } from "../../../theme-colors";
 import { SectionLabel, Divider } from "../../components/ui";
 import type { TwitchClip } from "@/lib/twitch/stats";
 import type { KickLeader } from "@/lib/kick/public";
@@ -238,7 +239,7 @@ function PlatformRow({
           </Text>
           {p.isLive ? (
             <Flex align="center" gap="6px" flex="none">
-              <Box w="6px" h="6px" borderRadius="full" bg="#FF5C5C" />
+              <Box w="6px" h="6px" borderRadius="full" bg={SIGNAL.live} />
               {/* Some live sources have no viewer count (e.g. a scraped YouTube
                   simulcast) — show a LIVE label rather than a misleading "0". */}
               {p.viewers > 0 ? (
@@ -246,7 +247,7 @@ function PlatformRow({
                   {p.viewers.toLocaleString()}
                 </Text>
               ) : (
-                <Text fontFamily="mono" fontSize="11px" fontWeight="600" color="#FF5C5C">
+                <Text fontFamily="mono" fontSize="11px" fontWeight="600" color={SIGNAL.live}>
                   LIVE
                 </Text>
               )}
@@ -352,11 +353,11 @@ export default function SidePanel({ mode }: SidePanelProps) {
     <>
       <SectionLabel>COMBINED</SectionLabel>
       <SimpleGrid minChildWidth="118px" gap="8px">
-        <StatCard label="viewers" value={viewers} accent={stats.anyLive ? "#FF5C5C" : undefined} />
+        <StatCard label="viewers" value={viewers} accent={stats.anyLive ? SIGNAL.live : undefined} />
         <StatCard label="messages / min" value={stats.messagesPerMin} />
         <StatCard label="active (5m)" value={stats.activeChatters} />
         {showSubs ? (
-          <StatCard label="subscribers" value={fmt(stats.combinedSubs)} accent="#A66CFF" />
+          <StatCard label="subscribers" value={fmt(stats.combinedSubs)} accent={PLATFORM.twitch} />
         ) : (
           <StatCard label="unique chatters" value={stats.uniqueChatters} />
         )}

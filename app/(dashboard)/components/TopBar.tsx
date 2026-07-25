@@ -7,7 +7,7 @@ import { CommandSearch } from "./CommandSearch";
 import { ChannelAbout } from "./ChannelAbout";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import { BeaconSignal } from "./BeaconSignal";
-import { c, alpha, PLATFORM } from "../../theme-colors";
+import { c, accentMix, accentLine, hoverGlow, accentBorder, btnBg } from "../../theme-colors";
 import { useLayout } from "../_ctx/layout";
 import { useChat, useChatSignal } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
@@ -231,7 +231,7 @@ function ActiveChannelPill() {
         display="flex" alignItems="center" gap="4px" flex="none" minW="0" maxW={{ base: "96px", sm: "130px", md: "190px" }}
         bg="transparent" cursor="pointer"
         color="text"
-        _hover={{ color: "#fff" }}
+        _hover={{ color: "accent" }}
       >
         <Text fontSize="13px" fontWeight="600" truncate>
           {name}
@@ -443,15 +443,11 @@ function ProfileButton({
   onClick: () => void;
   connected: { twitch: boolean; kick: boolean; youtube: boolean };
 }) {
-  const [hovered, setHovered] = useState(false);
-
   return (
     <chakra.button
       type="button"
       onClick={onClick}
       title="Account & settings"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       display="flex"
       alignItems="center"
       justifyContent="center"
@@ -460,13 +456,11 @@ function ProfileButton({
       borderRadius="9px"
       flex="none"
       borderWidth="1px"
-      bg="transparent"
+      borderColor={accentBorder}
+      bg={btnBg}
       cursor="pointer"
-      transition="filter .3s ease, border-color .2s, background .12s"
-      style={{
-        borderColor: hovered ? alpha(PLATFORM.twitch, 0.5) : c.fieldLine,
-        filter: hovered ? "drop-shadow(0 0 3px rgba(166,108,255,0.5))" : "none",
-      }}
+      transition="background .15s"
+      _hover={hoverGlow}
     >
       <svg width="30" height="30" viewBox="24 24 72 72" fill="none" aria-hidden style={{ overflow: "visible" }}>
         {/* the bold pixel P nucleus — the whole mark when nothing is connected */}
@@ -523,7 +517,7 @@ export function TopBar({ auth }: TopBarProps) {
         gap={{ base: "8px", md: "12px" }}
         px={{ base: "12px", md: "20px" }}
         borderBottomWidth="1px"
-        borderColor="line"
+        borderColor={accentLine}
       >
         {/* Left: hamburger (mobile only) + prism + brand */}
         <Flex align="center" gap="10px" flex="none">
@@ -535,9 +529,10 @@ export function TopBar({ auth }: TopBarProps) {
             title="Menu"
             display="flex" alignItems="center" justifyContent="center"
             w="34px" h="34px" borderRadius="9px" flex="none"
-            bg="transparent" cursor="pointer"
-            borderWidth="1px" borderColor="fieldLine"
-            _hover={{ bg: "raised" }}
+            bg={btnBg} cursor="pointer"
+            borderWidth="1px" borderColor={accentBorder}
+            transition="background .15s"
+            _hover={hoverGlow}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
               <path d="M2 4h12M2 8h12M2 12h12" stroke={c.muted} strokeWidth="1.6" strokeLinecap="round" />
@@ -558,9 +553,10 @@ export function TopBar({ auth }: TopBarProps) {
             }
             display="flex" alignItems="center" justifyContent="center"
             w="34px" h="34px" borderRadius="9px" flex="none"
-            bg="transparent" cursor="pointer"
-            borderWidth="1px" borderColor="fieldLine"
-            _hover={{ bg: "raised" }}
+            bg={btnBg} cursor="pointer"
+            borderWidth="1px" borderColor={accentBorder}
+            transition="background .15s"
+            _hover={hoverGlow}
           >
             <svg
               width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden
@@ -589,13 +585,11 @@ export function TopBar({ auth }: TopBarProps) {
             onClick={() => setChatLayout(chatLayout === "combined" ? "split" : "combined")}
             display="flex" alignItems="center" justifyContent="center"
             w="30px" h="30px" borderRadius="7px" flex="none"
+            borderWidth="1px"
+            borderColor={accentBorder}
+            bg={chatLayout === "split" ? accentMix(16) : btnBg}
             transition="background .12s, border-color .12s"
-            style={
-              chatLayout === "split"
-                ? { background: "rgba(166,108,255,0.14)", border: "1px solid rgba(166,108,255,0.45)" }
-                : { background: "transparent", border: `1px solid ${c.fieldLine}` }
-            }
-            _hover={{ background: "rgba(166,108,255,0.08)", borderColor: "rgba(166,108,255,0.3)" }}
+            _hover={hoverGlow}
           >
             {chatLayout === "combined" ? <CombinedIcon /> : <SplitIcon />}
           </chakra.button>
@@ -609,13 +603,11 @@ export function TopBar({ auth }: TopBarProps) {
             onClick={() => (isMobile ? setPanelOpen(true) : togglePanel())}
             display="flex" alignItems="center" justifyContent="center"
             w="30px" h="30px" borderRadius="7px" flex="none"
+            borderWidth="1px"
+            borderColor={accentBorder}
+            bg={!isMobile && panelMode === "expanded" ? accentMix(16) : btnBg}
             transition="background .12s, border-color .12s"
-            style={
-              !isMobile && panelMode === "expanded"
-                ? { background: "rgba(166,108,255,0.14)", border: "1px solid rgba(166,108,255,0.45)" }
-                : { background: "transparent", border: `1px solid ${c.fieldLine}` }
-            }
-            _hover={{ background: "rgba(166,108,255,0.08)", borderColor: "rgba(166,108,255,0.3)" }}
+            _hover={hoverGlow}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
               <rect x="2" y="3" width="12" height="10" rx="1.5" stroke={c.muted} strokeWidth="1.4" />

@@ -14,7 +14,7 @@ import EmotePicker from "./composer/EmotePicker";
 import EmoteAutocomplete from "./composer/EmoteAutocomplete";
 import MentionAutocomplete from "./composer/MentionAutocomplete";
 import SendTargets from "./composer/SendTargets";
-import { alpha, PLATFORM } from "../../../theme-colors";
+import { alpha, PLATFORM, SIGNAL } from "../../../theme-colors";
 
 export default function Composer() {
   const { activeChannel, activeKick, activeKickOnly, activeYouTube, ownYouTube, getMentionCandidates, liveByPlatform } = useChat();
@@ -303,8 +303,8 @@ export default function Composer() {
 
         {offlineTargets.length > 0 ? (
           <Flex align="center" gap="6px" title="Both Twitch and Kick allow chatting while a channel is offline.">
-            <Box w="6px" h="6px" borderRadius="full" bg="#F5A623" flex="none" />
-            <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="#F5A623">
+            <Box w="6px" h="6px" borderRadius="full" bg={SIGNAL.warn} flex="none" />
+            <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color={SIGNAL.warn}>
               {`Posting to offline chat on ${offlineTargets
                 .map((p) => PLATFORM_LABEL[p])
                 .join(" & ")}`}
@@ -318,7 +318,7 @@ export default function Composer() {
 
         {error ? (
           <Flex align="center" gap="8px" ml="auto">
-            <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color="#FF5C5C">
+            <Text fontFamily="mono" fontSize="10px" letterSpacing="0.04em" color={SIGNAL.danger}>
               {error}
             </Text>
             {reactiveFollowLink && (
@@ -335,13 +335,13 @@ export default function Composer() {
                 borderRadius="5px"
                 fontSize="10px"
                 fontWeight="600"
-                bg={errorPlatform === "twitch" ? "#A66CFF22" : "#5BE37D22"}
+                bg={errorPlatform === "twitch" ? alpha(PLATFORM.twitch, 0.13) : alpha(PLATFORM.kick, 0.13)}
                 color={errorPlatform === "twitch" ? "twitch" : "kick"}
                 borderWidth="1px"
-                borderColor={errorPlatform === "twitch" ? "#A66CFF44" : "#5BE37D44"}
+                borderColor={errorPlatform === "twitch" ? alpha(PLATFORM.twitch, 0.27) : alpha(PLATFORM.kick, 0.27)}
                 flex="none"
                 transition="background .12s"
-                _hover={{ bg: errorPlatform === "twitch" ? "#A66CFF33" : "#5BE37D33" }}
+                _hover={{ bg: errorPlatform === "twitch" ? alpha(PLATFORM.twitch, 0.2) : alpha(PLATFORM.kick, 0.2) }}
               >
                 Follow
               </chakra.a>
@@ -365,7 +365,7 @@ export default function Composer() {
           borderRadius="8px"
           bg={errorPlatform === "twitch" ? alpha(PLATFORM.twitch, 0.1) : alpha(PLATFORM.kick, 0.1)}
           borderWidth="1px"
-          borderColor={errorPlatform === "twitch" ? "#A66CFF44" : "#5BE37D44"}
+          borderColor={errorPlatform === "twitch" ? alpha(PLATFORM.twitch, 0.27) : alpha(PLATFORM.kick, 0.27)}
         >
           <Box
             w="6px" h="6px" flex="none" borderRadius="full"

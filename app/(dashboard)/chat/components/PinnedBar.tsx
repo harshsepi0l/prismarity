@@ -5,10 +5,11 @@ import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import type { PinItem } from "../../types";
 import { useChatPins } from "../../_ctx/chat";
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
+import { alpha, PLATFORM, SIGNAL, accentLine } from "../../../theme-colors";
 import { BadgeChip } from "./ChatMessage";
 
-const HYPE = "#F5A0FF"; // hype-train accent (bright twitch-pink)
-const GOLD = "#F5C518"; // golden kappa train
+const HYPE = SIGNAL.hype; // hype-train accent (bright twitch-pink)
+const GOLD = SIGNAL.hypeGold; // golden kappa train
 const TW = PLATFORM_COLOR.twitch;
 
 // Countdown-bar windows: a transient event drains over its 30s life; the Hype
@@ -57,7 +58,7 @@ export default function PinnedBar() {
   if (items.length === 0) return null;
 
   return (
-    <Flex direction="column" flex="none" borderBottomWidth="1px" borderColor="line">
+    <Flex direction="column" flex="none" borderBottomWidth="1px" borderColor={accentLine}>
       {items.map((item, i) => (
         <PinRow
           key={item.id}
@@ -99,10 +100,10 @@ function PinRow({
       position="relative"
       bg={
         item.kind === "hype_train" || item.kind === "hype_incoming"
-          ? "rgba(245,160,255,0.09)"
+          ? alpha(SIGNAL.hype, 0.09)
           : item.kind !== "message" && item.platform === "kick"
-            ? "rgba(91,227,125,0.08)"
-            : "rgba(166,108,255,0.08)"
+            ? alpha(PLATFORM.kick, 0.08)
+            : alpha(PLATFORM.twitch, 0.08)
       }
       borderTopWidth={first ? "0" : "1px"}
       borderColor="line"
@@ -195,7 +196,7 @@ function Linkified({ text }: { text: string }) {
             color={TW}
             textDecoration="underline"
             wordBreak="break-all"
-            _hover={{ color: HYPE }}
+            _hover={{ color: "accent" }}
           >
             {part}
           </chakra.a>

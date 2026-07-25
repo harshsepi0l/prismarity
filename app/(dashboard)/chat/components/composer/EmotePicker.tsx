@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Box, Flex, Input, Text, chakra } from "@chakra-ui/react";
 import type { EmoteCategory } from "../../../_ctx/emotes";
 import type { EmoteSource } from "@/app/api/emotes/route";
+import { c } from "../../../../theme-colors";
 
 type EmoteTab = "all" | EmoteSource;
 
@@ -24,7 +25,7 @@ function LockBadge() {
       borderRadius="3px"
       px="2px"
       py="1px"
-      style={{ background: "rgba(0,0,0,0.65)", lineHeight: 0 }}
+      style={{ background: c.overlay, lineHeight: 0 }}
     >
       <svg width="8" height="8" viewBox="0 0 24 24" fill="white" aria-hidden>
         <path d="M18 10h-1V7c0-2.76-2.24-5-5-5S7 4.24 7 7v3H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V7c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v3z" />
