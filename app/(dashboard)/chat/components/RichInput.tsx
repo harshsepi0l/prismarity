@@ -10,6 +10,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import { c } from "../../../theme-colors";
 
 export interface RichInputHandle {
   insertEmote(code: string, url: string): void;
@@ -365,7 +366,7 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
             position: "absolute",
             top: 0,
             left: 0,
-            color: "#8B93A7",
+            color: c.muted,
             fontSize: 14,
             lineHeight: "22px",
             pointerEvents: "none",

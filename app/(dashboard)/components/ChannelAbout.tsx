@@ -6,6 +6,7 @@ import { useChat } from "../_ctx/chat";
 import { useStats, formatUptime, type PlatformLive } from "../_ctx/stats";
 import { PlatformIcon, PLATFORM_COLOR, VerifiedBadge } from "./PlatformIcon";
 import { MentionText } from "./MentionText";
+import { c as tc } from "../../theme-colors";
 
 interface TwitchProfile {
   description: string;
@@ -65,7 +66,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function PlatformSection({ p, href }: { p: PlatformLive; href: string | null }) {
   const color = PLATFORM_COLOR[p.platform];
   const label = p.platform === "twitch" ? "Twitch" : p.platform === "kick" ? "Kick" : "YouTube";
-  const tint = TINT[p.platform] ?? { bg: "transparent", border: "#1B2130" };
+  const tint = TINT[p.platform] ?? { bg: "transparent", border: tc.line };
 
   return (
     <Box

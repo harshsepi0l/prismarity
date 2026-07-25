@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Box, Flex } from "@chakra-ui/react";
+import { c } from "../../theme-colors";
 
 // Drag below this width → snap fully closed. Expanding from 0 tracks freely.
 const SNAP_THRESHOLD = 48;
@@ -97,7 +98,7 @@ export function ResizeHandle({ side, width, onResize }: ResizeHandleProps) {
           left: "50%",
           transform: "translate(-50%, -50%)",
           pointerEvents: "none",
-          background: active ? "#1F2532" : "transparent",
+          background: active ? c.raised : "transparent",
           border: active ? "1px solid rgba(166,108,255,0.35)" : "1px solid transparent",
           transition: "background .15s, border-color .15s",
         }}

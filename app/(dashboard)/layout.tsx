@@ -32,7 +32,7 @@ export default async function DashboardLayout({
           <EmoteProvider>
             <BadgeProvider>
               <StatsProvider>
-                <Flex direction="column" h="100vh" overflow="hidden" bg="#0e1320">
+                <Flex direction="column" h="100vh" overflow="hidden" bg="bg">
                   <TopBar auth={auth} />
                   <Flex flex="1" minH="0">
                     <NavRail />

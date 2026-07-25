@@ -7,6 +7,7 @@ import { CommandSearch } from "./CommandSearch";
 import { ChannelAbout } from "./ChannelAbout";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import { BeaconSignal } from "./BeaconSignal";
+import { c, alpha, PLATFORM } from "../../theme-colors";
 import { useLayout } from "../_ctx/layout";
 import { useChat, useChatSignal } from "../_ctx/chat";
 import { useStats } from "../_ctx/stats";
@@ -16,7 +17,7 @@ export type AuthInfo = { twitch: { displayName: string } | null; kick: { display
 
 function CombinedIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="#8B93A7" aria-hidden>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill={c.muted} aria-hidden>
       <rect x="2" y="3"  width="12" height="2" rx="1" />
       <rect x="2" y="7"  width="12" height="2" rx="1" />
       <rect x="2" y="11" width="12" height="2" rx="1" />
@@ -177,7 +178,7 @@ function ActiveChannelPill() {
             transition="opacity .12s"
             _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
           >
-            <PlatformIcon platform="twitch" color={twitchP.isLive ? PLATFORM_COLOR.twitch : "#3a4152"} size={13} />
+            <PlatformIcon platform="twitch" color={twitchP.isLive ? PLATFORM_COLOR.twitch : c.lineStrong} size={13} />
           </chakra.a>
         )}
         {kickP && (
@@ -190,7 +191,7 @@ function ActiveChannelPill() {
             transition="opacity .12s"
             _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
           >
-            <PlatformIcon platform="kick" color={kickP.isLive ? PLATFORM_COLOR.kick : "#3a4152"} size={12} />
+            <PlatformIcon platform="kick" color={kickP.isLive ? PLATFORM_COLOR.kick : c.lineStrong} size={12} />
           </chakra.a>
         )}
         {streamerYouTube && (
@@ -206,7 +207,7 @@ function ActiveChannelPill() {
             transition="opacity .12s"
             _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
           >
-            <PlatformIcon platform="youtube" color={streamerYouTubeLive ? PLATFORM_COLOR.youtube : "#3a4152"} size={12} />
+            <PlatformIcon platform="youtube" color={streamerYouTubeLive ? PLATFORM_COLOR.youtube : c.lineStrong} size={12} />
           </chakra.a>
         )}
         {activeYouTubeOwn && ownYouTube && (
@@ -217,7 +218,7 @@ function ActiveChannelPill() {
             display="inline-flex" flex="none"
             title={`Your YouTube channel${ownYouTube.isLive ? " (live)" : ""}`}
           >
-            <PlatformIcon platform="youtube" color={ownYouTube.isLive ? PLATFORM_COLOR.youtube : "#3a4152"} size={12} />
+            <PlatformIcon platform="youtube" color={ownYouTube.isLive ? PLATFORM_COLOR.youtube : c.lineStrong} size={12} />
           </Box>
         )}
       </Flex>
@@ -463,14 +464,14 @@ function ProfileButton({
       cursor="pointer"
       transition="filter .3s ease, border-color .2s, background .12s"
       style={{
-        borderColor: hovered ? "rgba(166,108,255,0.5)" : "#232a38",
+        borderColor: hovered ? alpha(PLATFORM.twitch, 0.5) : c.fieldLine,
         filter: hovered ? "drop-shadow(0 0 3px rgba(166,108,255,0.5))" : "none",
       }}
     >
       <svg width="30" height="30" viewBox="24 24 72 72" fill="none" aria-hidden style={{ overflow: "visible" }}>
         {/* the bold pixel P nucleus — the whole mark when nothing is connected */}
         {P_PIXELS.map(([x, y], i) => (
-          <rect key={`p${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill="#E9ECF7" shapeRendering="crispEdges" />
+          <rect key={`p${i}`} x={x} y={y} width={PX - PX_GAP} height={PX - PX_GAP} fill={c.text} shapeRendering="crispEdges" />
         ))}
         {/* one colored comet per CONNECTED platform — nothing shown otherwise */}
         {ORBITS.map((o) =>
@@ -535,11 +536,11 @@ export function TopBar({ auth }: TopBarProps) {
             display="flex" alignItems="center" justifyContent="center"
             w="34px" h="34px" borderRadius="9px" flex="none"
             bg="transparent" cursor="pointer"
-            borderWidth="1px" borderColor="#232a38"
+            borderWidth="1px" borderColor="fieldLine"
             _hover={{ bg: "raised" }}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-              <path d="M2 4h12M2 8h12M2 12h12" stroke="#8B93A7" strokeWidth="1.6" strokeLinecap="round" />
+              <path d="M2 4h12M2 8h12M2 12h12" stroke={c.muted} strokeWidth="1.6" strokeLinecap="round" />
             </svg>
           </chakra.button>
           {/* Desktop: cycle the sidebar through expanded → rail → hidden. */}
@@ -558,14 +559,14 @@ export function TopBar({ auth }: TopBarProps) {
             display="flex" alignItems="center" justifyContent="center"
             w="34px" h="34px" borderRadius="9px" flex="none"
             bg="transparent" cursor="pointer"
-            borderWidth="1px" borderColor="#232a38"
+            borderWidth="1px" borderColor="fieldLine"
             _hover={{ bg: "raised" }}
           >
             <svg
               width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden
               style={{ transform: navMode === "hidden" ? "rotate(180deg)" : "none", transition: "transform .15s" }}
             >
-              <path d="M10 3 L5 8 L10 13" stroke="#8B93A7" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M10 3 L5 8 L10 13" stroke={c.muted} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </chakra.button>
           <ProfileButton
@@ -592,7 +593,7 @@ export function TopBar({ auth }: TopBarProps) {
             style={
               chatLayout === "split"
                 ? { background: "rgba(166,108,255,0.14)", border: "1px solid rgba(166,108,255,0.45)" }
-                : { background: "transparent", border: "1px solid #232a38" }
+                : { background: "transparent", border: `1px solid ${c.fieldLine}` }
             }
             _hover={{ background: "rgba(166,108,255,0.08)", borderColor: "rgba(166,108,255,0.3)" }}
           >
@@ -612,13 +613,13 @@ export function TopBar({ auth }: TopBarProps) {
             style={
               !isMobile && panelMode === "expanded"
                 ? { background: "rgba(166,108,255,0.14)", border: "1px solid rgba(166,108,255,0.45)" }
-                : { background: "transparent", border: "1px solid #232a38" }
+                : { background: "transparent", border: `1px solid ${c.fieldLine}` }
             }
             _hover={{ background: "rgba(166,108,255,0.08)", borderColor: "rgba(166,108,255,0.3)" }}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-              <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="#8B93A7" strokeWidth="1.4" />
-              <line x1="10.5" y1="3" x2="10.5" y2="13" stroke="#8B93A7" strokeWidth="1.4" />
+              <rect x="2" y="3" width="12" height="10" rx="1.5" stroke={c.muted} strokeWidth="1.4" />
+              <line x1="10.5" y1="3" x2="10.5" y2="13" stroke={c.muted} strokeWidth="1.4" />
             </svg>
           </chakra.button>
         </Flex>

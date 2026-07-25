@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { PlatformIcon, PLATFORM_COLOR } from "./PlatformIcon";
 import type { SearchResult } from "../types";
+import { c } from "../../theme-colors";
 
 interface Social {
   name: string;
@@ -234,7 +235,7 @@ function MentionCard({ handle, x, y, onClose }: { handle: string; x: number; y: 
                       onClick={(e: React.MouseEvent) => e.stopPropagation()}
                       _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
                     >
-                      <PlatformIcon platform="twitch" color={result.twitch.isLive ? PLATFORM_COLOR.twitch : "#3a4152"} size={13} />
+                      <PlatformIcon platform="twitch" color={result.twitch.isLive ? PLATFORM_COLOR.twitch : c.lineStrong} size={13} />
                     </chakra.a>
                   )}
                   {result?.kick && kickHref && (
@@ -244,7 +245,7 @@ function MentionCard({ handle, x, y, onClose }: { handle: string; x: number; y: 
                       onClick={(e: React.MouseEvent) => e.stopPropagation()}
                       _hover={{ transform: "none", boxShadow: "none", opacity: 0.6 }}
                     >
-                      <PlatformIcon platform="kick" color={result.kick.isLive ? PLATFORM_COLOR.kick : "#3a4152"} size={12} />
+                      <PlatformIcon platform="kick" color={result.kick.isLive ? PLATFORM_COLOR.kick : c.lineStrong} size={12} />
                     </chakra.a>
                   )}
                   {isLive ? (

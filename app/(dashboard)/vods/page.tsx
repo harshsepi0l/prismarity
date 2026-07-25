@@ -66,7 +66,7 @@ function VodCard({ v }: { v: Vod }) {
           w="0"
           h="0"
           ml="4px"
-          borderLeft="15px solid rgba(232,235,242,0.5)"
+          borderLeft="15px solid var(--chakra-colors-muted)"
           borderTop="9px solid transparent"
           borderBottom="9px solid transparent"
         />
@@ -100,9 +100,9 @@ function VodCard({ v }: { v: Vod }) {
           <Box as="span" color={COLOR[v.plat]}>
             {LABEL[v.plat]}
           </Box>
-          <Box as="span" color="#3A4252">·</Box>
+          <Box as="span" color="lineStrong">·</Box>
           <span>{v.date}</span>
-          <Box as="span" color="#3A4252">·</Box>
+          <Box as="span" color="lineStrong">·</Box>
           <span>{v.size}</span>
         </Flex>
         {v.expiring && (
@@ -161,7 +161,7 @@ function StoragePanel() {
       <Flex direction="column" gap="13px" mt="14px">
         {COLLECTIONS.map((c) => (
           <Flex key={c.name} align="center" gap="11px" fontSize="13px" color={c.dim ? "muted" : "text"}>
-            <Box w="13px" h="11px" flex="none" borderWidth="1.5px" borderColor={c.dim ? "#3A4252" : "faint"} borderRadius="2px 3px 3px 3px" />
+            <Box w="13px" h="11px" flex="none" borderWidth="1.5px" borderColor={c.dim ? "lineStrong" : "faint"} borderRadius="2px 3px 3px 3px" />
             <Text flex="1">{c.name}</Text>
             <Text fontFamily="mono" fontSize="11px" color="muted">
               {c.count}

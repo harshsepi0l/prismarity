@@ -125,7 +125,7 @@ export default function SplitChatView({ messages, platforms, onSelectUser }: Spl
           align="center"
           justify="center"
           pointerEvents="none"
-          bg={active ? "#1F2532" : "transparent"}
+          bg={active ? "raised" : "transparent"}
           borderWidth="1px"
           borderColor={active ? "rgba(166,108,255,0.35)" : "transparent"}
           transition="background .15s, border-color .15s"

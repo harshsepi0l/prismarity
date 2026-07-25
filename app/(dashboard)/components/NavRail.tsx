@@ -13,6 +13,7 @@ import { SectionLabel } from "./ui";
 import { useYouTubePresence } from "../_hooks/useYouTubePresence";
 import { useTwitchCategories } from "../_hooks/useTwitchCategories";
 import type { SearchResult } from "../types";
+import { c as tc } from "../../theme-colors";
 
 // Retro "now playing" plate — a solid toned-down goldenrod badge (black border,
 // hard drop shadow) that sits on its own line under the streamer's name. The
@@ -22,26 +23,45 @@ import type { SearchResult } from "../types";
 const PLATE_INK = "#0B0B0B";
 const PLATE_BG = "#CBA23C"; // toned-down goldenrod — solid, no gradient
 
+// Gap between the repeated copies during the crawl — the breathing room before
+// the label comes back around, like the seam on a news ticker.
+const TICKER_GAP = 44;
+
 function NowPlayingPlate({ game }: { game: string }) {
   const outerRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLSpanElement>(null);
-  const [shift, setShift] = useState(0);
+  const measureRef = useRef<HTMLSpanElement>(null);
+  // period = one full loop's travel (label width + gap); 0 means it fits, so
+  // it sits still. A one-directional crawl of exactly `period` with a duplicate
+  // copy trailing makes the loop seamless — a continuous breaking-news scroll,
+  // not the old left-then-right bounce.
+  const [period, setPeriod] = useState(0);
   const label = `Playing — ${game}`;
 
   useEffect(() => {
     const outer = outerRef.current;
-    const inner = innerRef.current;
+    const inner = measureRef.current;
     if (!outer || !inner) return;
-    const over = Math.ceil(inner.scrollWidth - outer.clientWidth);
-    setShift(over > 2 ? over : 0);
+    const copyW = inner.scrollWidth;
+    setPeriod(copyW - outer.clientWidth > 2 ? copyW + TICKER_GAP : 0);
   }, [label]);
 
-  // ~22px/sec crawl, floored so short overflows still read as deliberate.
-  const dur = Math.max(4, shift / 22);
-  const animStyle: React.CSSProperties =
-    shift > 0
-      ? ({ "--tkr": `-${shift}px`, animation: `nav-ticker ${dur}s ease-in-out infinite alternate` } as React.CSSProperties)
-      : {};
+  const crawling = period > 0;
+  // ~34px/sec constant crawl, floored so it never whips past on short overflows.
+  const dur = Math.max(6, period / 34);
+  // `reverse` runs the loop the other way, so the label crawls to the RIGHT —
+  // sliding in from the left edge — while staying seamless.
+  const trackStyle: React.CSSProperties = crawling
+    ? ({ "--tkr": `-${period}px`, animation: `nav-ticker ${dur}s linear infinite reverse` } as React.CSSProperties)
+    : {};
+
+  const textProps = {
+    flex: "none" as const,
+    whiteSpace: "nowrap" as const,
+    fontFamily: "mono",
+    fontSize: "10px",
+    fontWeight: "700",
+    letterSpacing: "0.02em",
+  };
 
   return (
     <Box
@@ -61,18 +81,16 @@ function NowPlayingPlate({ game }: { game: string }) {
       }}
     >
       <Box ref={outerRef} overflow="hidden" minW="0" maxW="100%">
-        <chakra.span
-          ref={innerRef}
-          display="inline-block"
-          whiteSpace="nowrap"
-          fontFamily="mono"
-          fontSize="10px"
-          fontWeight="700"
-          letterSpacing="0.02em"
-          style={{ color: PLATE_INK, ...animStyle }}
-        >
-          {label}
-        </chakra.span>
+        <chakra.div display="inline-flex" style={{ color: PLATE_INK, ...trackStyle }}>
+          <chakra.span ref={measureRef} {...textProps}>
+            {label}
+          </chakra.span>
+          {crawling && (
+            <chakra.span aria-hidden {...textProps} ml={`${TICKER_GAP}px`}>
+              {label}
+            </chakra.span>
+          )}
+        </chakra.div>
       </Box>
     </Box>
   );
@@ -98,8 +116,8 @@ function PlateElbow() {
 // edge bar and red dots are gone. Solid in the one platform's colour; split into
 // EQUAL conic wedges when a streamer is live on several at once. Grey when offline
 // so every avatar keeps the same footprint and the colour simply lights up.
-const OFFLINE_RING = "#2a3140";
-const RING_GAP = "#0E1118"; // == bg token: a crisp inset between ring and pfp
+const OFFLINE_RING = tc.lineStrong;
+const RING_GAP = tc.bg; // the canvas color — a crisp inset between ring and pfp
 
 function ringPaint(liveColors: string[]): string {
   if (liveColors.length === 0) return OFFLINE_RING;
@@ -262,8 +280,8 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
         borderRadius="8px" px="8px" h="30px"
       >
         <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden>
-          <circle cx="9" cy="9" r="6.5" stroke="#8B93A7" strokeWidth="1.6" />
-          <path d="M14 14 L18 18" stroke="#8B93A7" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="9" cy="9" r="6.5" stroke={tc.muted} strokeWidth="1.6" />
+          <path d="M14 14 L18 18" stroke={tc.muted} strokeWidth="1.6" strokeLinecap="round" />
         </svg>
         <chakra.input
           ref={inputRef}

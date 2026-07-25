@@ -73,6 +73,16 @@ export interface HypeTrain {
   expiresAt: number; // epoch ms — when the train times out if no more progress
 }
 
+// A Hype Train building toward its start ("HYPE TRAIN INCOMING"): contributions
+// are landing but the threshold to launch hasn't been hit yet. Surfaced only
+// while there's no active train. Reset on channel switch / when it starts or lapses.
+export interface HypeTrainApproaching {
+  progress: number; // qualifying events landed so far (participants.length)
+  goal: number; // events needed to start the train
+  isGolden: boolean;
+  expiresAt: number; // epoch ms — when the approaching window lapses if no more land
+}
+
 // Transient live events surfaced as banners in the cycle bar. `at` is when we
 // received it, used to age them out. `platform` attributes the event so the UI
 // can brand it (Twitch EventSub vs Kick's Pusher socket).
@@ -96,6 +106,7 @@ export type PinItem =
       badges: { setId: string; id: string }[];
     }
   | { kind: "hype_train"; id: string; hype: HypeTrain }
+  | { kind: "hype_incoming"; id: string; hype: HypeTrainApproaching }
   | { kind: "announcement"; id: string; platform: "twitch"; user: string; color: string | null; text: string; expiresAt: number }
   | { kind: "raid"; id: string; platform: "twitch" | "kick"; from: string; viewers: number; expiresAt: number }
   | { kind: "gift_sub"; id: string; platform: "twitch" | "kick"; gifter: string; count: number; expiresAt: number }

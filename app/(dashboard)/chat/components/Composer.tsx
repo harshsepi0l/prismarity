@@ -14,6 +14,7 @@ import EmotePicker from "./composer/EmotePicker";
 import EmoteAutocomplete from "./composer/EmoteAutocomplete";
 import MentionAutocomplete from "./composer/MentionAutocomplete";
 import SendTargets from "./composer/SendTargets";
+import { alpha, PLATFORM } from "../../../theme-colors";
 
 export default function Composer() {
   const { activeChannel, activeKick, activeKickOnly, activeYouTube, ownYouTube, getMentionCandidates, liveByPlatform } = useChat();
@@ -275,17 +276,17 @@ export default function Composer() {
             flex="none"
             disabled={!canSend}
             suppressHydrationWarning
-            bg="#4f4c4c"
+            bg="accent"
             fontWeight="600"
             fontSize="14px"
             px="20px"
             py="9px"
             borderRadius="7px"
-            color="white"
+            color="accentText"
             cursor={canSend ? "pointer" : "not-allowed"}
             opacity={canSend ? 1 : 0.5}
-            transition="background .12s, opacity .12s"
-            _hover={{ bg: canSend ? "#968f8f" : "#4f4c4c" }}
+            transition="filter .12s, opacity .12s"
+            _hover={{ filter: canSend ? "brightness(1.08)" : "none" }}
           >
             {sending ? "…" : "Send"}
           </chakra.button>
@@ -362,7 +363,7 @@ export default function Composer() {
           px="12px"
           py="7px"
           borderRadius="8px"
-          bg={errorPlatform === "twitch" ? "#1a1f2e" : "#0f2318"}
+          bg={errorPlatform === "twitch" ? alpha(PLATFORM.twitch, 0.1) : alpha(PLATFORM.kick, 0.1)}
           borderWidth="1px"
           borderColor={errorPlatform === "twitch" ? "#A66CFF44" : "#5BE37D44"}
         >
