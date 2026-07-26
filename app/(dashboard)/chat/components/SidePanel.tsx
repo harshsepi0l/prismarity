@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Box, Flex, Text, SimpleGrid, chakra } from "@chakra-ui/react";
 import type { Mode } from "../../_ctx/session";
 import { useStats, formatUptime, type PlatformLive } from "../../_ctx/stats";
@@ -318,7 +318,10 @@ interface SidePanelProps {
   mode: Mode; // effective (role-clamped) mode for the active channel
 }
 
-export default function SidePanel({ mode }: SidePanelProps) {
+// Memoized: `mode` is a stable primitive, so SidePanel must not re-render when
+// its parent (ChatPage) re-renders on every incoming chat message. It reads live
+// numbers via useStats(), which now updates on a cadence, not per message.
+function SidePanel({ mode }: SidePanelProps) {
   const stats = useStats();
   const showMod = mode === "creator" || mode === "moderator";
   // Show subscriber numbers for management roles (the only ones that care).
@@ -405,3 +408,5 @@ export default function SidePanel({ mode }: SidePanelProps) {
     </>
   );
 }
+
+export default memo(SidePanel);

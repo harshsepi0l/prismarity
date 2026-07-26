@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { RichInput, type RichInputHandle } from "./RichInput";
 import { Box, Flex, Text, chakra } from "@chakra-ui/react";
 import { useChat, type MentionCandidate } from "../../_ctx/chat";
@@ -16,7 +16,9 @@ import MentionAutocomplete from "./composer/MentionAutocomplete";
 import SendTargets from "./composer/SendTargets";
 import { alpha, PLATFORM, SIGNAL } from "../../../theme-colors";
 
-export default function Composer() {
+// Memoized: Composer takes no props, so it must not re-render when its parent
+// (ChatPage) re-renders on every incoming chat message.
+function Composer() {
   const { activeChannel, activeKick, activeKickOnly, activeYouTube, ownYouTube, getMentionCandidates, liveByPlatform } = useChat();
   const emotes = useEmotes();
   const categories = useEmoteCategories();
@@ -383,3 +385,5 @@ export default function Composer() {
     </Box>
   );
 }
+
+export default memo(Composer);

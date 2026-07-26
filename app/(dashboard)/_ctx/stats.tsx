@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ChannelStats, TwitchClip } from "@/lib/twitch/stats";
 import type { KickStats } from "@/lib/kick/stats";
 import type { YouTubeStats } from "@/lib/youtube/stats";
@@ -9,8 +9,9 @@ import { kickLeaderboardUrl, parseKickLeaderboard } from "@/lib/kick/public";
 import type { TwitchChatSettings } from "@/app/api/twitch/chat/route";
 import type { Platform } from "../types";
 import type { CheerLeader, GiftLeader } from "../chat/useTwitchChat";
-import { useChat, useChatMessages } from "./chat";
+import { useChat } from "./chat";
 import { useSession } from "./session";
+import { visibilityInterval } from "../_lib/visibilityInterval";
 
 // One connected platform's live stats. `included` reflects the top-bar filter
 // chips — toggling a platform off drops it from the combined roll-up.
@@ -98,8 +99,7 @@ const EMPTY_DERIVED: Derived = {
 const StatsContext = createContext<LiveStats | null>(null);
 
 export function StatsProvider({ children }: { children: React.ReactNode }) {
-  const { activeChannel, activeKick, activeKickOnly, activeYouTubeOwn, ownChannel, ownKick, cheerLeaders, giftLeaders } = useChat();
-  const { messages } = useChatMessages();
+  const { activeChannel, activeKick, activeKickOnly, activeYouTubeOwn, ownChannel, ownKick, cheerLeaders, giftLeaders, getMessages } = useChat();
   const { connectedPlatforms, activeFilters } = useSession();
 
   const channelId = activeChannel?.id ?? null;
@@ -182,10 +182,10 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       }
     }
     load();
-    const id = setInterval(load, 5 * 60_000);
+    const stop = visibilityInterval(load, 5 * 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [kickSlug]);
 
@@ -209,10 +209,10 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       }
     }
     load();
-    const id = setInterval(load, 5 * 60_000);
+    const stop = visibilityInterval(load, 5 * 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [channelId]);
 
@@ -251,10 +251,10 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     }
     load();
     // Co-streams start/end mid-broadcast, so poll a little faster than stats.
-    const id = setInterval(load, 25_000);
+    const stop = visibilityInterval(load, 25_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [channelId]);
 
@@ -284,10 +284,10 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       }
     }
     load();
-    const id = setInterval(load, 45_000);
+    const stop = visibilityInterval(load, 45_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [channelId]);
 
@@ -314,10 +314,10 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       }
     }
     load();
-    const id = setInterval(load, 45_000);
+    const stop = visibilityInterval(load, 45_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [kickSlug]);
 
@@ -367,10 +367,10 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       }
     }
     load();
-    const id = setInterval(load, 45_000);
+    const stop = visibilityInterval(load, 45_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [connectedPlatforms]);
 
@@ -408,16 +408,16 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
       }
     }
     load();
-    const id = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
+    const stop = visibilityInterval(load, 60_000);
+    return () => { cancelled = true; stop(); };
   }, [twitchLogin]);
 
-  // Latest inputs for the off-render-path computation.
-  const messagesRef = useRef(messages);
+  // Latest inputs for the off-render-path computation. Messages are read via the
+  // chat store's ref-backed getMessages() (NOT a feed subscription), so this
+  // provider does not re-render on every incoming chat message.
   const twitchStartedRef = useRef<string | null>(null);
   const kickStartedRef = useRef<string | null>(null);
   useEffect(() => {
-    messagesRef.current = messages;
     twitchStartedRef.current = twitchServer?.startedAt ?? null;
     kickStartedRef.current = kickServer?.startedAt ?? null;
   });
@@ -426,7 +426,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   // in render, so this runs in an interval).
   useEffect(() => {
     function compute() {
-      const msgs = messagesRef.current;
+      const msgs = getMessages();
       const now = Date.now();
 
       const seen = new Set<string>();
@@ -451,10 +451,15 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
         uptimeKickMs: uptime(kickStartedRef.current),
       });
     }
-    const id = setInterval(compute, 3000);
-    return () => clearInterval(id);
-  }, []);
+    const stop = visibilityInterval(compute, 3000);
+    return () => stop();
+  }, [getMessages]);
 
+  // Assemble the public stats value. Memoized so its reference stays stable
+  // when none of the underlying inputs changed — consumers of useStats() (TopBar,
+  // SidePanel, Composer, ChannelAbout) only re-render when the numbers they show
+  // actually move, not on every unrelated re-render of this provider.
+  const stats = useMemo<LiveStats>(() => {
   // Assemble per-platform rows for the connected platforms.
   const platforms: PlatformLive[] = [];
   if (connectedPlatforms.has("twitch") && activeChannel) {
@@ -570,7 +575,7 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   };
 
-  const stats: LiveStats = {
+  return {
     loading,
     platforms,
     combinedViewers,
@@ -586,6 +591,12 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
     kickLeaders,
     collab,
   };
+  }, [
+    connectedPlatforms, activeChannel, activeKick, activeKickOnly, activeYouTubeOwn,
+    ownChannel, ownKick, activeFilters, twitchServer, kickServer, youtubeServer,
+    twitchAvatar, twitchVerified, kickVerified, twitchChatSettings, peakTwitch, peakKick,
+    derived, streamerYt, loading, cheerLeaders, giftLeaders, clips, kickLeaders, collab,
+  ]);
 
   return <StatsContext.Provider value={stats}>{children}</StatsContext.Provider>;
 }

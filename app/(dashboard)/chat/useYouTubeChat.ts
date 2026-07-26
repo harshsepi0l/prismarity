@@ -82,6 +82,10 @@ export function useYouTubeChat() {
   // videoId for a tuned target; null means own (server resolves the video id).
   const videoIdRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set when the poll loop stops rescheduling because the tab is backgrounded.
+  // The visibilitychange listener re-kicks the loop when the tab is shown again,
+  // so a hidden tab isn't long-polling YouTube (as fast as 1s) for nothing.
+  const pausedRef = useRef(false);
   // Opaque InnerTube continuation cursor.
   const cursorRef = useRef<string | null>(null);
   // Ids already appended — the first poll returns backlog that can overlap a
@@ -199,7 +203,14 @@ export function useYouTubeChat() {
     }
 
     if (enabledRef.current && genRef.current === myGen) {
-      timerRef.current = setTimeout(() => pollRef.current(), schedule);
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        // Tab backgrounded — stop the loop; the visibilitychange listener below
+        // resumes it (with an immediate poll) when the tab is shown again.
+        timerRef.current = null;
+        pausedRef.current = true;
+      } else {
+        timerRef.current = setTimeout(() => pollRef.current(), schedule);
+      }
     }
   };
 
@@ -209,6 +220,7 @@ export function useYouTubeChat() {
     (target: YouTubeChatTarget | null) => {
       clearTimers();
       genRef.current++; // invalidate any in-flight poll from a previous target
+      pausedRef.current = false;
       enabledRef.current = !!target;
       videoIdRef.current = target && !target.own ? target.videoId : null;
       cursorRef.current = null;
@@ -232,6 +244,22 @@ export function useYouTubeChat() {
     },
     [clearTimers]
   );
+
+  // Resume the poll loop when the tab is shown again after being backgrounded.
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (
+        document.visibilityState === "visible" &&
+        enabledRef.current &&
+        pausedRef.current
+      ) {
+        pausedRef.current = false;
+        pollRef.current();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
 
   return { messages, status, connect } as const;
 }
