@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import type { PinItem } from "../../types";
 import { useChatPins } from "../../_ctx/chat";
@@ -36,7 +36,9 @@ function timerFor(item: PinItem, now: number): { pct: number; accent: string } |
 // Train, announcements, raids, gifted subs) renders as its own notification row,
 // stacked vertically. The mod-pin can be expanded (badges/name/sent time) and
 // hidden.
-export default function PinnedBar() {
+// Memoized: PinnedBar takes no props, so it must not re-render when its parent
+// (ChatPage) re-renders on every incoming chat message.
+function PinnedBar() {
   const { pinItems } = useChatPins();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // A pin dismissed locally ("hide") — suppressed until it changes / re-pins.
@@ -405,3 +407,5 @@ function TrainIcon() {
     </svg>
   );
 }
+
+export default memo(PinnedBar);

@@ -18,9 +18,9 @@ const GOLD = SIGNAL.hypeGold;
 // / green / red) held slightly translucent so the Slate canvas tints through as
 // frosted glass; dark mode keeps a light 30% platform tint over the near-black.
 const ROW_TINT: Record<string, { _light: string; _dark: string }> = {
-  twitch: { _light: alpha("#331A57", 0.8), _dark: alpha(PLATFORM.twitch, 0.3) },
-  kick: { _light: alpha("#143C27", 0.8), _dark: alpha(PLATFORM.kick, 0.3) },
-  youtube: { _light: alpha("#481619", 0.8), _dark: alpha(PLATFORM.youtube, 0.3) },
+  twitch: { _light: alpha("#331A57", 0.85), _dark: alpha(PLATFORM.twitch, 0.42) },
+  kick: { _light: alpha("#143C27", 0.85), _dark: alpha(PLATFORM.kick, 0.42) },
+  youtube: { _light: alpha("#481619", 0.85), _dark: alpha(PLATFORM.youtube, 0.42) },
 };
 
 // Ink for the platform rows — light in both modes: the light-mode row is now a
@@ -29,10 +29,15 @@ const ROW_TINT: Record<string, { _light: string; _dark: string }> = {
 const ROW_INK = { _light: "#EDEDF0", _dark: c.text } as const;
 
 // The frosted-glass treatment. The tint above is held translucent so the canvas
-// shows through; on top of it we layer a diagonal light reflection, a stronger
-// backdrop blur, and a bright top edge + faint inset ring — the cues that sell a
-// real pane of glass when there's no meaningful content behind to blur.
-const GLASS_BLUR = "blur(8px) saturate(1.15)";
+// shows through; on top of it we layer a diagonal light reflection and a bright
+// top edge + faint inset ring — the cues that sell a real pane of glass.
+//
+// NB: a live `backdrop-filter: blur()` used to sit here too, but it was applied
+// per row and, with up to ~300 rows on screen (doubled in split view), forced the
+// compositor to maintain hundreds of backdrop-sampling layers — the single
+// largest sustained GPU cost in the app. Since there's no meaningful content
+// behind a chat row to blur, the tint opacity above is bumped to carry the pane
+// look on its own and the blur is gone. Do not reintroduce it per row.
 const GLASS_GRADIENT =
   `linear-gradient(135deg, ${alpha("#FFFFFF", 0.1)} 0%, ${alpha("#FFFFFF", 0.03)} 34%, ${alpha("#FFFFFF", 0)} 60%)`;
 const GLASS_SHEEN =
@@ -294,7 +299,6 @@ export default memo(function ChatMessage({
       bg={rowTint ?? "transparent"}
       backgroundImage={rowTint ? GLASS_GRADIENT : undefined}
       color={rowTint ? ROW_INK : undefined}
-      backdropFilter={rowTint ? GLASS_BLUR : undefined}
       boxShadow={rowTint ? GLASS_SHEEN : undefined}
       _hover={rowTint ? { filter: "brightness(1.12)" } : { bg: "raised" }}
     >
