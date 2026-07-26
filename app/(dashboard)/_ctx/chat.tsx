@@ -17,6 +17,7 @@ import type { PinnedMessage } from "@/lib/twitch/pins";
 import { useKickChat } from "../chat/useKickChat";
 import { useYouTubeChat, type YouTubeChatTarget } from "../chat/useYouTubeChat";
 import { fetchStreamerYouTubeUrl } from "../_lib/streamerYouTube";
+import { visibilityInterval } from "../_lib/visibilityInterval";
 import { nextSeq } from "../chat/seq";
 
 // How long a transient banner event (raid, gift-sub, announcement) lingers in
@@ -119,6 +120,10 @@ interface ChatStore {
   // The full roster of chatters seen this session on the given platforms, most
   // recently active first. Same ref-backed, non-subscribing read as above.
   getAllParticipants: (platforms: Platform[]) => MentionCandidate[];
+  // Snapshot of the merged feed, read from a ref so callers (e.g. the stats
+  // computation) can sample it on an interval WITHOUT subscribing to the feed
+  // and re-rendering on every incoming message.
+  getMessages: () => ChatMessage[];
   beaconMode: boolean;
   setBeaconMode: (on: boolean) => void;
 }
@@ -243,10 +248,10 @@ export function ChatProvider({
       });
     }
     refresh();
-    const id = setInterval(refresh, 60_000);
+    const stop = visibilityInterval(refresh, 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [watchedHandles]);
 
@@ -345,8 +350,8 @@ export function ChatProvider({
       } catch { /* network errors are silent in beacon mode */ }
     }
     poll();
-    const id = setInterval(poll, 3000);
-    return () => clearInterval(id);
+    const stop = visibilityInterval(poll, 3000);
+    return () => stop();
   // selectSearchResult is stable (useCallback [])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [beaconMode]);
@@ -377,10 +382,10 @@ export function ChatProvider({
       }
     }
     load();
-    const id = setInterval(load, 60_000);
+    const stop = visibilityInterval(load, 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [twitchConnected]);
 
@@ -405,10 +410,10 @@ export function ChatProvider({
     }
     load();
     // Heavier endpoint (follows + streams + Kick probes) — poll less often.
-    const id = setInterval(load, 120_000);
+    const stop = visibilityInterval(load, 120_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [twitchConnected]);
 
@@ -433,10 +438,10 @@ export function ChatProvider({
       }
     }
     load();
-    const id = setInterval(load, 60_000);
+    const stop = visibilityInterval(load, 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [kickSlug]);
 
@@ -476,10 +481,10 @@ export function ChatProvider({
       }
     }
     load();
-    const id = setInterval(load, 60_000);
+    const stop = visibilityInterval(load, 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [youtubeConnected]);
 
@@ -520,10 +525,10 @@ export function ChatProvider({
       }
     }
     resolve();
-    const id = setInterval(resolve, 60_000);
+    const stop = visibilityInterval(resolve, 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [youtubeConnected, tunedLogin]);
 
@@ -716,10 +721,10 @@ export function ChatProvider({
       if (!cancelled) await pollBanner();
     }
     run();
-    const id = setInterval(run, 15_000);
+    const stop = visibilityInterval(run, 15_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [activeChannel, pollBanner]);
 
@@ -787,8 +792,8 @@ export function ChatProvider({
   const anyTimed = liveEvents.length > 0 || hypeTrain !== null || hypeIncoming !== null;
   useEffect(() => {
     if (!anyTimed) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    const stop = visibilityInterval(() => setNow(Date.now()), 1000);
+    return () => stop();
   }, [anyTimed]);
 
   // The merged, cycleable bar: active Hype Train first, then the mod-pin, then
@@ -891,15 +896,28 @@ export function ChatProvider({
   // sent are dropped in favour of its single unified self entry.
   const messages = useMemo(() => {
     if (!activeChannel && !activeKickOnly && !activeYouTubeOwn) return [];
-    const socket = [...twitchMessages, ...kickMessages, ...youtubeMessages].filter(
-      (m) =>
-        !selfMessages.some(
-          (sm) =>
-            sm.platforms?.includes(m.platform as Platform) &&
-            sm.text.trim() === m.text.trim() &&
-            Math.abs(m.timestamp - sm.timestamp) < 15_000
-        )
-    );
+    // Index self-messages by `platform:normalizedText` so the socket-echo filter
+    // is O(n + m) instead of O(n × m). This runs on every incoming message, and
+    // the old nested `.some()` re-scanned (and re-trimmed) every self entry for
+    // every socket message — hundreds of thousands of string trims/sec on a busy
+    // multi-platform chat. Same de-dupe semantics: drop the socket echo of a
+    // message we just sent, matched by platform + text within a 15s window.
+    const selfEcho = new Map<string, number[]>();
+    for (const sm of selfMessages) {
+      const text = sm.text.trim();
+      for (const p of sm.platforms ?? []) {
+        const key = `${p}:${text}`;
+        const times = selfEcho.get(key);
+        if (times) times.push(sm.timestamp);
+        else selfEcho.set(key, [sm.timestamp]);
+      }
+    }
+    const socket = [...twitchMessages, ...kickMessages, ...youtubeMessages].filter((m) => {
+      const times = selfEcho.get(`${m.platform}:${m.text.trim()}`);
+      return !times || !times.some((t) => Math.abs(m.timestamp - t) < 15_000);
+    });
+    // The three runs below (socket, self, events) are each already seq-ordered,
+    // so V8's Timsort merges them in ~O(n) — no need to hand-roll a k-way merge.
     return [...socket, ...selfMessages, ...eventMessages]
       // Fail-safe: a message missing `seq` (should never happen — all producers
       // stamp it) sorts to the END rather than mixing seq-domain integers with
@@ -907,6 +925,15 @@ export function ChatProvider({
       .sort((a, b) => (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER))
       .slice(-300);
   }, [activeChannel, activeKickOnly, activeYouTubeOwn, twitchMessages, kickMessages, youtubeMessages, selfMessages, eventMessages]);
+
+  // Ref mirror of the merged feed so off-render-path consumers (the stats
+  // computation, which samples on a 3s interval) can read the latest messages
+  // without subscribing to ChatMessagesContext and re-rendering per message.
+  const messagesReadRef = useRef(messages);
+  useEffect(() => {
+    messagesReadRef.current = messages;
+  }, [messages]);
+  const getMessages = useCallback(() => messagesReadRef.current, []);
 
   // ── @-mention participant registry ───────────────────────
   // A rolling record of who has chatted (per platform), kept in a ref so the
@@ -1049,6 +1076,7 @@ export function ChatProvider({
       addSelfMessage,
       getMentionCandidates,
       getAllParticipants,
+      getMessages,
       beaconMode,
       setBeaconMode,
     }),
@@ -1057,7 +1085,7 @@ export function ChatProvider({
       kickConnected, liveByPlatform, watchedChannels, followedChannels, cheerLeaders, giftLeaders,
       selectChannel, selectKickOnly, selectYouTubeOwn, selectSearchResult, clearSelection,
       addWatchedChannel, removeWatchedChannel, addSelfMessage, getMentionCandidates,
-      getAllParticipants, beaconMode, setBeaconMode,
+      getAllParticipants, getMessages, beaconMode, setBeaconMode,
     ]
   );
 

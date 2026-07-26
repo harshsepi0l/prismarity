@@ -62,30 +62,14 @@ function ActiveChannelPill() {
     return () => { cancelled = true; };
   }, [streamerLogin]);
 
-  // Whether that YouTube channel is live right now (scrape-based, best-effort —
-  // /api/youtube/live). Lets the YouTube icon light up on live like Twitch/Kick;
-  // any failure just reads as offline, so it degrades to a muted link.
-  const [streamerYouTubeLive, setStreamerYouTubeLive] = useState(false);
-  useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setStreamerYouTubeLive(false);
-    if (!streamerYouTube) return;
-    /* eslint-enable react-hooks/set-state-in-effect */
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch(`/api/youtube/live?url=${encodeURIComponent(streamerYouTube!)}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const j = (await res.json()) as { live?: boolean };
-        if (!cancelled) setStreamerYouTubeLive(!!j.live);
-      } catch {
-        /* ignore — stays offline */
-      }
-    }
-    load();
-    const id = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [streamerYouTube]);
+  // Whether that YouTube channel is live right now. This used to be a second,
+  // independent /api/youtube/live scrape polled every 60s here — but StatsProvider
+  // already resolves and scrapes the tuned streamer's YouTube live status and
+  // surfaces it as a non-own YouTube platform row (present only when live). Derive
+  // from that instead of duplicating the poll.
+  const streamerYouTubeLive = platforms.some(
+    (p) => p.platform === "youtube" && !p.ownAccount && p.isLive
+  );
 
   const hasSelection = !!activeChannel || !!activeKickOnly || activeYouTubeOwn;
 
@@ -422,7 +406,12 @@ function Electron({
               animationIterationCount: "infinite",
               animationDirection: reverse ? "reverse" : "normal",
               animationDelay: `${trailDelay.toFixed(3)}s`,
-              filter: head ? `drop-shadow(0 0 2px ${color})` : undefined,
+              // NB: the head used to carry `drop-shadow(0 0 2px)`. A CSS `filter`
+              // forces the element onto its own render surface (an extra composite/
+              // blend pass) and, for an SVG rect, GPU-acceleration of the filter is
+              // inconsistent across engines — so on an always-on-screen, constantly
+              // animating mark it's a steady, possibly software-rasterized cost.
+              // Dropping it is a safe cut; the head reads fine on brightness alone.
             }}
           />
         );
