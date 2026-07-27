@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Flex, Box, Text } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType, Platform, UserSelection } from "../../types";
 import ChatMessage from "./ChatMessage";
@@ -15,14 +15,23 @@ const STICK_THRESHOLD_PX = 60;
 
 export default function ChatFeed({ messages, activeFilters, onSelectUser }: ChatFeedProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [paused, setPaused] = useState(false);
-  // Whether the feed is pinned to the live edge. The ref drives the auto-scroll
-  // decision (read synchronously, no re-render); the state mirror drives the
-  // "paused" pill (React bails when the boolean doesn't actually change, so
-  // scroll events while sitting at the bottom don't cause re-renders).
+  const [hovering, setHovering] = useState(false);
+  // Whether the feed should follow the live edge. This ref is flipped ONLY by a
+  // genuine user scroll (handleScroll below) — never by the geometry churn of
+  // appending new rows and trimming old ones off the top. That churn is exactly
+  // what used to spuriously "unstick" a fast chat and freeze it on a jump pill.
   const stuckRef = useRef(true);
+  // State mirror of stuckRef, purely to drive the pill (React bails when the
+  // boolean doesn't change, so sitting at the bottom doesn't cause re-renders).
   const [atBottom, setAtBottom] = useState(true);
-  const rafRef = useRef<number | null>(null);
+
+  const pinToBottom = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Direct scrollTop assignment — avoids CSS smooth-scroll, which pauses GIF
+    // animation in Chrome for the duration of the scroll animation.
+    el.scrollTop = el.scrollHeight;
+  };
 
   const handleScroll = () => {
     const el = containerRef.current;
@@ -33,48 +42,29 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
   };
 
   const jumpToLatest = () => {
-    const el = containerRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
     stuckRef.current = true;
     setAtBottom(true);
+    pinToBottom();
   };
 
-  useEffect(() => {
-    if (paused || !stuckRef.current) {
-      // Cancel any scroll queued a frame ago so hovering / scrolling up can't
-      // get yanked back down by an in-flight autoscroll.
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-      return;
-    }
-    // Coalesce bursts: several messages can arrive between paints, but we only
-    // need one scroll per frame. Reading scrollHeight forces a synchronous
-    // layout, so doing it once per frame instead of once per message is the win.
-    if (rafRef.current != null) return;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      const el = containerRef.current;
-      if (!el) return;
-      // Authoritative pause check: `:hover` is a live DOM state, so it stays
-      // correct even if React re-mounted this component (which would reset the
-      // `paused` state back to false) or a stray mouseleave fired. This is what
-      // makes hovering a *true* pause — never scroll out from under the cursor.
-      if (el.matches(":hover")) return;
-      // Direct scrollTop assignment — avoids CSS smooth-scroll which pauses GIF
-      // animation in Chrome for the duration of the scroll animation.
-      el.scrollTop = el.scrollHeight;
-    });
-  }, [messages, paused]);
-
-  useEffect(
-    () => () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    },
-    []
-  );
+  // Re-pin to the live edge BEFORE the browser paints. Running in a layout effect
+  // (rather than useEffect + rAF, which fire AFTER paint) is what fixes the
+  // fast-chat pause: when the feed appends new rows and trims old ones off the
+  // top, we snap back to the bottom synchronously, so no scroll event ever
+  // observes a transient "scrolled up" geometry mid-frame and flips us off the
+  // live edge. Only a real user scroll (handleScroll) can unstick us now.
+  useLayoutEffect(() => {
+    if (!stuckRef.current) return;
+    const el = containerRef.current;
+    if (!el) return;
+    // Authoritative pause check: `:hover` is a live DOM state, so it stays
+    // correct even if React re-mounted this component or a stray mouseleave
+    // fired. This is what makes hovering a *true* pause — never scroll out from
+    // under the cursor. (Appending rows fires no scroll event, so hovering keeps
+    // stuckRef true; we resume from mouseleave below.)
+    if (el.matches(":hover")) return;
+    pinToBottom();
+  }, [messages]);
 
   const filtered = messages.filter((m) => {
     if (m.platform === "self") {
@@ -110,7 +100,7 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
     );
   }
 
-  const showPill = paused || !atBottom;
+  const showPill = hovering || !atBottom;
 
   return (
     <Box
@@ -132,8 +122,15 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
         minH="0"
         overflowY="auto"
         overflowX="hidden"
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => {
+          setHovering(false);
+          // Resume following the live edge the moment the cursor leaves, if we
+          // were still stuck to the bottom when the hover began. New messages
+          // that arrived during the hover fired no scroll event, so stuckRef is
+          // untouched — but nothing has re-pinned us to the (now taller) bottom.
+          if (stuckRef.current) pinToBottom();
+        }}
         px={{ base: "12px", md: "22px" }}
         py="4px"
         display="flex"
