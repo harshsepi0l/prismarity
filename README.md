@@ -2,15 +2,18 @@
 
 **One control room for every stream.**
 
-Prismarity is a unified broadcast control room for multi-platform streamers. Go live on
-**Twitch and Kick** at once and run both from a single dark, focused dashboard — one chat, one
-set of stats, one place to keep an eye on everything. It's built around a "control room" design
-language where each platform's color is used as data (Twitch purple, Kick green).
+Prismarity is a unified broadcast control room for multi-platform streamers. Go live across
+**Twitch, Kick, and YouTube** at once and run them from a single dark, focused dashboard — one
+chat, one set of stats, one place to keep an eye on everything. It's built around a "control
+room" design language where each platform's color is used as data (Twitch purple, Kick green,
+YouTube red).
 
 ## Features
 
-- **Unified chat** — read every platform's chat in one feed, and send to Twitch and Kick
-  independently, choosing exactly where each message lands.
+- **Unified chat** — read every platform's chat in one feed, and send to Twitch, Kick, and
+  YouTube independently, choosing exactly where each message lands.
+- **Made yours** — per-user chat display settings: readable username colors on dark rows,
+  per-message timestamps, hover-to-pause auto-scroll, plus highlight and hidden-keyword lists.
 - **Co-stream aware** — detects shared-chat / collaboration sessions and merges participants so
   a joint stream reads as one conversation.
 - **Split view** — flip to side-by-side per-platform columns whenever you want them separated.

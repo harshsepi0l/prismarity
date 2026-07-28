@@ -31,10 +31,6 @@ export function makePkce(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-// Default client ID for the shared Prismarity Kick app registration.
-// Users can override via KICK_CLIENT_ID in .env.local or the settings UI.
-const DEFAULT_CLIENT_ID = "01KVYDXDJ645Y6JAJ8ACC6YVN3";
-
 // Resolves Kick OAuth credentials from the settings store, falling back to env vars.
 export async function getCredentials(): Promise<{
   clientId: string;
@@ -42,7 +38,8 @@ export async function getCredentials(): Promise<{
   redirectUri: string;
 }> {
   const s = await getSettings();
-  const clientId = s.kickClientId || process.env.KICK_CLIENT_ID || DEFAULT_CLIENT_ID;
+  // No baked-in default — supply via the settings UI or KICK_CLIENT_ID.
+  const clientId = s.kickClientId || process.env.KICK_CLIENT_ID || "";
   let clientSecret = process.env.KICK_CLIENT_SECRET || "";
   if (s.kickClientSecretEnc) {
     try {

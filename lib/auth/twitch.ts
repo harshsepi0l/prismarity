@@ -47,17 +47,16 @@ export function makePkce(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-// Default client ID for the shared Prismarity app registration.
-// Users can override this via TWITCH_CLIENT_ID in .env.local or the settings UI.
-const DEFAULT_CLIENT_ID = "8g3vtt850aeo1mvich6xou1db5x19a";
-
 export async function getCredentials(): Promise<{
   clientId: string;
   clientSecret: string;
   redirectUri: string;
 }> {
   const s = await getSettings();
-  const clientId = s.twitchClientId || process.env.TWITCH_CLIENT_ID || DEFAULT_CLIENT_ID;
+  // No baked-in default — a client ID must be supplied via the settings UI or
+  // TWITCH_CLIENT_ID. Empty here means "Connect" produces an auth request Twitch
+  // rejects, which is the desired fail-closed behaviour when unconfigured.
+  const clientId = s.twitchClientId || process.env.TWITCH_CLIENT_ID || "";
   const clientSecret = process.env.TWITCH_CLIENT_SECRET || "";
   const base = await getBaseUrl();
   return { clientId, clientSecret, redirectUri: `${base}/api/auth/twitch/callback` };

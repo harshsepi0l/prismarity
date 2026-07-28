@@ -1,9 +1,11 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Flex, Box, Text } from "@chakra-ui/react";
 import type { ChatMessage as ChatMessageType, Platform, UserSelection } from "../../types";
 import ChatMessage from "./ChatMessage";
+import { useChatPrefs, matchesKeywords } from "../../_ctx/chatPrefs";
+import { c, accentMix } from "../../../theme-colors";
 
 interface ChatFeedProps {
   messages: ChatMessageType[];
@@ -11,62 +13,43 @@ interface ChatFeedProps {
   onSelectUser?: (selection: UserSelection) => void;
 }
 
-const STICK_THRESHOLD_PX = 60;
+// Treat "within this many px of the end" as still pinned to the live edge, so a
+// single tall row appended just below the fold doesn't read as "scrolled up".
+const STICK_SLACK_PX = 80;
+
+// How long a hover holds auto-scroll before it auto-resumes. Pure cursor on/off:
+// cursor ON starts a fresh N-second timer, cursor OFF cancels it and resumes;
+// coming back ON starts N seconds over again.
+const HOVER_PAUSE_SECS = 5;
 
 export default function ChatFeed({ messages, activeFilters, onSelectUser }: ChatFeedProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [hovering, setHovering] = useState(false);
-  // Whether the feed should follow the live edge. This ref is flipped ONLY by a
-  // genuine user scroll (handleScroll below) — never by the geometry churn of
-  // appending new rows and trimming old ones off the top. That churn is exactly
-  // what used to spuriously "unstick" a fast chat and freeze it on a jump pill.
-  const stuckRef = useRef(true);
-  // State mirror of stuckRef, purely to drive the pill (React bails when the
-  // boolean doesn't change, so sitting at the bottom doesn't cause re-renders).
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Seconds left on the hover-pause countdown; null when not hover-paused. Drives
+  // both the pill and the little timer shown inside it.
+  const [countdown, setCountdown] = useState<number | null>(null);
+  // Whether we're pinned to the live edge. Decided by an IntersectionObserver
+  // watching a sentinel at the very bottom — NOT by scrollHeight/scrollTop math.
+  // That math silently breaks once the buffer fills and rows prune off the top
+  // every frame (the shrinking "distance from bottom" would dip under a px
+  // threshold and wrongly resume) — the "pause stops working once the scrollbar
+  // gets small" bug. Sentinel visibility can't be corrupted by pruning. The ref
+  // drives the hot path (read synchronously); the state mirror drives the pill.
+  const followRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
 
-  const pinToBottom = () => {
-    const el = containerRef.current;
-    if (!el) return;
-    // Direct scrollTop assignment — avoids CSS smooth-scroll, which pauses GIF
-    // animation in Chrome for the duration of the scroll animation.
-    el.scrollTop = el.scrollHeight;
-  };
+  const { blacklistKeywords, pauseOnHover } = useChatPrefs();
 
-  const handleScroll = () => {
-    const el = containerRef.current;
-    if (!el) return;
-    const nowStuck = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
-    stuckRef.current = nowStuck;
-    setAtBottom(nowStuck);
-  };
-
-  const jumpToLatest = () => {
-    stuckRef.current = true;
-    setAtBottom(true);
-    pinToBottom();
-  };
-
-  // Re-pin to the live edge BEFORE the browser paints. Running in a layout effect
-  // (rather than useEffect + rAF, which fire AFTER paint) is what fixes the
-  // fast-chat pause: when the feed appends new rows and trims old ones off the
-  // top, we snap back to the bottom synchronously, so no scroll event ever
-  // observes a transient "scrolled up" geometry mid-frame and flips us off the
-  // live edge. Only a real user scroll (handleScroll) can unstick us now.
-  useLayoutEffect(() => {
-    if (!stuckRef.current) return;
-    const el = containerRef.current;
-    if (!el) return;
-    // Authoritative pause check: `:hover` is a live DOM state, so it stays
-    // correct even if React re-mounted this component or a stray mouseleave
-    // fired. This is what makes hovering a *true* pause — never scroll out from
-    // under the cursor. (Appending rows fires no scroll event, so hovering keeps
-    // stuckRef true; we resume from mouseleave below.)
-    if (el.matches(":hover")) return;
-    pinToBottom();
-  }, [messages]);
+  // Hover-pause: cursor ON holds auto-scroll for HOVER_PAUSE_SECS then resumes;
+  // cursor OFF cancels it. `hoverPausedRef` is the hot-path mirror the pin effect
+  // and the observer read; a 1s interval ticks the visible countdown to 0.
+  const hoverPausedRef = useRef(false);
+  const hoverIntervalRef = useRef<number | null>(null);
 
   const filtered = messages.filter((m) => {
+    // Hide messages containing a blacklisted keyword (never your own sent lines).
+    if (m.platform !== "self" && matchesKeywords(m.text, blacklistKeywords)) return false;
     if (m.platform === "self") {
       // When a single platform is filtered (split view), only show the self
       // message in the pane(s) that match the platforms it was sent to.
@@ -80,7 +63,118 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
   const singlePlatform: Platform | undefined =
     activeFilters.size === 1 ? ([...activeFilters][0] as Platform) : undefined;
 
-  if (filtered.length === 0) {
+  const isEmpty = filtered.length === 0;
+
+  const pinToBottom = () => {
+    const el = containerRef.current;
+    // Direct scrollTop assignment — avoids CSS smooth-scroll, which pauses GIF
+    // animation in Chrome for the duration of the scroll animation.
+    if (el) el.scrollTop = el.scrollHeight;
+  };
+
+  // Follow the live edge BEFORE paint whenever we're pinned and not paused. A
+  // layout effect (not a post-paint rAF) lands the snap in the same frame the
+  // rows mutate, so there's no visible jump and no half-updated frame to latch a
+  // false state onto.
+  useLayoutEffect(() => {
+    if (!followRef.current || hoverPausedRef.current) return;
+    pinToBottom();
+  }, [messages]);
+
+  // Stick detection: is the bottom sentinel on screen? Re-attached whenever the
+  // feed mounts (isEmpty flips). Updates are SKIPPED while hover-paused — messages
+  // accumulating during a hover push the sentinel out of view, and that must not
+  // be mistaken for the user scrolling away.
+  useEffect(() => {
+    if (isEmpty) return;
+    const el = containerRef.current;
+    const sentinel = sentinelRef.current;
+    if (!el || !sentinel) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (hoverPausedRef.current) return;
+        followRef.current = entry.isIntersecting;
+        setAtBottom(entry.isIntersecting);
+      },
+      // A positive bottom rootMargin extends the root's box downward, so the
+      // sentinel still counts as "visible" within STICK_SLACK_PX of the end.
+      { root: el, rootMargin: `0px 0px ${STICK_SLACK_PX}px 0px`, threshold: 0 }
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [isEmpty]);
+
+  const clearHoverInterval = () => {
+    if (hoverIntervalRef.current != null) {
+      clearInterval(hoverIntervalRef.current);
+      hoverIntervalRef.current = null;
+    }
+  };
+
+  // Release the hover-pause. Resume to the live edge only if we were following
+  // when the hover began (followRef is frozen during a hover, so it still
+  // reflects that) — a hover that started while scrolled up leaves the read
+  // position alone.
+  const endHoverPause = () => {
+    clearHoverInterval();
+    hoverPausedRef.current = false;
+    setCountdown(null);
+    if (followRef.current) pinToBottom();
+  };
+
+  // Cursor ON: (re)start a fresh N-second countdown. A closure counter (not the
+  // render state) drives the tick, so the resume is decided outside the setState
+  // updater — one tick per second updates the pill's timer, and hitting 0 ends the
+  // pause and lets the feed catch up.
+  const beginHoverPause = () => {
+    if (!pauseOnHover) return;
+    clearHoverInterval();
+    hoverPausedRef.current = true;
+    let remaining = HOVER_PAUSE_SECS;
+    setCountdown(remaining);
+    hoverIntervalRef.current = window.setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) endHoverPause();
+      else setCountdown(remaining);
+    }, 1000);
+  };
+
+  // Wheeling while hovering = the user is taking manual scroll control, so drop
+  // the hover countdown and hand follow-state back to the sentinel. A scroll-up
+  // means they're leaving the live edge — reflect that at once so an incoming
+  // message can't yank them down before the observer's async callback catches up.
+  const onWheel = (e: { deltaY: number }) => {
+    if (!hoverPausedRef.current) return;
+    clearHoverInterval();
+    hoverPausedRef.current = false;
+    setCountdown(null);
+    if (e.deltaY < 0) {
+      followRef.current = false;
+      setAtBottom(false);
+    }
+  };
+
+  // Turning the pref off (or unmounting) must release any live hover-pause. Runs
+  // only when the pref flips (rare) — the setState cascade the lint warns about is
+  // a non-issue at that frequency and is what clears the pill.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!pauseOnHover) endHoverPause();
+    return clearHoverInterval;
+    // Helpers close over current refs; re-running only on the pref flip is intended.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pauseOnHover]);
+
+  const jumpToLatest = () => {
+    clearHoverInterval();
+    hoverPausedRef.current = false;
+    setCountdown(null);
+    followRef.current = true;
+    setAtBottom(true);
+    pinToBottom();
+  };
+
+  if (isEmpty) {
     return (
       <Flex
         flex="1"
@@ -100,7 +194,7 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
     );
   }
 
-  const showPill = hovering || !atBottom;
+  const showPill = !atBottom || countdown !== null;
 
   return (
     <Box
@@ -122,26 +216,14 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
         minH="0"
         overflowY="auto"
         overflowX="hidden"
-        onMouseEnter={() => setHovering(true)}
-        onMouseLeave={() => {
-          setHovering(false);
-          // Resume following the live edge the moment the cursor leaves, if we
-          // were still stuck to the bottom when the hover began. New messages
-          // that arrived during the hover fired no scroll event, so stuckRef is
-          // untouched — but nothing has re-pinned us to the (now taller) bottom.
-          if (stuckRef.current) pinToBottom();
-        }}
+        onMouseEnter={beginHoverPause}
+        onMouseLeave={endHoverPause}
+        onWheel={onWheel}
         px={{ base: "12px", md: "22px" }}
         py="4px"
         display="flex"
         flexDirection="column"
         gap="2px"
-        // Disable scroll anchoring: when new rows append, the browser would
-        // otherwise nudge scrollTop to "keep" a visible row and fire a scroll
-        // event that spuriously unsticks us from the bottom — the feed then
-        // parks on a message instead of following the live edge.
-        style={{ overflowAnchor: "none" }}
-        onScroll={handleScroll}
       >
         {filtered.map((msg) => (
           <ChatMessage
@@ -151,6 +233,9 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
             singlePlatform={singlePlatform}
           />
         ))}
+        {/* Live-edge marker the IntersectionObserver watches. Must not shrink to
+            0 in the flex column, or it could never register as visible. */}
+        <Box ref={sentinelRef} h="1px" flexShrink={0} aria-hidden />
       </Box>
 
       {showPill && (
@@ -182,7 +267,29 @@ export default function ChatFeed({ messages, activeFilters, onSelectUser }: Chat
               <Text as="span">Paused — jump to latest</Text>
             </>
           ) : (
-            <Text as="span">Auto-scroll paused (hovering)</Text>
+            <>
+              <Text as="span">Paused — resuming in</Text>
+              {/* Little countdown timer: an amber badge showing the seconds left
+                  on the hover-pause, ticking down 5 → 1. */}
+              <Flex
+                align="center"
+                justify="center"
+                w="16px"
+                h="16px"
+                borderRadius="full"
+                fontFamily="mono"
+                fontSize="10px"
+                fontWeight="700"
+                flex="none"
+                style={{
+                  color: c.accent,
+                  background: accentMix(16),
+                  border: `1px solid ${accentMix(45)}`,
+                }}
+              >
+                {countdown}
+              </Flex>
+            </>
           )}
         </Flex>
       )}

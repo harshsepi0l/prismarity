@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Flex, Box, Text, chakra } from "@chakra-ui/react";
 import type { Platform, UserSelection } from "../../types";
-import { PlatformIcon, PLATFORM_COLOR, PLATFORM_LABEL } from "../../components/PlatformIcon";
+import {
+  PlatformIcon,
+  PLATFORM_COLOR,
+  PLATFORM_LABEL,
+} from "../../components/PlatformIcon";
 import { useSession } from "../../_ctx/session";
 import { alpha, accentLine } from "../../../theme-colors";
 import ParticipantsButton from "./ParticipantsButton";
@@ -18,7 +22,13 @@ function Chevron({ open }: { open: boolean }) {
       transition="transform .15s"
     >
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-        <path d="M1 3 L5 7 L9 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M1 3 L5 7 L9 3"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </Box>
   );
@@ -27,7 +37,13 @@ function Chevron({ open }: { open: boolean }) {
 function CheckIcon({ color }: { color: string }) {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <path d="M2.5 6.2 L4.8 8.5 L9.5 3.5" stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M2.5 6.2 L4.8 8.5 L9.5 3.5"
+        stroke={color}
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -36,8 +52,8 @@ function CheckIcon({ color }: { color: string }) {
 // available for the current channel, with a check per platform you're reading.
 // Toggling a row shows/hides that platform's chat in the feed below. Independent
 // of the composer's "Send to" targets. The right side hosts the participants
-// roster. The dropdown only appears when there are 2+ chats to choose between;
-// the bar itself shows whenever a channel is selected.
+// roster. The Watching control shows whenever any chat is available — even a
+// single stream — so you can always see what's currently being read.
 export default function ChatReadBar({
   available,
   onSelectUser,
@@ -53,9 +69,12 @@ export default function ChatReadBar({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node))
+        setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -65,7 +84,7 @@ export default function ChatReadBar({
   }, [open]);
 
   if (available.length === 0) return null;
-  const multi = available.length >= 2;
+  const multi = available.length >= 1;
   // Icons shown in the closed trigger — the platforms currently in the feed.
   const watching = available.filter((id) => activeFilters.has(id));
 
@@ -106,13 +125,23 @@ export default function ChatReadBar({
             transition="background .12s, color .12s, border-color .12s"
             _hover={{ color: "text", borderColor: "lineStrong" }}
           >
-            <Text fontFamily="mono" fontSize="10px" letterSpacing="0.08em" flex="none">
+            <Text
+              fontFamily="mono"
+              fontSize="10px"
+              letterSpacing="0.08em"
+              flex="none"
+            >
               WATCHING
             </Text>
             {watching.length > 0 && (
               <Flex align="center" gap="4px" flex="none">
                 {watching.map((id) => (
-                  <PlatformIcon key={id} platform={id} color={PLATFORM_COLOR[id]} size={13} />
+                  <PlatformIcon
+                    key={id}
+                    platform={id}
+                    color={PLATFORM_COLOR[id]}
+                    size={13}
+                  />
                 ))}
               </Flex>
             )}
@@ -134,8 +163,13 @@ export default function ChatReadBar({
               boxShadow="0 20px 50px rgba(0,0,0,0.6)"
             >
               <Text
-                px="12px" pt="10px" pb="6px"
-                fontFamily="mono" fontSize="9px" letterSpacing="0.12em" color="faint"
+                px="12px"
+                pt="10px"
+                pb="6px"
+                fontFamily="mono"
+                fontSize="9px"
+                letterSpacing="0.12em"
+                color="faint"
               >
                 SHOW OR HIDE EACH CHAT
               </Text>
@@ -162,7 +196,13 @@ export default function ChatReadBar({
                       _hover={{ bg: "raised", opacity: 1 }}
                     >
                       <PlatformIcon platform={id} color={color} size={14} />
-                      <Text fontSize="13px" fontWeight="600" color="text" flex="1" textAlign="left">
+                      <Text
+                        fontSize="13px"
+                        fontWeight="600"
+                        color="text"
+                        flex="1"
+                        textAlign="left"
+                      >
                         {PLATFORM_LABEL[id]}
                       </Text>
                       <Flex

@@ -19,24 +19,26 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) — it redirects to `/chat`. You can browse
-the app immediately; connecting your own Twitch/Kick accounts requires the OAuth setup below.
+the app immediately; connecting your own Twitch, Kick, or YouTube accounts requires the OAuth
+setup below.
 
 ## How authentication works
 
 Auth is **fully server-side** — client secrets and access tokens never reach the browser:
 
 - OAuth uses PKCE; the callback exchanges the code on the server.
-- Access/refresh tokens are encrypted at rest with **AES-256-GCM** (`lib/auth/crypto.ts`) before
-  being persisted.
-- The session cookie holds only a **signed user id** (`lib/auth/session.ts`), not any token.
-- Persistence is a small JSON store under `.data/` (gitignored). It's fine for local/single
-  instance; production needs a host with a persistent, writable filesystem (see
-  [Deployment](#deployment)).
+- **Stateless sessions** — the whole user record (id, platform connections, and their
+  access/refresh tokens) lives *inside* the session cookie, encrypted with **AES-256-GCM**
+  (`lib/auth/session.ts` / `lib/auth/crypto.ts`, keyed by `TOKEN_ENCRYPTION_KEY`). GCM makes the
+  cookie opaque and tamper-proof to the client.
+- There is **no server-side store** — nothing is written to disk, so the app runs on any
+  serverless host (e.g. Vercel). Cookies cap at ~4KB, which fits a couple of platform
+  connections.
 
 ## Connecting accounts
 
-Prismarity ships with a shared client ID for read-only bits, but to connect *your* accounts you
-register a developer app per platform, then connect in-app via **Settings → Connect**.
+Config is **env-driven** — no client IDs ship in source. Register a developer app per platform,
+put its credentials in your env, then connect in-app via **Settings → Accounts**.
 
 ### Twitch
 
@@ -52,7 +54,17 @@ register a developer app per platform, then connect in-app via **Settings → Co
 2. **Redirect URL:** `http://localhost:3000/api/auth/kick/callback` (exact match).
 3. Copy the **Client ID** and **Client Secret**.
 
-Then run the app, open **Settings → Connect** for each platform, and complete the popup. You'll
+### YouTube (Google)
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/), create a project and enable
+   the **YouTube Data API v3**.
+2. Under **APIs & Services → Credentials**, create an **OAuth 2.0 Client ID** of type
+   **Web application**.
+3. **Authorized redirect URI:** `http://localhost:3000/api/auth/youtube/callback` (exact match).
+4. Copy the **Client ID** and **Client Secret** — Google requires the secret at token exchange
+   even with PKCE. Scope requested is `youtube.readonly` (live status + subscriber count).
+
+Then run the app, open **Settings → Accounts** for each platform, and complete the popup. You'll
 see "Connected as {name}".
 
 > The redirect URL is **derived from `NEXT_PUBLIC_BASE_URL`** (`<base>/api/auth/<platform>/callback`).
@@ -66,13 +78,14 @@ Copy `.env.local.example` → `.env.local` and fill these in. Server-side only u
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TWITCH_CLIENT_ID` | optional | Your Twitch app Client ID. Falls back to a shared default if unset. |
-| `TWITCH_CLIENT_SECRET` | for Twitch login | Your Twitch app Client Secret. |
-| `KICK_CLIENT_ID` | optional | Your Kick app Client ID. Falls back to a shared default if unset. |
+| `TWITCH_CLIENT_ID` | for Twitch | Your Twitch app Client ID. No shared default is shipped. |
+| `TWITCH_CLIENT_SECRET` | recommended | Your Twitch app Client Secret — needed for reliable token refresh. |
+| `KICK_CLIENT_ID` | for Kick | Your Kick app Client ID. No shared default is shipped. |
 | `KICK_CLIENT_SECRET` | for Kick login | Your Kick app Client Secret. |
-| `NEXT_PUBLIC_BASE_URL` | yes | Public origin, bare (e.g. `http://localhost:3000`). The OAuth redirect URI is built from this — it must match what you registered. |
-| `SESSION_SECRET` | yes | Signs the session cookie. Generate: `openssl rand -hex 32`. |
-| `TOKEN_ENCRYPTION_KEY` | yes | AES-256-GCM key for token encryption at rest. Generate: `openssl rand -base64 32` (must decode to 32 bytes). **Keep it stable** — changing it makes previously stored tokens undecryptable. |
+| `YOUTUBE_CLIENT_ID` | for YouTube | Your Google OAuth "Web application" Client ID. |
+| `YOUTUBE_CLIENT_SECRET` | for YouTube login | Your Google OAuth Client Secret (required at token exchange even with PKCE). |
+| `TOKEN_ENCRYPTION_KEY` | yes | AES-256-GCM key that encrypts the whole session cookie. Generate: `openssl rand -base64 32` (must decode to 32 bytes). **Keep it stable** — changing it invalidates every existing session. |
+| `NEXT_PUBLIC_BASE_URL` | optional | Public origin, bare (e.g. `https://your-app.vercel.app`). On Vercel the redirect URI auto-resolves from the request host; set this only to pin a custom domain. It must match the callback URLs you registered. |
 
 ## Scripts
 
@@ -88,7 +101,7 @@ Copy `.env.local.example` → `.env.local` and fill these in. Server-side only u
 | Path | Description |
 |------|-------------|
 | `/` | Redirects to `/chat`. |
-| `/chat` | Unified chat — real Twitch **and** Kick chat, unified read feed + per-platform send, split view, About panel, emote/command search. |
+| `/chat` | Unified chat — real Twitch, Kick, **and** YouTube chat, unified read feed + per-platform send, split view, About panel, emote/command search. |
 | `/loyalty` | Cross-platform loyalty leaderboard. |
 | `/vods` | VOD library with platform filters and expiry warnings. |
 
@@ -104,34 +117,36 @@ app/
     layout.tsx               # Persistent shell; loads the current user
     _ctx/                    # Client context providers (session, chat, stats, layout, …)
     components/              # Shell + shared UI (TopBar, NavRail, PlatformIcon, ui)
-    chat/                    # Chat screen + hooks (useTwitchChat, useKickChat) + components
+    chat/                    # Chat screen + per-platform chat hooks + components
     loyalty/                 # Loyalty screen
     vods/                    # VODs screen
   api/
     auth/                    # OAuth login/callback/disconnect/logout ([platform] routes)
     twitch/                  # Twitch data (chat, stats, clips, badges, shared-chat, …)
     kick/                    # Kick data (chat, stats, badges, leaderboard, resolve)
+    youtube/                 # YouTube data (live status, chat, subscriber count)
     emotes/  search/  settings/  beacon/
 lib/
-  auth/                      # OAuth, crypto (AES-256-GCM), session, JSON store
-  twitch/  kick/             # Platform API clients
-  settings/                  # Settings store (client ids/secrets, base URL)
+  auth/                      # OAuth, crypto (AES-256-GCM), stateless session cookie
+  twitch/  kick/  youtube/   # Platform API clients
+  settings/                  # Env-driven config resolver (client ids, base URL)
 public/                      # Static assets
 .env.local.example           # Env var template (committed)
 ```
 
 ## Design system
 
-Chakra UI is configured in `app/theme.ts` (`createSystem` + `defineConfig`) with the design
-tokens (`bg`, `panel`, `raised`, `line`, `text`, `muted`, `faint`, plus `twitch`/`youtube`/`kick`)
-and two fonts (Inter for all UI — headings, body, and the chat feed — plus IBM Plex Mono for numbers/labels).
-`app/provider.tsx` wraps the app in `ChakraProvider`.
+Chakra UI is configured in `app/theme.ts` (`createSystem` + `defineConfig`) with semantic design
+tokens (`bg`, `panel`, `raised`, `line`, `text`, `muted`, `faint`, plus `twitch`/`kick`/`youtube`
+and an amber `accent`) that drive light/dark/system theming. The whole app — headings, body, chat
+feed, and the numeric/label "mono" slot — uses one rounded family (`--font-rounded`, falling back
+to the native `ui-rounded` system font). `app/provider.tsx` wraps the app in `ChakraProvider`.
 
 ## Deployment
 
-The app persists auth/settings to the local filesystem (`.data/`), so it needs a host with a
-**persistent, writable filesystem** — e.g. **Azure App Service**. Serverless/static hosts with a
-read-only or ephemeral filesystem (such as Azure Static Web Apps' managed functions) will fail on
-the first write during login. Point `NEXT_PUBLIC_BASE_URL` at your deployed origin, set the same
-env vars as runtime application settings, and register your deployed callback URLs
-(`https://<host>/api/auth/{twitch,kick}/callback`) in each platform console.
+Sessions are **stateless** (the encrypted cookie is the only store), so there's no database or
+writable filesystem to provision — deploy to **Vercel** (or any Next.js host). Set the env vars
+above as project environment variables, and register your deployed callback URLs
+(`https://<host>/api/auth/{twitch,kick,youtube}/callback`) in each platform console.
+`NEXT_PUBLIC_BASE_URL` is optional — the redirect URI auto-resolves from the request host — set it
+only to pin a custom domain.
