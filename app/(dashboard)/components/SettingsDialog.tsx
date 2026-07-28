@@ -7,6 +7,7 @@ import { PlatformIcon } from "./PlatformIcon";
 import { BeaconSignal } from "./BeaconSignal";
 import { clearSessionScopedStorage } from "@/lib/clientStorage";
 import { useChat, useChatSignal } from "../_ctx/chat";
+import { useChatPrefs } from "../_ctx/chatPrefs";
 import { useLayout } from "../_ctx/layout";
 import { useColorMode, type ColorMode } from "../../_ctx/color-mode";
 import { c, alpha as withAlpha } from "../../theme-colors";
@@ -179,12 +180,142 @@ function PlatformSection({
   );
 }
 
+// On/off pill toggle in the app's amber accent — mirrors the Beacon Mode switch.
+function ToggleSwitch({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
+  return (
+    <chakra.button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onToggle}
+      w="44px"
+      h="24px"
+      borderRadius="full"
+      flex="none"
+      cursor="pointer"
+      transition="background .2s"
+      position="relative"
+      style={{ background: on ? C.accent : C.raised, border: `1px solid ${on ? C.accent : C.fieldLine}` }}
+    >
+      <Box
+        position="absolute"
+        top="3px"
+        w="18px"
+        h="18px"
+        borderRadius="full"
+        bg="white"
+        transition="left .2s"
+        style={{ left: on ? "23px" : "3px", boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
+      />
+    </chakra.button>
+  );
+}
+
+// Label + description on the left, a control (e.g. ToggleSwitch) on the right.
+function SettingRow({
+  title,
+  description,
+  control,
+}: {
+  title: string;
+  description: string;
+  control: React.ReactNode;
+}) {
+  return (
+    <Flex align="center" gap="12px" py="10px">
+      <Box flex="1">
+        <Text fontSize="14px" fontWeight="600" style={{ color: C.text }}>
+          {title}
+        </Text>
+        <Text fontSize="12px" style={{ color: C.faint, marginTop: 2 }}>
+          {description}
+        </Text>
+      </Box>
+      {control}
+    </Flex>
+  );
+}
+
+// Chip list + input for editing a keyword set. Enter or comma commits the draft;
+// each chip has an ✕ to remove it. Case-insensitive de-dupe on add.
+function KeywordEditor({
+  keywords,
+  onChange,
+  placeholder,
+}: {
+  keywords: string[];
+  onChange: (next: string[]) => void;
+  placeholder: string;
+}) {
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    const v = draft.trim();
+    if (!v) return;
+    if (!keywords.some((k) => k.toLowerCase() === v.toLowerCase())) onChange([...keywords, v]);
+    setDraft("");
+  };
+  return (
+    <Box mt="8px">
+      {keywords.length > 0 && (
+        <Flex wrap="wrap" gap="6px" mb="8px">
+          {keywords.map((kw) => (
+            <Flex
+              key={kw}
+              align="center"
+              gap="6px"
+              px="8px"
+              py="3px"
+              borderRadius="full"
+              style={{ background: C.field, border: `1px solid ${C.fieldLine}` }}
+            >
+              <Text fontSize="11px" style={{ color: C.muted }}>
+                {kw}
+              </Text>
+              <chakra.button
+                type="button"
+                onClick={() => onChange(keywords.filter((k) => k !== kw))}
+                aria-label={`Remove ${kw}`}
+                fontSize="10px"
+                cursor="pointer"
+                style={{ color: C.faint }}
+                _hover={{ color: C.text }}
+              >
+                ✕
+              </chakra.button>
+            </Flex>
+          ))}
+        </Flex>
+      )}
+      <chakra.input
+        value={draft}
+        onChange={(e) => setDraft(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            add();
+          }
+        }}
+        onBlur={add}
+        placeholder={placeholder}
+        w="100%"
+        borderRadius="6px"
+        px="10px"
+        py="7px"
+        fontSize="12px"
+        style={{ background: C.field, border: `1px solid ${C.fieldLine}`, color: C.text }}
+      />
+    </Box>
+  );
+}
+
 export function SettingsDialog({ auth, onClose }: Props) {
   const router = useRouter();
   const [category, setCategory] = useState<Category>("accounts");
   const [disconnecting, setDisconnecting] = useState<ConnectPlatform | null>(null);
   const { beaconMode, setBeaconMode } = useChat();
   const signalStatus = useChatSignal();
+  const chatPrefs = useChatPrefs();
   const { isCompact } = useLayout();
   const { mode, resolved, setMode, mounted: themeMounted } = useColorMode();
   // Desktop: anchored dropdown under the prism. Mobile/tablet: centered modal.
@@ -481,6 +612,83 @@ export function SettingsDialog({ auth, onClose }: Props) {
 
             {category === "chat" && (
               <Box>
+                {/* ── Chat display ──────────────────────────── */}
+                <Text
+                  fontSize="11px"
+                  fontWeight="700"
+                  letterSpacing="0.08em"
+                  mb="4px"
+                  style={{ color: C.faint, textTransform: "uppercase" }}
+                >
+                  Chat display
+                </Text>
+
+                <SettingRow
+                  title="Readable username colors"
+                  description="Brighten hard-to-read names so dark colors stay legible on the chat rows."
+                  control={
+                    <ToggleSwitch
+                      on={chatPrefs.readableColors}
+                      onToggle={() => chatPrefs.setReadableColors(!chatPrefs.readableColors)}
+                      label="Toggle readable username colors"
+                    />
+                  }
+                />
+
+                <SettingRow
+                  title="Show timestamps"
+                  description="Show the time each message was sent."
+                  control={
+                    <ToggleSwitch
+                      on={chatPrefs.timestamps}
+                      onToggle={() => chatPrefs.setTimestamps(!chatPrefs.timestamps)}
+                      label="Toggle timestamps"
+                    />
+                  }
+                />
+
+                <SettingRow
+                  title="Pause on hover"
+                  description="Hold auto-scroll while your cursor is over the chat. Resumes 5 seconds after the cursor goes still, or the moment it leaves. Scrolling up always pauses until you jump back."
+                  control={
+                    <ToggleSwitch
+                      on={chatPrefs.pauseOnHover}
+                      onToggle={() => chatPrefs.setPauseOnHover(!chatPrefs.pauseOnHover)}
+                      label="Toggle pause on hover"
+                    />
+                  }
+                />
+
+                <Box py="10px">
+                  <Text fontSize="14px" fontWeight="600" style={{ color: C.text }}>
+                    Highlight keywords
+                  </Text>
+                  <Text fontSize="12px" style={{ color: C.faint, marginTop: 2 }}>
+                    Messages containing any of these get an amber highlight. Press Enter to add.
+                  </Text>
+                  <KeywordEditor
+                    keywords={chatPrefs.highlightKeywords}
+                    onChange={chatPrefs.setHighlightKeywords}
+                    placeholder="Add a keyword…"
+                  />
+                </Box>
+
+                <Box py="10px">
+                  <Text fontSize="14px" fontWeight="600" style={{ color: C.text }}>
+                    Hidden keywords
+                  </Text>
+                  <Text fontSize="12px" style={{ color: C.faint, marginTop: 2 }}>
+                    Messages containing any of these are hidden from your feed. Press Enter to add.
+                  </Text>
+                  <KeywordEditor
+                    keywords={chatPrefs.blacklistKeywords}
+                    onChange={chatPrefs.setBlacklistKeywords}
+                    placeholder="Add a keyword…"
+                  />
+                </Box>
+
+                <Box mb="18px" mt="8px" style={{ height: "1px", background: C.line }} />
+
                 {/* ── Beacon Mode ───────────────────────────── */}
                 <Flex align="center" gap="12px" mb="10px">
                   <Box w="22px" flex="none" display="flex" justifyContent="center">

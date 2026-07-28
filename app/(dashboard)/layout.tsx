@@ -2,6 +2,7 @@ import { Flex } from "@chakra-ui/react";
 import { LayoutProvider } from "./_ctx/layout";
 import { SessionProvider } from "./_ctx/session";
 import { ChatProvider } from "./_ctx/chat";
+import { ChatPrefsProvider } from "./_ctx/chatPrefs";
 import { EmoteProvider } from "./_ctx/emotes";
 import { BadgeProvider } from "./_ctx/badges";
 import { StatsProvider } from "./_ctx/stats";
@@ -32,13 +33,15 @@ export default async function DashboardLayout({
           <EmoteProvider>
             <BadgeProvider>
               <StatsProvider>
-                <Flex direction="column" h="100vh" overflow="hidden" bg="bg">
-                  <TopBar auth={auth} />
-                  <Flex flex="1" minH="0">
-                    <NavRail />
-                    {children}
+                <ChatPrefsProvider>
+                  <Flex direction="column" h="100vh" overflow="hidden" bg="bg">
+                    <TopBar auth={auth} />
+                    <Flex flex="1" minH="0">
+                      <NavRail />
+                      {children}
+                    </Flex>
                   </Flex>
-                </Flex>
+                </ChatPrefsProvider>
               </StatsProvider>
             </BadgeProvider>
           </EmoteProvider>

@@ -4,7 +4,8 @@ import type { ChatMessage as ChatMessageType, UserSelection } from "../../types"
 import { PlatformIcon, PLATFORM_COLOR } from "../../components/PlatformIcon";
 import { useEmotes } from "../../_ctx/emotes";
 import { useBadges, resolveBadgeImage } from "../../_ctx/badges";
-import { c, alpha, PLATFORM, SIGNAL } from "../../../theme-colors";
+import { c, alpha, accentMix, PLATFORM, SIGNAL } from "../../../theme-colors";
+import { useChatPrefs, matchesKeywords, makeReadableColor } from "../../_ctx/chatPrefs";
 
 // "self" messages have no platform brand color — a neutral grey stands in.
 const SELF_COLOR = c.muted;
@@ -189,8 +190,12 @@ export default memo(function ChatMessage({
   singlePlatform,
 }: ChatMessageProps) {
   const emotes = useEmotes();
+  const { readableColors, timestamps, highlightKeywords } = useChatPrefs();
   const platformColor = message.platform === "self" ? SELF_COLOR : PLATFORM_COLOR[message.platform];
-  const nameColor = message.color || platformColor;
+  // Readable-colors only rewrites a chatter's OWN custom colour; the brand
+  // platform fallback is already legible.
+  const nameColor =
+    readableColors && message.color ? makeReadableColor(message.color) : message.color || platformColor;
 
   const body = useMemo(
     () =>
@@ -257,6 +262,9 @@ export default memo(function ChatMessage({
   const tag = PLATFORM_TAG[message.platform] ?? "??";
   // Platform rows get the tinted glass; self/own messages stay on a bare row.
   const rowTint = ROW_TINT[message.platform];
+  // Highlight: an amber left edge + inset ring + soft glow layered over whatever
+  // the row's base treatment is, so it reads on both tinted and bare rows.
+  const highlighted = matchesKeywords(message.text, highlightKeywords);
 
   // For self-messages in split view: show only the relevant platform's name/icon.
   const selfPlatforms: ("twitch" | "youtube" | "kick")[] =
@@ -284,8 +292,8 @@ export default memo(function ChatMessage({
     <Box
       onMouseEnter={() => onHoverChange?.(true)}
       onMouseLeave={() => onHoverChange?.(false)}
-      borderLeftWidth="2px"
-      borderColor={platformColor}
+      borderLeftWidth={highlighted ? "3px" : "2px"}
+      borderColor={highlighted ? "accent" : platformColor}
       pl="14px"
       pr="12px"
       py="7px"
@@ -296,10 +304,18 @@ export default memo(function ChatMessage({
       // Platform-tinted rows: a frosted platform pane (translucent deep hue in
       // light, 30% wash in dark) behind the colored left edge, with light ink and
       // a top sheen. Your own sent messages stay neutral — the grey edge marks them.
-      bg={rowTint ?? "transparent"}
+      // A highlighted row adds an amber inset ring + glow over the base treatment,
+      // and an amber wash on bare (self) rows so the cue shows without a tint.
+      bg={rowTint ?? (highlighted ? accentMix(12) : "transparent")}
       backgroundImage={rowTint ? GLASS_GRADIENT : undefined}
       color={rowTint ? ROW_INK : undefined}
-      boxShadow={rowTint ? GLASS_SHEEN : undefined}
+      boxShadow={
+        highlighted
+          ? `${rowTint ? `${GLASS_SHEEN}, ` : ""}inset 0 0 0 1px ${accentMix(40)}, 0 0 12px ${accentMix(20)}`
+          : rowTint
+            ? GLASS_SHEEN
+            : undefined
+      }
       _hover={rowTint ? { filter: "brightness(1.12)" } : { bg: "raised" }}
     >
       <Flex align="baseline" gap="9px" mb="2px" minW="0">
@@ -379,9 +395,11 @@ export default memo(function ChatMessage({
           </chakra.button>
         )}
 
-        <Text ml="auto" pl="8px" flex="none" fontFamily="mono" fontSize="11px" color="faint">
-          {time}
-        </Text>
+        {timestamps && (
+          <Text ml="auto" pl="8px" flex="none" fontFamily="mono" fontSize="11px" color="faint">
+            {time}
+          </Text>
+        )}
       </Flex>
 
       {body}
